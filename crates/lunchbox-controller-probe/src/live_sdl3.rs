@@ -32,6 +32,77 @@ pub fn is_sc2(vendor: u16, product: u16) -> bool {
     vendor == 0x28de && matches!(product, 0x1302..=0x1305)
 }
 
+#[repr(C)]
+struct DisplayMode {
+    display_id: u32,
+    format: u32,
+    w: c_int,
+    h: c_int,
+    pixel_density: f32,
+    refresh_rate: f32,
+    refresh_rate_numerator: c_int,
+    refresh_rate_denominator: c_int,
+    internal: *mut c_void,
+}
+
+/// Query the host's current primary display mode without creating a window.
+/// This runs in a short-lived helper process because SDL's video API requires
+/// its process main thread, while Lunchbox prepares launches on a worker.
+pub fn primary_display_pixels(path: &Path) -> Result<(u32, u32)> {
+    const SDL_INIT_VIDEO: u32 = 0x0000_0020;
+    unsafe {
+        let library = Library::new(path).context("Loading SDL3 display runtime")?;
+        let set_main_ready = *library.get::<unsafe extern "C" fn()>(b"SDL_SetMainReady\0")?;
+        let init = *library.get::<unsafe extern "C" fn(u32) -> bool>(b"SDL_InitSubSystem\0")?;
+        let quit = *library.get::<unsafe extern "C" fn(u32)>(b"SDL_QuitSubSystem\0")?;
+        let primary = *library.get::<unsafe extern "C" fn() -> u32>(b"SDL_GetPrimaryDisplay\0")?;
+        let mode = *library.get::<unsafe extern "C" fn(u32) -> *const DisplayMode>(
+            b"SDL_GetCurrentDisplayMode\0",
+        )?;
+        let error = *library.get::<unsafe extern "C" fn() -> *const c_char>(b"SDL_GetError\0")?;
+        set_main_ready();
+        ensure!(
+            init(SDL_INIT_VIDEO),
+            "SDL3 video initialization failed: {}",
+            super::string(error())?.unwrap_or_default()
+        );
+        struct VideoGuard(unsafe extern "C" fn(u32));
+        impl Drop for VideoGuard {
+            fn drop(&mut self) {
+                unsafe { (self.0)(SDL_INIT_VIDEO) }
+            }
+        }
+        let _guard = VideoGuard(quit);
+        let display = primary();
+        ensure!(
+            display != 0,
+            "SDL3 found no primary display: {}",
+            super::string(error())?.unwrap_or_default()
+        );
+        let mode = mode(display);
+        ensure!(
+            !mode.is_null(),
+            "SDL3 found no current display mode: {}",
+            super::string(error())?.unwrap_or_default()
+        );
+        let mode = &*mode;
+        ensure!(
+            mode.w > 0 && mode.h > 0 && mode.pixel_density.is_finite() && mode.pixel_density > 0.0,
+            "SDL3 returned an invalid display mode"
+        );
+        let width = (f64::from(mode.w) * f64::from(mode.pixel_density)).round();
+        let height = (f64::from(mode.h) * f64::from(mode.pixel_density)).round();
+        ensure!(
+            width > 0.0
+                && height > 0.0
+                && width <= f64::from(u32::MAX)
+                && height <= f64::from(u32::MAX),
+            "SDL3 display pixels are out of range"
+        );
+        Ok((width as u32, height as u32))
+    }
+}
+
 /// The runtime owns every pointer and is used only on this process's main
 /// thread. Drop ordering closes handles, quits SDL, then unloads the library.
 pub struct Runtime {

@@ -232,6 +232,8 @@ ApplicationWindow {
     property bool cloudObservedGameRunning: false
     property string saveSyncToast: ""
     property bool saveSyncToastGood: false
+    property string saveFileToast: ""
+    property bool saveFileToastGood: false
     property var cloudActiveTarget: null
     property string cloudSyncError: ""
     property int mediaBundleProbeStage: 0
@@ -3502,6 +3504,55 @@ ApplicationWindow {
             color: root.ink
             font.pixelSize: 11
             font.weight: Font.DemiBold
+        }
+    }
+
+    Timer {
+        id: saveFileToastHideTimer
+        interval: 4200
+        onTriggered: root.saveFileToast = ""
+    }
+
+    Rectangle {
+        visible: root.saveFileToast.length > 0
+        z: 1500
+        y: root.saveSyncToast.length > 0 ? 56 : 16
+        x: Math.round((root.width - width) / 2)
+        width: saveFileToastText.implicitWidth + 30
+        height: 34
+        radius: 17
+        color: root.saveFileToastGood ? "#1d3d35" : "#26303f"
+        border.color: root.saveFileToastGood ? root.accentCool : root.accent
+        Rectangle {
+            width: 8
+            height: 8
+            radius: 4
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            color: root.saveFileToastGood ? root.accentCool : root.accent
+        }
+        Text {
+            id: saveFileToastText
+            anchors.centerIn: parent
+            text: root.saveFileToast
+            color: root.ink
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+        }
+    }
+
+    Connections {
+        target: gameDetails
+        function onSave_file_noticeChanged() {
+            if (gameDetails.save_file_notice.length === 0) {
+                root.saveFileToast = ""
+                saveFileToastHideTimer.stop()
+                return
+            }
+            root.saveFileToastGood = gameDetails.save_file_notice_success
+            root.saveFileToast = gameDetails.save_file_notice
+            saveFileToastHideTimer.restart()
         }
     }
 

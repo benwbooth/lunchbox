@@ -36,10 +36,17 @@ pub struct AutoSaveObservation {
     sram: PathBuf,
     state_before: Option<SystemTime>,
     sram_before: Option<SystemTime>,
+    auto_state_load_enabled: bool,
+    auto_state_save_enabled: bool,
 }
 
 impl AutoSaveObservation {
-    pub fn for_content(core_name: &str, content: &Path) -> Option<Self> {
+    pub fn for_content(
+        core_name: &str,
+        content: &Path,
+        auto_state_load_enabled: bool,
+        auto_state_save_enabled: bool,
+    ) -> Option<Self> {
         let stem = content.file_stem()?.to_str()?;
         let roots = lunchbox_route_roots(core_name);
         let state = roots.get(1)?.join(format!("{stem}.state.auto"));
@@ -49,31 +56,47 @@ impl AutoSaveObservation {
             sram_before: modified(&sram),
             state,
             sram,
+            auto_state_load_enabled,
+            auto_state_save_enabled,
         })
     }
 
-    pub fn launch_notice(&self) -> &'static str {
-        if self.state_before.is_some() {
-            "Auto-resume enabled; a previous state file is available"
-        } else {
-            "Auto-save enabled; no previous state file exists yet"
+    pub fn launch_notice(&self) -> Option<&'static str> {
+        match (
+            self.auto_state_load_enabled && self.state_before.is_some(),
+            self.sram_before.is_some(),
+            self.auto_state_load_enabled,
+            self.auto_state_save_enabled,
+        ) {
+            (true, true, _, _) => Some("Saved state and SRAM found; preparing to resume…"),
+            (true, false, _, _) => Some("Saved state found; preparing to resume…"),
+            (false, true, _, _) => Some("Saved SRAM found; preparing to load…"),
+            (false, false, _, true) => Some("Auto-save enabled; no previous state or SRAM yet"),
+            (false, false, true, false) => Some("Auto-resume enabled; no saved state yet"),
+            (false, false, false, false) => None,
         }
     }
 
-    pub fn exit_notice(&self) -> String {
-        let state_saved = modified(&self.state)
-            .is_some_and(|after| self.state_before.is_none_or(|before| after > before));
+    pub fn exit_notice(&self) -> Option<(String, bool)> {
+        let state_saved = self.auto_state_save_enabled
+            && modified(&self.state)
+                .is_some_and(|after| self.state_before.is_none_or(|before| after > before));
         let sram_saved = modified(&self.sram)
             .is_some_and(|after| self.sram_before.is_none_or(|before| after > before));
-        let mut notice = if state_saved {
-            "Auto-state file saved".to_owned()
-        } else {
-            "No auto-state file update detected".to_owned()
-        };
-        if sram_saved {
-            notice.push_str("; SRAM file saved");
+        match (state_saved, sram_saved, self.auto_state_save_enabled) {
+            (true, true, _) => Some(("Save state and SRAM saved".to_owned(), true)),
+            (true, false, _) => {
+                Some(("Save state saved; no SRAM update detected".to_owned(), true))
+            }
+            (false, true, _) => Some(("SRAM saved".to_owned(), true)),
+            (false, false, true) => {
+                Some(("No save-state or SRAM update detected".to_owned(), false))
+            }
+            (false, false, false) if self.sram_before.is_some() => {
+                Some(("No SRAM update detected".to_owned(), false))
+            }
+            (false, false, false) => None,
         }
-        notice
     }
 }
 
@@ -222,6 +245,51 @@ pub fn attach_launch_save_override(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notices_only_claim_save_files_that_exist_or_changed() {
+        let temporary = tempfile::tempdir().unwrap();
+        let state = temporary.path().join("game.state.auto");
+        let sram = temporary.path().join("game.srm");
+        let mut observation = AutoSaveObservation {
+            state: state.clone(),
+            sram: sram.clone(),
+            state_before: None,
+            sram_before: None,
+            auto_state_load_enabled: false,
+            auto_state_save_enabled: false,
+        };
+        assert_eq!(observation.launch_notice(), None);
+        assert_eq!(observation.exit_notice(), None);
+
+        observation.auto_state_load_enabled = true;
+        observation.auto_state_save_enabled = true;
+        assert_eq!(
+            observation.launch_notice(),
+            Some("Auto-save enabled; no previous state or SRAM yet")
+        );
+        assert_eq!(
+            observation.exit_notice(),
+            Some(("No save-state or SRAM update detected".into(), false))
+        );
+
+        fs::write(&state, b"state").unwrap();
+        fs::write(&sram, b"sram").unwrap();
+        assert_eq!(
+            observation.exit_notice(),
+            Some(("Save state and SRAM saved".into(), true))
+        );
+        observation.state_before = modified(&state);
+        observation.sram_before = modified(&sram);
+        assert_eq!(
+            observation.launch_notice(),
+            Some("Saved state and SRAM found; preparing to resume…")
+        );
+        assert_eq!(
+            observation.exit_notice(),
+            Some(("No save-state or SRAM update detected".into(), false))
+        );
+    }
 
     #[test]
     fn route_roots_are_per_core_and_ordered_saves_then_states() {

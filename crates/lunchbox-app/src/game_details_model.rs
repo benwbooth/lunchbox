@@ -132,6 +132,8 @@ pub mod qobject {
         #[qproperty(QString, emulator_name)]
         #[qproperty(QString, emulator_summary)]
         #[qproperty(QString, launch_status)]
+        #[qproperty(QString, save_file_notice)]
+        #[qproperty(bool, save_file_notice_success)]
         #[qproperty(QString, emulator_preference_scope)]
         #[qproperty(bool, launch_profile_open)]
         #[qproperty(QString, launch_profile_scope)]
@@ -768,6 +770,8 @@ pub struct GameDetailsModelRust {
     emulator_name: QString,
     emulator_summary: QString,
     launch_status: QString,
+    save_file_notice: QString,
+    save_file_notice_success: bool,
     emulator_preference_scope: QString,
     launch_profile_open: bool,
     launch_profile_scope: QString,
@@ -1012,6 +1016,8 @@ impl Default for GameDetailsModelRust {
             emulator_name: QString::default(),
             emulator_summary: QString::default(),
             launch_status: QString::default(),
+            save_file_notice: QString::default(),
+            save_file_notice_success: false,
             emulator_preference_scope: QString::default(),
             launch_profile_open: false,
             launch_profile_scope: QString::from("game"),
@@ -6029,6 +6035,8 @@ impl qobject::GameDetailsModel {
         if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
             return;
         }
+        self.as_mut().set_save_file_notice(QString::default());
+        self.as_mut().set_save_file_notice_success(false);
         let firmware_statuses = self.as_ref().selected_firmware_statuses();
         if firmware_statuses
             .iter()
@@ -6117,7 +6125,7 @@ impl qobject::GameDetailsModel {
             // overflows before the plan builder runs its first statement.
             .stack_size(64 * 1024 * 1024)
             .spawn(move || {
-                let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<String>)> {
+                let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<(String, bool)>)> {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
@@ -6295,15 +6303,30 @@ impl qobject::GameDetailsModel {
                                 )
                             });
                         if let Ok(customization) = display_customization {
-                            if customization.save_states == "on"
-                                && option.runtime_kind
+                            if option.runtime_kind
                                     == crate::emulator::EmulatorRuntimeKind::RetroArch
                                 && let Some(content) = plan.retroarch_content.as_ref()
                             {
+                                let (auto_load, auto_save) = match customization.save_states.as_str() {
+                                    "on" => (true, true),
+                                    "off" => (false, false),
+                                    _ => (
+                                        crate::display_setup::retroarch_config_value(
+                                            &option.executable,
+                                            "savestate_auto_load",
+                                        ).as_deref() == Some("true"),
+                                        crate::display_setup::retroarch_config_value(
+                                            &option.executable,
+                                            "savestate_auto_save",
+                                        ).as_deref() == Some("true"),
+                                    ),
+                                };
                                 auto_save_observation =
                                     crate::retroarch_saves::AutoSaveObservation::for_content(
                                         &option.core_name,
                                         &content.content,
+                                        auto_load,
+                                        auto_save,
                                     );
                             }
                             // A compressed ROM's launchable member may have
@@ -6397,6 +6420,30 @@ impl qobject::GameDetailsModel {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
+                    if let Some(notice) = auto_save_observation
+                        .as_ref()
+                        .and_then(|observation| observation.launch_notice())
+                    {
+                        let notice_game_id = game_id.clone();
+                        let notice = notice.to_owned();
+                        let _ = started_thread.queue(move |mut model| {
+                            model.as_mut().show_save_file_notice(
+                                generation,
+                                &notice_game_id,
+                                notice,
+                                false,
+                            );
+                        });
+                        // Let the notification appear before RetroArch takes
+                        // focus; no wait is added when no save data applies.
+                        let notice_deadline = Instant::now() + Duration::from_millis(700);
+                        while Instant::now() < notice_deadline {
+                            if launch_cancel.load(AtomicOrdering::Relaxed) {
+                                anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                            }
+                            std::thread::sleep(Duration::from_millis(25));
+                        }
+                    }
                     let mut child = match calibrated_session.as_mut() {
                         Some(session) => session.spawn_frontend(&plan, &launch_cancel)?,
                         None => crate::emulator::spawn_launch_plan(&plan)?,
@@ -6467,7 +6514,7 @@ impl qobject::GameDetailsModel {
                     let started_warning = tracking_warning.clone();
                     let save_notice = auto_save_observation
                         .as_ref()
-                        .map(|observation| observation.launch_notice().to_owned());
+                        .and_then(|observation| observation.launch_notice().map(str::to_owned));
                     let _ = started_thread.queue(move |mut model| {
                         model.as_mut().finish_launch_started(
                             generation,
@@ -6582,7 +6629,7 @@ impl qobject::GameDetailsModel {
                     };
                     let save_notice = auto_save_observation
                         .as_ref()
-                        .map(|observation| observation.exit_notice());
+                        .and_then(|observation| observation.exit_notice());
                     Ok((exit, tracking_warning, activity_recorded, save_notice))
                 })();
                 match launch {
@@ -6627,6 +6674,22 @@ impl qobject::GameDetailsModel {
                 "Cancelling launch preparation and removing temporary files…",
             ));
         }
+    }
+
+    fn show_save_file_notice(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_id: &str,
+        notice: String,
+        success: bool,
+    ) {
+        if generation != self.as_ref().rust().launch_generation
+            || self.as_ref().game_id().to_string() != game_id
+        {
+            return;
+        }
+        self.as_mut().set_save_file_notice_success(success);
+        self.as_mut().set_save_file_notice(qstring(notice));
     }
 
     fn finish_launch_started(mut self: Pin<&mut Self>, generation: u64, started: LaunchStarted) {
@@ -6676,7 +6739,7 @@ impl qobject::GameDetailsModel {
         exit: Result<(), String>,
         tracking_warning: Option<String>,
         activity_recorded: bool,
-        save_notice: Option<String>,
+        save_notice: Option<(String, bool)>,
     ) {
         if generation != self.as_ref().rust().launch_generation
             || self.as_ref().game_id().to_string() != completed_game_id
@@ -6704,8 +6767,11 @@ impl qobject::GameDetailsModel {
             Some(warning) => format!("{base_status} {warning}"),
             None => base_status,
         };
-        if let Some(notice) = save_notice {
+        if let Some((notice, success)) = save_notice {
             status.push_str(&format!(" · {notice}"));
+            let game_id = self.as_ref().game_id().to_string();
+            self.as_mut()
+                .show_save_file_notice(generation, &game_id, notice, success);
         }
         self.as_mut().set_launch_status(qstring(status));
         if activity_recorded {

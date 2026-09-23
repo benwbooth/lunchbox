@@ -334,6 +334,20 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|arg| arg == "--sdl3-display-inspect") {
+        return match lunchbox_controller_probe::live_sdl3::primary_display_pixels(
+            &controller_sdl3::runtime_path(),
+        ) {
+            Ok((width, height)) => {
+                println!("{width}x{height}");
+                0
+            }
+            Err(error) => {
+                eprintln!("SDL3 display mode: {error:#}");
+                1
+            }
+        };
+    }
     if std::env::args().any(|arg| arg == "--sdl3-input-stream" || arg == "--sdl3-input-inspect") {
         let once = std::env::args().any(|arg| arg == "--sdl3-input-inspect");
         return match lunchbox_controller_probe::live_sdl3::stream(

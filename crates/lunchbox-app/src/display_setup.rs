@@ -9,9 +9,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -438,12 +436,7 @@ pub fn attach_launch_display_configuration(
                     // displays. Match the monitor resolution used to place
                     // the full-screen overlay instead.
                     let dimensions = if ultrawide {
-                        let probe_driver = (!customization.display_shader.is_empty()
-                            && resolve_shader_preset(executable, &customization.display_shader)
-                                .is_some())
-                        .then(|| slang_driver_override(executable))
-                        .flatten();
-                        Some(probe_retroarch_output_dimensions(executable, probe_driver)?)
+                        Some(probe_host_output_dimensions(output_dimensions)?)
                     } else {
                         output_dimensions
                     };
@@ -586,89 +579,41 @@ pub fn attach_launch_display_configuration(
     }
 }
 
-/// A one-frame, content-free RetroArch run reports the display mode to which
-/// its full-screen overlay is fitted. The later "Using resolution" log line
-/// may describe a larger GL backing surface under fractional scaling; using
-/// that size for the custom viewport pushes the game under the bezel.
-/// If the frontend cannot report a size, skip the 21:9 bezel rather than
-/// place the game partly behind its art.
-fn probe_retroarch_output_dimensions(
-    executable: &EmulatorExecutable,
-    video_driver: Option<&str>,
-) -> Result<(u32, u32)> {
-    let mut settings =
-        String::from("video_fullscreen = \"true\"\nconfig_save_on_exit = \"false\"\n");
-    if let Some(driver) = video_driver {
-        settings.push_str(&format!("video_driver = \"{driver}\"\n"));
+/// SDL3 reads the native mode without creating a window. The short-lived
+/// helper owns SDL's video subsystem on its process main thread. Qt's rounded
+/// device-pixel ratio cannot be used for the custom viewport on this host.
+fn probe_host_output_dimensions(qt_dimensions: Option<(u32, u32)>) -> Result<(u32, u32)> {
+    let output = Command::new(std::env::current_exe()?)
+        .arg("--sdl3-display-inspect")
+        .env(
+            "LUNCHBOX_SDL3_LIBRARY",
+            crate::controller_sdl3::runtime_path(),
+        )
+        .output()
+        .context("starting windowless SDL3 display query")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "SDL3 display query failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    let dimensions = parse_sdl3_display_dimensions(&String::from_utf8(output.stdout)?)
+        .context("SDL3 did not report its display mode")?;
+    if let Some((width, height)) = qt_dimensions {
+        let qt_aspect = f64::from(width) / f64::from(height);
+        let sdl_aspect = f64::from(dimensions.0) / f64::from(dimensions.1);
+        anyhow::ensure!(
+            (qt_aspect - sdl_aspect).abs() < 0.02,
+            "The primary display differs from Lunchbox's current screen; 21:9 artwork was skipped"
+        );
     }
-    let config = write_launch_display_config(&settings)?;
-    let log = std::env::temp_dir().join(format!(
-        "lunchbox-retroarch-display-{}.log",
-        Uuid::new_v4().simple()
-    ));
-    let result = (|| -> Result<_> {
-        let file = fs::File::create(&log)?;
-        let mut command = match executable {
-            EmulatorExecutable::Native(path) => Command::new(path),
-            EmulatorExecutable::Flatpak { command, app_id } => {
-                let mut process = Command::new(command);
-                process.arg("run").arg(app_id);
-                process
-            }
-            EmulatorExecutable::Wine { .. } => {
-                anyhow::bail!("RetroArch resolution probing does not support a Wine executable")
-            }
-        };
-        command
-            .arg(format!("--appendconfig={}", config.display()))
-            .args(["--menu", "--max-frames=1", "--verbose"])
-            .stdout(Stdio::from(file.try_clone()?))
-            .stderr(Stdio::from(file));
-        let mut child = command
-            .spawn()
-            .context("starting RetroArch display probe")?;
-        let deadline = std::time::Instant::now() + Duration::from_secs(8);
-        loop {
-            if let Some(status) = child.try_wait()? {
-                anyhow::ensure!(
-                    status.success(),
-                    "RetroArch display probe exited with {status}"
-                );
-                break;
-            }
-            if std::time::Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                anyhow::bail!("RetroArch display probe timed out")
-            }
-            thread::sleep(Duration::from_millis(25));
-        }
-        let report = fs::read_to_string(&log)?;
-        parse_retroarch_output_dimensions(&report)
-            .context("RetroArch did not report its output resolution")
-    })();
-    let _ = fs::remove_file(&log);
-    let _ = fs::remove_file(&config);
-    result
+    Ok(dimensions)
 }
 
-fn parse_retroarch_output_dimensions(report: &str) -> Option<(u32, u32)> {
-    let parse = |line: &str, marker: &str| {
-        let dimensions = line.split_once(marker)?.1;
-        let token = dimensions.split_whitespace().next()?.trim_end_matches('.');
-        let (width, height) = token.split_once('x')?;
-        let width: u32 = width.parse().ok()?;
-        let height: u32 = height.parse().ok()?;
-        (width > 0 && height > 0).then_some((width, height))
-    };
-    report
-        .lines()
-        .find_map(|line| parse(line, "Detecting screen resolution: "))
-        .or_else(|| {
-            report
-                .lines()
-                .find_map(|line| parse(line, "Using resolution "))
-        })
+fn parse_sdl3_display_dimensions(report: &str) -> Option<(u32, u32)> {
+    let (width, height) = report.trim().split_once('x')?;
+    let width: u32 = width.parse().ok()?;
+    let height: u32 = height.parse().ok()?;
+    (width > 0 && height > 0).then_some((width, height))
 }
 
 /// Place fixed-aspect artwork inside a wider (or taller) output without
@@ -858,16 +803,15 @@ mod tests {
     }
 
     #[test]
-    fn retroarch_probe_uses_display_mode_not_scaled_gl_backing_surface() {
-        let report = "[INFO] [GLCore] Detecting screen resolution: 5120x2160.\n[INFO] [GLCore] Using resolution 6656x2808.\n";
-        let dimensions = parse_retroarch_output_dimensions(report);
+    fn windowless_display_query_uses_native_pixels() {
+        let dimensions = parse_sdl3_display_dimensions("5120x2160\n");
         assert_eq!(dimensions, Some((5120, 2160)));
         assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
         assert_eq!(
-            parse_retroarch_output_dimensions("Using resolution 1920x1080."),
+            parse_sdl3_display_dimensions("1920x1080"),
             Some((1920, 1080))
         );
-        assert_eq!(parse_retroarch_output_dimensions("no video output"), None);
+        assert_eq!(parse_sdl3_display_dimensions("no video output"), None);
     }
 
     #[test]
