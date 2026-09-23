@@ -83,20 +83,24 @@ impl AutoSaveObservation {
                 .is_some_and(|after| self.state_before.is_none_or(|before| after > before));
         let sram_saved = modified(&self.sram)
             .is_some_and(|after| self.sram_before.is_none_or(|before| after > before));
-        match (state_saved, sram_saved, self.auto_state_save_enabled) {
-            (true, true, _) => Some(("Save state and SRAM saved".to_owned(), true)),
-            (true, false, _) => {
-                Some(("Save state saved; no SRAM update detected".to_owned(), true))
-            }
-            (false, true, _) => Some(("SRAM saved".to_owned(), true)),
-            (false, false, true) => {
-                Some(("No save-state or SRAM update detected".to_owned(), false))
-            }
-            (false, false, false) if self.sram_before.is_some() => {
-                Some(("No SRAM update detected".to_owned(), false))
-            }
-            (false, false, false) => None,
+        if !self.auto_state_save_enabled && self.sram_before.is_none() && !sram_saved {
+            return None;
         }
+        let state = if state_saved {
+            format!("save state saved to {}", self.state.display())
+        } else if self.auto_state_save_enabled {
+            "save state not updated".to_owned()
+        } else {
+            "automatic save state disabled".to_owned()
+        };
+        let sram = if sram_saved {
+            format!("saved RAM written to {}", self.sram.display())
+        } else if self.sram_before.is_some() {
+            "saved RAM not updated".to_owned()
+        } else {
+            "no saved RAM file created".to_owned()
+        };
+        Some((format!("{state}; {sram}"), state_saved || sram_saved))
     }
 }
 
@@ -270,15 +274,18 @@ mod tests {
         );
         assert_eq!(
             observation.exit_notice(),
-            Some(("No save-state or SRAM update detected".into(), false))
+            Some((
+                "save state not updated; no saved RAM file created".into(),
+                false
+            ))
         );
 
         fs::write(&state, b"state").unwrap();
         fs::write(&sram, b"sram").unwrap();
-        assert_eq!(
-            observation.exit_notice(),
-            Some(("Save state and SRAM saved".into(), true))
-        );
+        let (notice, success) = observation.exit_notice().unwrap();
+        assert!(success);
+        assert!(notice.contains(&format!("save state saved to {}", state.display())));
+        assert!(notice.contains(&format!("saved RAM written to {}", sram.display())));
         observation.state_before = modified(&state);
         observation.sram_before = modified(&sram);
         assert_eq!(
@@ -287,7 +294,35 @@ mod tests {
         );
         assert_eq!(
             observation.exit_notice(),
-            Some(("No save-state or SRAM update detected".into(), false))
+            Some((
+                "save state not updated; saved RAM not updated".into(),
+                false
+            ))
+        );
+    }
+
+    #[test]
+    fn state_only_save_does_not_claim_sram_was_written() {
+        let temporary = tempfile::tempdir().unwrap();
+        let state = temporary.path().join("Faxanadu.state.auto");
+        let observation = AutoSaveObservation {
+            state: state.clone(),
+            sram: temporary.path().join("Faxanadu.srm"),
+            state_before: None,
+            sram_before: None,
+            auto_state_load_enabled: true,
+            auto_state_save_enabled: true,
+        };
+        fs::write(&state, b"state").unwrap();
+        assert_eq!(
+            observation.exit_notice(),
+            Some((
+                format!(
+                    "save state saved to {}; no saved RAM file created",
+                    state.display()
+                ),
+                true
+            ))
         );
     }
 

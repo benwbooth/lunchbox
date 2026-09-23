@@ -142,6 +142,7 @@ fn main() {
                 "qml/MediaRepairRecoveryBanner.qml",
                 "qml/MediaRetryController.qml",
                 "qml/NativeTextArea.qml",
+                "qml/NotificationHistory.qml",
                 "qml/PaneButton.qml",
                 "qml/PlatformSearchState.qml",
                 "qml/RomDownloadStatus.qml",

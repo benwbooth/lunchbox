@@ -673,6 +673,30 @@ ApplicationWindow {
         category: "LibraryNavigation"
     }
 
+    Settings {
+        id: notificationSettings
+        category: "Notifications"
+    }
+
+    NotificationHistory {
+        id: notificationHistory
+        Component.onCompleted: initialize(notificationSettings.value("historyJson", "[]"))
+    }
+
+    function rememberNotification(message, good) {
+        notificationHistory.append(message, good)
+        if (!root.automatedProbeRun) {
+            notificationSettings.setValue("historyJson", notificationHistory.serialized())
+            notificationSettings.sync()
+        }
+    }
+
+    function clearNotifications() {
+        notificationHistory.clear()
+        notificationSettings.setValue("historyJson", "[]")
+        notificationSettings.sync()
+    }
+
     PlatformSearchState { id: platformSearch }
     Timer {
         id: platformSearchSyncTimer
@@ -3509,36 +3533,115 @@ ApplicationWindow {
 
     Timer {
         id: saveFileToastHideTimer
-        interval: 4200
+        interval: 5000
         onTriggered: root.saveFileToast = ""
     }
 
     Rectangle {
-        visible: root.saveFileToast.length > 0
+        id: saveFileToastPill
+        visible: opacity > 0
+        opacity: root.saveFileToast.length > 0 ? 1 : 0
         z: 1500
-        y: root.saveSyncToast.length > 0 ? 56 : 16
+        y: root.saveFileToast.length > 0
+           ? root.height - height - 58 : root.height + height
         x: Math.round((root.width - width) / 2)
-        width: saveFileToastText.implicitWidth + 30
-        height: 34
-        radius: 17
-        color: root.saveFileToastGood ? "#1d3d35" : "#26303f"
-        border.color: root.saveFileToastGood ? root.accentCool : root.accent
-        Rectangle {
-            width: 8
-            height: 8
-            radius: 4
-            anchors.left: parent.left
-            anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            color: root.saveFileToastGood ? root.accentCool : root.accent
-        }
+        width: Math.min(root.width - 48, 760)
+        height: Math.max(72, saveFileToastText.implicitHeight + 30)
+        radius: 12
+        color: root.saveFileToastGood ? "#17452e" : "#3c321e"
+        border.color: root.saveFileToastGood ? "#5ee391" : root.accent
+        border.width: 2
+        Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 220 } }
         Text {
             id: saveFileToastText
+            width: parent.width - 40
             anchors.centerIn: parent
-            text: root.saveFileToast
-            color: root.ink
-            font.pixelSize: 11
+            text: (root.saveFileToastGood ? "✓  " : "!  ") + root.saveFileToast
+            color: "#f7fff9"
+            wrapMode: Text.Wrap
+            font.pixelSize: 14
             font.weight: Font.DemiBold
+        }
+    }
+
+    Dialog {
+        id: notificationHistoryDialog
+        parent: Overlay.overlay
+        modal: true
+        dim: true
+        width: Math.min(760, root.width - 48)
+        height: Math.min(570, root.height - 80)
+        anchors.centerIn: parent
+        title: "Notifications"
+        standardButtons: Dialog.Close
+        background: Rectangle {
+            color: root.panelRaised
+            radius: 12
+            border.color: root.line
+        }
+        contentItem: ColumnLayout {
+            spacing: 12
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: notificationHistory.count + " recent notifications"
+                    color: root.muted
+                    font.pixelSize: 13
+                }
+                Button {
+                    text: "Clear history"
+                    enabled: notificationHistory.count > 0
+                    onClicked: root.clearNotifications()
+                    Accessible.name: "Clear notification history"
+                }
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 8
+                model: notificationHistory.entries
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: Rectangle {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: notificationMessage.implicitHeight + 52
+                    radius: 8
+                    color: modelData.good ? "#18372c" : "#2c2a25"
+                    border.color: modelData.good ? "#427c5b" : root.line
+                    Text {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        text: Qt.formatDateTime(new Date(parent.modelData.when),
+                                                "MMM d, yyyy h:mm ap")
+                        color: root.muted
+                        font.pixelSize: 11
+                    }
+                    Text {
+                        id: notificationMessage
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.topMargin: 32
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        text: parent.modelData.message
+                        color: root.ink
+                        wrapMode: Text.WrapAnywhere
+                        font.pixelSize: 13
+                    }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    visible: notificationHistory.count === 0
+                    text: "No notifications yet"
+                    color: root.muted
+                }
+            }
         }
     }
 
@@ -3546,12 +3649,11 @@ ApplicationWindow {
         target: gameDetails
         function onSave_file_noticeChanged() {
             if (gameDetails.save_file_notice.length === 0) {
-                root.saveFileToast = ""
-                saveFileToastHideTimer.stop()
                 return
             }
             root.saveFileToastGood = gameDetails.save_file_notice_success
-            root.saveFileToast = gameDetails.save_file_notice
+            root.saveFileToast = gameDetails.title + ": " + gameDetails.save_file_notice
+            root.rememberNotification(root.saveFileToast, root.saveFileToastGood)
             saveFileToastHideTimer.restart()
         }
     }
@@ -3577,6 +3679,10 @@ ApplicationWindow {
                         : "Save data checked — no changes"
                 root.saveSyncToastGood = true
                 saveSyncToastHideTimer.restart()
+                root.rememberNotification(
+                            (gameDetails.title.length > 0 ? gameDetails.title + ": " : "")
+                            + (saveSync.operation === "post_exit" ? "After play: " : "")
+                            + saveSync.message, true)
             }
             if (saveSync.status === "conflicts") {
                 saveSyncConflictDialog.open()
@@ -11221,6 +11327,17 @@ ApplicationWindow {
                 onClicked: romDownloadStatus.toggle()
                 ToolTip.visible: hovered
                 ToolTip.text: "ROM download queue"
+            }
+            HeaderButton {
+                text: "🔔  " + notificationHistory.count
+                implicitWidth: 62
+                leftPadding: 8
+                rightPadding: 8
+                active: notificationHistoryDialog.opened
+                onClicked: notificationHistoryDialog.open()
+                ToolTip.visible: hovered
+                ToolTip.text: "Notifications"
+                Accessible.name: "Notifications, " + notificationHistory.count + " saved"
             }
             HeaderButton {
                 text: "⚙"
