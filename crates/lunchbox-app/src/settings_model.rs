@@ -7552,6 +7552,8 @@ impl qobject::SettingsModel {
                                     physical_id: None,
                                     physical: "UNMAPPED".to_owned(),
                                     input: None,
+                                    alternate_physical_id: None,
+                                    alternate_input: None,
                                     output: output.clone(),
                                     reason: "Game-side requirement only; physical calibration is unavailable".to_owned(),
                                 });

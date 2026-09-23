@@ -1348,6 +1348,108 @@ const OUTPUTS: &[(&str, &str)] = &[
     ("RightStickDown", "r_y_plus"),
 ];
 
+/// Only cores with documented independent turbo A/B inputs receive the two
+/// otherwise unused face buttons. The RetroPad Y/X slots are separate from
+/// ordinary NES/GB/GBA B/A in these specific standard-pad contracts.
+pub(crate) fn retropad_turbo_outputs(
+    profile: &EmulatorProfile,
+) -> Option<(&'static str, &'static str)> {
+    match (profile.core.as_str(), profile.target_layout.as_str()) {
+        ("nestopia" | "mesen" | "fceumm", "nes")
+        | ("mgba", "gameboy" | "gba")
+        | ("vbam", "gameboy" | "gba") => Some(("y", "x")),
+        _ => None,
+    }
+}
+
+fn spare_face_pair(
+    calibration: &Calibration,
+    profile: &EmulatorProfile,
+    plan: &crate::controller_catalog::MappingPlan,
+) -> Option<(String, String)> {
+    let source = catalog().layout(&calibration.layout)?;
+    let target = catalog().layout(&profile.target_layout)?;
+    let available = calibration.bindings.keys().map(String::as_str).collect();
+    let requested = profile.bindings.keys().map(String::as_str).collect();
+    let assignments = plan
+        .rows
+        .iter()
+        .filter_map(|row| Some((row.target_id.clone(), row.physical_id.clone()?)))
+        .collect();
+    crate::controller_layout::spare_turbo_face_pair(
+        source,
+        target,
+        &available,
+        &requested,
+        &assignments,
+    )
+}
+
+fn repeats_spare_face_pair(calibration: &Calibration, profile: &EmulatorProfile) -> Result<bool> {
+    if retropad_turbo_outputs(profile).is_some() {
+        return Ok(false);
+    }
+    Ok(spare_face_pair(calibration, profile, &calibration.plan_profile(profile)?).is_some())
+}
+
+/// RetroArch has one physical button slot per RetroPad action. Bind the spare
+/// pair to Y/X, then use an isolated core remap so Y and B both invoke B, and
+/// X and A both invoke A. The original controller config remains untouched.
+fn stage_spare_face_repeat_remap(
+    directory: &Path,
+    library: &str,
+    config: &mut String,
+    ports: usize,
+    repeat_ports: &std::collections::BTreeSet<usize>,
+) -> Result<()> {
+    if repeat_ports.is_empty() {
+        return Ok(());
+    }
+    let remaps = directory.join("remaps");
+    let path = remaps.join(crate::controller_fbneo::keyboard::relative_remap_path(
+        library,
+    )?);
+    std::fs::create_dir_all(path.parent().context("Private remap has no parent")?)?;
+    let mut remap = String::new();
+    for port in 1..=ports {
+        for (index, channel) in crate::controller_fbneo::keyboard::CHANNELS
+            .iter()
+            .enumerate()
+        {
+            let kind = if index < 16 { "btn" } else { "stk" };
+            let destination = if repeat_ports.contains(&port) && *channel == "y" {
+                0 // RetroPad B
+            } else if repeat_ports.contains(&port) && *channel == "x" {
+                8 // RetroPad A
+            } else {
+                index
+            };
+            remap.push_str(&format!(
+                "input_player{port}_{kind}_{channel} = \"{destination}\"\n"
+            ));
+        }
+        let device = cfg_value(config, &format!("input_libretro_device_p{port}"))?
+            .context("Generated controller port lacks its device mode")?;
+        let device: u32 = device
+            .parse()
+            .context("Invalid generated controller device mode")?;
+        remap.push_str(&format!(
+            "input_libretro_device_p{port} = \"{device}\"\ninput_remap_port_p{port} = \"{}\"\ninput_player{port}_analog_dpad_mode = \"0\"\n",
+            port - 1
+        ));
+    }
+    std::fs::write(&path, remap)?;
+    let remaps_text = remaps.to_str().context("Private remap path is not UTF-8")?;
+    ensure!(
+        !remaps_text.contains(['"', '\\', '\n', '\r']),
+        "Private remap path cannot be encoded losslessly"
+    );
+    config.push_str(&format!(
+        "input_remapping_directory = \"{remaps_text}\"\ninput_remap_sort_by_controller_enable = \"false\"\ninput_remap_binds_enable = \"true\"\nauto_remaps_enable = \"true\"\n"
+    ));
+    Ok(())
+}
+
 /// Select by the actual launched core and platform, never emulator display name.
 pub fn contract(core: &str, platform: &str) -> Option<&'static EmulatorProfile> {
     catalog().launch_profile(core, platform)
@@ -4611,10 +4713,9 @@ fn validated_numbering(
     let measurements = plan
         .rows
         .iter()
-        .filter_map(|row| {
-            let input = row.input.as_ref()?;
-            Some((input.native.as_ref()?.code, input.axis.as_ref()?))
-        })
+        .flat_map(|row| [row.input.as_ref(), row.alternate_input.as_ref()])
+        .flatten()
+        .filter_map(|input| Some((input.native.as_ref()?.code, input.axis.as_ref()?)))
         .collect::<Vec<_>>();
     if measurements.is_empty() {
         return Ok(numbering);
@@ -5259,6 +5360,7 @@ fn player_config_transport(
     let profile = profile.for_port(player);
     let plan = calibration.plan_profile(&profile)?;
     let target = catalog().layout(&profile.target_layout).unwrap();
+    let spare_sources = spare_face_pair(calibration, &profile, &plan);
     let mut values = BTreeMap::new();
     // Clear BOTH sides: an inherited axis must not survive a new button bind.
     // Keyboard bindings remain available. Unused auto-config inputs are disabled.
@@ -5320,6 +5422,31 @@ fn player_config_transport(
             "Multiple controls resolve to the same RetroPad {output} {suffix} channel; use a physical button for the digital trigger fallback"
         );
         values.insert(channel, value);
+        if let Some(alternate) = row.alternate_input
+            && let Some(native) = alternate.native
+        {
+            let (alternate_suffix, alternate_value) = device.binding(&native)?;
+            let alternate_channel = format!("input_player{player}_{output}_{alternate_suffix}");
+            if assigned_channels.insert(alternate_channel.clone()) {
+                values.insert(alternate_channel, alternate_value);
+            }
+        }
+    }
+    if let Some((spare_b, spare_a)) = spare_sources {
+        let (output_b, output_a) = retropad_turbo_outputs(&profile).unwrap_or(("y", "x"));
+        for (source_id, output) in [(spare_b, output_b), (spare_a, output_a)] {
+            let native = calibration.bindings[&source_id]
+                .native
+                .as_ref()
+                .context("Recalibrate the spare face button before assigning its action")?;
+            let (suffix, value) = device.binding(native)?;
+            let channel = format!("input_player{player}_{output}_{suffix}");
+            ensure!(
+                assigned_channels.insert(channel.clone()),
+                "Spare face output conflicts with an ordinary game action"
+            );
+            values.insert(channel, value);
+        }
     }
     values.insert(
         format!("input_player{player}_joypad_index"),
@@ -10913,9 +11040,13 @@ pub fn prepare_with_cancellation(
          input_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
     );
     let mut transports = Vec::new();
+    let mut repeat_ports = std::collections::BTreeSet::new();
     for (port, port_profile, device) in &players {
         let calibration = &mapping.calibrations[&device.stable_id];
         let port_profile = port_profile.for_port(*port);
+        if repeats_spare_face_pair(calibration, &port_profile)? {
+            repeat_ports.insert(*port);
+        }
         let transport = prepare_player_transport(calibration, &port_profile, device, cancel)?;
         config.push_str(&player_config_transport(
             calibration,
@@ -10994,6 +11125,18 @@ pub fn prepare_with_cancellation(
     }
     if let Some(same_cdi) = &same_cdi {
         config.push_str(&same_cdi.append_config()?);
+    }
+    if !repeat_ports.is_empty() {
+        stage_spare_face_repeat_remap(
+            directory.path(),
+            profile
+                .retroarch_library
+                .as_deref()
+                .context("RetroArch profile lacks its exact library name")?,
+            &mut config,
+            profile.frontend_port_count(),
+            &repeat_ports,
+        )?;
     }
     std::fs::write(&path, config)?;
     check_preparation_cancel(cancel)?;
@@ -11406,9 +11549,13 @@ fn prepare_mode_aware(
         }
     }
     let mut transports = Vec::new();
+    let mut repeat_ports = std::collections::BTreeSet::new();
     for (port, profile, device) in &players {
         let calibration = &settings.controller_mapping.calibrations[&device.stable_id];
         let profile = profile.for_port(*port);
+        if repeats_spare_face_pair(calibration, &profile)? {
+            repeat_ports.insert(*port);
+        }
         let transport = prepare_player_transport(calibration, &profile, device, cancel)?;
         output.push_str(&player_config_transport(
             calibration,
@@ -11428,6 +11575,7 @@ fn prepare_mode_aware(
         directory.path(),
     )?);
     crate::controller_launch_modes::validate_generated_modes(&output, arguments, ports)?;
+    stage_spare_face_repeat_remap(directory.path(), library, &mut output, ports, &repeat_ports)?;
     let path = directory.path().join("controllers.cfg");
     std::fs::write(&path, output)?;
     check_preparation_cancel(cancel)?;
@@ -13070,6 +13218,11 @@ mod tests {
                 );
             }
             for output in ["select", "x", "y", "l", "r", "l2", "r2"] {
+                if matches!(layout, "horizontal-four" | "xbox") && matches!(output, "x" | "y") {
+                    // Four independent face inputs: the spare pair repeats
+                    // Game Gear B/A through the private core remap.
+                    continue;
+                }
                 for suffix in ["btn", "axis"] {
                     assert!(config.contains(&format!("input_player1_{output}_{suffix} = \"nul\"")));
                 }
@@ -13086,6 +13239,185 @@ mod tests {
                 assert!(!config.contains("input_player1_start_btn = \"nul\""));
             }
         }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn retroarch_uses_both_calibrated_directional_clusters_only_when_target_has_one() {
+        let (calibration, numbering) = calibrated_layout("xbox");
+        for (profile_id, target_id, output, primary, alternate) in [
+            (
+                "retroarch:mesen-s:snes-2player",
+                "up",
+                "up",
+                "up",
+                "stick_up",
+            ),
+            (
+                "retroarch:vecx:vectrex",
+                "stick_up",
+                "l_y_minus",
+                "stick_up",
+                "up",
+            ),
+        ] {
+            let profile = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .unwrap();
+            let plan = calibration.plan_profile(profile).unwrap();
+            let row = plan
+                .rows
+                .iter()
+                .find(|row| row.target_id == target_id)
+                .unwrap();
+            assert_eq!(row.physical_id.as_deref(), Some(primary));
+            assert_eq!(row.alternate_physical_id.as_deref(), Some(alternate));
+            let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            for source in [primary, alternate] {
+                let (suffix, value) = numbering
+                    .binding(calibration.bindings[source].native.as_ref().unwrap())
+                    .unwrap();
+                assert!(
+                    config.contains(&format!("input_player1_{output}_{suffix} = \"{value}\"")),
+                    "{profile_id}: {source} was not bound to {output}"
+                );
+            }
+        }
+        let n64 = catalog().launch_profile("mupen64plus_next", "Nintendo 64");
+        if let Some(profile) = n64 {
+            assert!(
+                calibration
+                    .plan_profile(profile)
+                    .unwrap()
+                    .rows
+                    .iter()
+                    .all(|row| { row.alternate_physical_id.is_none() })
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn spare_face_pair_uses_core_turbo_or_repeats_ordinary_actions() {
+        let (calibration, numbering) = calibrated_layout("horizontal-four");
+        for profile_id in [
+            "retroarch:nestopia:nes-2player",
+            "retroarch:mesen:nes-2player",
+            "retroarch:fceumm:nes",
+            "retroarch:mgba:gameboy",
+            "retroarch:vbam:gameboy-dmg",
+            "retroarch:vbam:gameboy-color",
+        ] {
+            let profile = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .unwrap();
+            let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            for (source, output) in [("y", "y"), ("x", "x")] {
+                let (suffix, value) = numbering
+                    .binding(calibration.bindings[source].native.as_ref().unwrap())
+                    .unwrap();
+                assert!(
+                    config.contains(&format!("input_player1_{output}_{suffix} = \"{value}\"")),
+                    "{profile_id}: {source} not mapped to {output}"
+                );
+            }
+        }
+        // GBA also requires L/R. A four-face N30 uses its upper pair for
+        // those shoulders; a modern pad with real shoulders still has a
+        // genuinely spare face pair for VBA-M turbo.
+        let vbam_gba = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "retroarch:vbam:gba")
+            .unwrap();
+        assert!(
+            spare_face_pair(
+                &calibration,
+                vbam_gba,
+                &calibration.plan_profile(vbam_gba).unwrap()
+            )
+            .is_none()
+        );
+        let (xbox, xbox_numbering) = calibrated_layout("xbox");
+        let (spare_b, spare_a) =
+            spare_face_pair(&xbox, vbam_gba, &xbox.plan_profile(vbam_gba).unwrap()).unwrap();
+        let vbam_config = player_config(&xbox, vbam_gba, &xbox_numbering, 1).unwrap();
+        for (source, output) in [(spare_b, "y"), (spare_a, "x")] {
+            let (suffix, value) = xbox_numbering
+                .binding(xbox.bindings[&source].native.as_ref().unwrap())
+                .unwrap();
+            assert!(
+                vbam_config.contains(&format!("input_player1_{output}_{suffix} = \"{value}\""))
+            );
+        }
+        let gamegear = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "retroarch:genesis_plus_gx:gamegear")
+            .unwrap();
+        let config = player_config(&calibration, gamegear, &numbering, 1).unwrap();
+        for (source, output) in [("y", "y"), ("x", "x")] {
+            let (suffix, value) = numbering
+                .binding(calibration.bindings[source].native.as_ref().unwrap())
+                .unwrap();
+            assert!(config.contains(&format!("input_player1_{output}_{suffix} = \"{value}\"")));
+        }
+        assert!(repeats_spare_face_pair(&calibration, gamegear).unwrap());
+        let directory = tempfile::tempdir().unwrap();
+        let mut session = "input_libretro_device_p1 = \"1\"\n".to_string();
+        stage_spare_face_repeat_remap(
+            directory.path(),
+            gamegear.retroarch_library.as_deref().unwrap(),
+            &mut session,
+            1,
+            &[1].into_iter().collect(),
+        )
+        .unwrap();
+        let remap = std::fs::read_to_string(
+            directory.path().join("remaps").join(
+                crate::controller_fbneo::keyboard::relative_remap_path(
+                    gamegear.retroarch_library.as_deref().unwrap(),
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        assert!(remap.contains("input_player1_btn_b = \"0\""));
+        assert!(remap.contains("input_player1_btn_y = \"0\""));
+        assert!(remap.contains("input_player1_btn_a = \"8\""));
+        assert!(remap.contains("input_player1_btn_x = \"8\""));
+        assert!(session.contains("auto_remaps_enable = \"true\""));
+        let (hardware_repeat, numbering) = calibrated_layout("n30-turbo");
+        let nestopia = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "retroarch:nestopia:nes-2player")
+            .unwrap();
+        let config = player_config(&hardware_repeat, nestopia, &numbering, 1).unwrap();
+        assert!(config.contains("input_player1_y_btn = \"nul\""));
+        assert!(config.contains("input_player1_x_btn = \"nul\""));
+        assert_eq!(
+            catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == "retroarch:fceumm:nes")
+                .unwrap()
+                .core_options["fceumm_turbo_enable"],
+            "Both"
+        );
+        assert_eq!(
+            catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == "retroarch:vbam:gba")
+                .unwrap()
+                .core_options["vbam_turboenable"],
+            "enabled"
+        );
     }
 
     #[test]
@@ -13140,6 +13472,11 @@ mod tests {
             }
             // Do not accidentally inherit turbo or solar-sensor controls.
             for output in ["x", "y", "l2", "r2", "l3", "r3"] {
+                if matches!(layout, "xbox" | "dualshock") && matches!(output, "x" | "y") {
+                    // mGBA has dedicated Turbo B/A inputs on these spare
+                    // independently calibrated face buttons.
+                    continue;
+                }
                 assert!(config.contains(&format!("input_player1_{output}_btn = \"nul\"")));
                 assert!(config.contains(&format!("input_player1_{output}_axis = \"nul\"")));
             }

@@ -7,7 +7,7 @@ use crate::controller_catalog::{Control, Layout};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const POLICY_VERSION: u32 = 7;
+pub const POLICY_VERSION: u32 = 8;
 
 /// Equivalent pressure roles; digital fallback buttons are not aliases.
 pub(crate) fn pressure_role(id: &str) -> Option<&'static str> {
@@ -74,8 +74,131 @@ impl Missing {
 pub struct Resolution {
     pub policy_version: u32,
     pub assignments: BTreeMap<String, String>,
+    /// A second, independently calibrated directional source for targets whose
+    /// requested controls have only one left-side directional cluster.
+    pub directional_alternates: BTreeMap<String, String>,
     pub rules: BTreeMap<String, Rule>,
     pub missing: BTreeMap<String, Missing>,
+}
+
+fn directional_alternates(
+    source: &Layout,
+    target: &Layout,
+    available: &BTreeSet<&str>,
+    requested: &BTreeSet<&str>,
+    assignments: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    const DIRECTIONS: [&str; 4] = ["up", "down", "left", "right"];
+    let requested_controls = target
+        .controls
+        .iter()
+        .filter(|control| requested.contains(control.id.as_str()))
+        .collect::<Vec<_>>();
+    let has_pad = requested_controls.iter().any(|control| {
+        control.group == "dpad"
+            && directional_cluster(target, control).is_some_and(|(right, _)| !right)
+    });
+    let has_stick = requested_controls.iter().any(|control| {
+        control.group == "stick"
+            && directional_cluster(target, control).is_some_and(|(right, _)| !right)
+    });
+    // A target with separate D-pad and stick actions must keep them separate.
+    if has_pad == has_stick {
+        return BTreeMap::new();
+    }
+    let target_group = if has_pad { "dpad" } else { "stick" };
+    let mut result = BTreeMap::new();
+    let used = assignments
+        .values()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut primary_group = None;
+    for direction in DIRECTIONS {
+        let Some(control) = requested_controls.iter().find(|control| {
+            control.group == target_group
+                && directional_cluster(target, control) == Some((false, direction))
+        }) else {
+            return BTreeMap::new();
+        };
+        let Some(primary) = assignments
+            .get(&control.id)
+            .and_then(|id| source.controls.iter().find(|candidate| candidate.id == *id))
+        else {
+            return BTreeMap::new();
+        };
+        if !matches!(primary.group.as_str(), "dpad" | "stick")
+            || directional_cluster(source, primary) != Some((false, direction))
+            || primary_group.is_some_and(|group| group != primary.group)
+        {
+            return BTreeMap::new();
+        }
+        primary_group = Some(primary.group.as_str());
+        let alternate_group = if primary.group == "dpad" {
+            "stick"
+        } else {
+            "dpad"
+        };
+        let Some(alternate) = source.controls.iter().find(|candidate| {
+            candidate.group == alternate_group
+                && directional_cluster(source, candidate) == Some((false, direction))
+                && available.contains(candidate.id.as_str())
+                && !used.contains(candidate.id.as_str())
+        }) else {
+            return BTreeMap::new();
+        };
+        result.insert(control.id.clone(), alternate.id.clone());
+    }
+    result
+}
+
+/// Find two unused, independent face buttons for a two-action target. The
+/// launch adapter decides whether they invoke separate turbo inputs or repeat
+/// ordinary actions; hardware-repeat controls are never treated as spare keys.
+pub(crate) fn spare_turbo_face_pair(
+    source: &Layout,
+    target: &Layout,
+    available: &BTreeSet<&str>,
+    requested: &BTreeSet<&str>,
+    assignments: &BTreeMap<String, String>,
+) -> Option<(String, String)> {
+    if target.family != "two-button" {
+        return None;
+    }
+    let face_targets = target
+        .controls
+        .iter()
+        .filter(|control| control.group == "face" && requested.contains(control.id.as_str()))
+        .collect::<Vec<_>>();
+    if face_targets.len() != 2
+        || face_targets
+            .iter()
+            .any(|control| !assignments.contains_key(&control.id))
+    {
+        return None;
+    }
+    let independent_faces = source
+        .controls
+        .iter()
+        .filter(|control| control.group == "face" && !control.analog && control.repeat_of.is_none())
+        .collect::<Vec<_>>();
+    if independent_faces.len() != 4 {
+        return None;
+    }
+    let used = assignments
+        .values()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut spare = independent_faces
+        .into_iter()
+        .filter(|control| {
+            available.contains(control.id.as_str()) && !used.contains(control.id.as_str())
+        })
+        .collect::<Vec<_>>();
+    if spare.len() != 2 {
+        return None;
+    }
+    spare.sort_by(|left, right| left.x.total_cmp(&right.x).then(left.y.total_cmp(&right.y)));
+    Some((spare[0].id.clone(), spare[1].id.clone()))
 }
 
 fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
@@ -647,6 +770,8 @@ pub fn resolve_with_choices(
         result.assignments.insert(to.clone(), from.clone());
         result.rules.insert(to.clone(), Rule::UserChoice);
     }
+    result.directional_alternates =
+        directional_alternates(source, target, available, requested, &result.assignments);
     Ok(result)
 }
 
@@ -671,6 +796,7 @@ pub fn resolve(
     let mut result = Resolution {
         policy_version: POLICY_VERSION,
         assignments: BTreeMap::new(),
+        directional_alternates: BTreeMap::new(),
         rules: BTreeMap::new(),
         missing: BTreeMap::new(),
     };
@@ -767,6 +893,8 @@ pub fn resolve(
             result.missing.insert(to.id.clone(), reason);
         }
     }
+    result.directional_alternates =
+        directional_alternates(source, target, available, requested, &result.assignments);
     result
 }
 
@@ -971,6 +1099,41 @@ mod tests {
         assert!(!pairs.contains_key("x"));
         assert!(!pairs.contains_key("y"));
     }
+
+    #[test]
+    fn independent_spare_face_pair_is_available_for_capable_two_button_emulators() {
+        let db = catalog();
+        let target = db.layout("nes").unwrap();
+        let requested = target
+            .controls
+            .iter()
+            .map(|control| control.id.as_str())
+            .collect();
+        for (source_id, expected) in [("horizontal-four", ("y", "x")), ("xbox", ("x", "a"))] {
+            let source = db.layout(source_id).unwrap();
+            let available = source
+                .controls
+                .iter()
+                .map(|control| control.id.as_str())
+                .collect();
+            let result = resolve(source, target, &available, &requested);
+            let pair =
+                spare_turbo_face_pair(source, target, &available, &requested, &result.assignments)
+                    .unwrap();
+            assert_eq!((pair.0.as_str(), pair.1.as_str()), expected);
+        }
+        let source = db.layout("n30-turbo").unwrap();
+        let available = source
+            .controls
+            .iter()
+            .map(|control| control.id.as_str())
+            .collect();
+        let result = resolve(source, target, &available, &requested);
+        assert!(
+            spare_turbo_face_pair(source, target, &available, &requested, &result.assignments)
+                .is_none()
+        );
+    }
     #[test]
     fn modern_dual_stick_pads_can_drive_n64_without_brawler_specific_wiring() {
         let db = crate::controller_catalog::catalog();
@@ -980,6 +1143,58 @@ mod tests {
         assert_eq!(pairs["b"], "y");
         assert_eq!(pairs["c_up"], "right_stick_up");
         assert_eq!(pairs["z"], "l2");
+    }
+
+    #[test]
+    fn complete_spare_directional_cluster_can_share_dpad_or_left_stick_actions() {
+        let db = catalog();
+        let source = db.layout("xbox").unwrap();
+        let available = source
+            .controls
+            .iter()
+            .map(|control| control.id.as_str())
+            .collect();
+        for (target_id, primary, alternate) in
+            [("snes", "up", "stick_up"), ("vectrex", "stick_up", "up")]
+        {
+            let target = db.layout(target_id).unwrap();
+            let requested = target
+                .controls
+                .iter()
+                .map(|control| control.id.as_str())
+                .collect();
+            let result = resolve(source, target, &available, &requested);
+            assert_eq!(result.assignments[primary], primary);
+            assert_eq!(result.directional_alternates[primary], alternate);
+            assert_eq!(result.directional_alternates.len(), 4);
+        }
+        let target = db.layout("n64").unwrap();
+        let requested = target
+            .controls
+            .iter()
+            .map(|control| control.id.as_str())
+            .collect();
+        assert!(
+            resolve(source, target, &available, &requested)
+                .directional_alternates
+                .is_empty()
+        );
+        let partial = available
+            .iter()
+            .copied()
+            .filter(|id| *id != "stick_left")
+            .collect();
+        let target = db.layout("snes").unwrap();
+        let requested = target
+            .controls
+            .iter()
+            .map(|control| control.id.as_str())
+            .collect();
+        assert!(
+            resolve(source, target, &partial, &requested)
+                .directional_alternates
+                .is_empty()
+        );
     }
 
     #[test]

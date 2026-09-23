@@ -331,6 +331,10 @@ pub struct MappingRow {
     pub physical_id: Option<String>,
     pub physical: String,
     pub input: Option<InputBinding>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternate_physical_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternate_input: Option<InputBinding>,
     pub output: String,
     pub reason: String,
 }
@@ -2175,6 +2179,30 @@ impl Calibration {
                 .get(&profile.id)
                 .unwrap_or(&BTreeMap::new()),
         )?;
+        if self.os == "linux"
+            && profile.transport == "retropad"
+            && profile.retroarch_launch.is_some()
+        {
+            let available = self.bindings.keys().map(String::as_str).collect();
+            let requested = profile.bindings.keys().map(String::as_str).collect();
+            if let Some((spare_b, spare_a)) = crate::controller_layout::spare_turbo_face_pair(
+                source,
+                target,
+                &available,
+                &requested,
+                &resolution.assignments,
+            ) {
+                let action = if crate::controller_launch::retropad_turbo_outputs(profile).is_some()
+                {
+                    "Turbo B/A"
+                } else {
+                    "ordinary B/A (repeat)"
+                };
+                warnings.push(format!(
+                    "Spare face buttons {spare_b}/{spare_a} will act as {action} in the private RetroArch session."
+                ));
+            }
+        }
         let rows: Vec<MappingRow> = profile
             .bindings
             .iter()
@@ -2184,6 +2212,36 @@ impl Calibration {
                     .get(target_id)
                     .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id));
                 let input = physical.and_then(|c| self.bindings.get(&c.id)).cloned();
+                // The Linux RetroArch writer can bind a button and an axis to
+                // the same RetroPad direction. Other transports retain only
+                // their proven primary route until they support both inputs.
+                let alternate = (self.os == "linux"
+                    && profile.transport == "retropad"
+                    && profile.retroarch_launch.is_some())
+                .then(|| resolution.directional_alternates.get(target_id))
+                .flatten()
+                .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id))
+                .filter(|candidate| {
+                    input
+                        .as_ref()
+                        .and_then(|binding| binding.native.as_ref())
+                        .map(|native| native.code >> 16)
+                        != self
+                            .bindings
+                            .get(&candidate.id)
+                            .and_then(|binding| binding.native.as_ref())
+                            .map(|native| native.code >> 16)
+                        && input
+                            .as_ref()
+                            .and_then(|binding| binding.native.as_ref())
+                            .is_some()
+                        && self
+                            .bindings
+                            .get(&candidate.id)
+                            .and_then(|binding| binding.native.as_ref())
+                            .is_some()
+                });
+                let alternate_input = alternate.and_then(|c| self.bindings.get(&c.id)).cloned();
                 if input.is_none() {
                     warnings.push(format!(
                         "Missing physical input for {target_id}: {}",
@@ -2207,6 +2265,7 @@ impl Calibration {
                 MappingRow {
                     target_id: target_id.clone(),
                     physical_id: physical.map(|c| c.id.clone()),
+                    alternate_physical_id: alternate.map(|c| c.id.clone()),
                     target: target
                         .controls
                         .iter()
@@ -2215,9 +2274,13 @@ impl Calibration {
                         .label
                         .clone(),
                     physical: physical
-                        .map(|c| c.label.clone())
+                        .map(|c| match alternate {
+                            Some(alternate) => format!("{} + {}", c.label, alternate.label),
+                            None => c.label.clone(),
+                        })
                         .unwrap_or_else(|| "Not available".into()),
                     input,
+                    alternate_input,
                     output: output.clone(),
                     reason: resolution
                         .rules

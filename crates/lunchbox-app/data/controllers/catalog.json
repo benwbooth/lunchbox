@@ -39425,10 +39425,13 @@
       "content_extensions": [
         "gba"
       ],
+      "core_options": {
+        "vbam_turboenable": "enabled"
+      },
       "conditions": [
         "Source-grounded implementation; runtime verification is deferred.",
         "One GBA gameplay pad. All other frontend slots are disconnected; their presence does not establish link-cable multiplayer.",
-        "Uncompressed GBA content only. Turbo, solar adjustment, tilt and gyro inputs are not assigned by this standard digital-pad contract.",
+        "Uncompressed GBA content only. On Linux, two otherwise unused independent face inputs drive Turbo B/A when available; solar adjustment, tilt and gyro inputs are not assigned by this standard digital-pad contract.",
         "For the e-Reader catalog platform this maps the GBA host controls only. Card scanning/loading is a separate peripheral workflow and is not implemented by this pad contract."
       ],
       "bindings": {
@@ -39469,12 +39472,13 @@
         "dmg"
       ],
       "core_options": {
-        "vbam_gbHardware": "gb"
+        "vbam_gbHardware": "gb",
+        "vbam_turboenable": "enabled"
       },
       "conditions": [
         "Source-grounded implementation; runtime verification is deferred.",
         "Explicit DMG hardware mode, pinned in the private options copy. Super Game Boy multiplayer is not enabled and all other frontend slots are disconnected.",
-        "A/B follow the actual input bit construction, not the reversed GB descriptors in this core revision. Turbo and cartridge motion controls remain separate work."
+        "A/B and Turbo B/A follow the actual input bit construction, not the reversed GB descriptors in this core revision. On Linux, two otherwise unused independent face inputs drive Turbo B/A when available; cartridge motion controls remain separate work."
       ],
       "bindings": {
         "up": "DPadUp",
@@ -39517,12 +39521,13 @@
         "cgb"
       ],
       "core_options": {
-        "vbam_gbHardware": "gbc"
+        "vbam_gbHardware": "gbc",
+        "vbam_turboenable": "enabled"
       },
       "conditions": [
         "Source-grounded implementation; runtime verification is deferred.",
         "Explicit Game Boy Color hardware mode, pinned in the private options copy. All other frontend slots are disconnected; SGB and link-cable multiplayer are not implied.",
-        "A/B follow the actual input bit construction, not the reversed GB descriptors in this core revision. Turbo and cartridge motion controls remain separate work."
+        "A/B and Turbo B/A follow the actual input bit construction, not the reversed GB descriptors in this core revision. On Linux, two otherwise unused independent face inputs drive Turbo B/A when available; cartridge motion controls remain separate work."
       ],
       "bindings": {
         "up": "DPadUp",
@@ -39818,7 +39823,7 @@
       "conditions": [
         "Source-grounded core contract. Native macOS/Windows launch is limited to exact audited RetroArch/Nestopia binary identities and preserves frontend physical autoconfiguration; physical controller behavior remains unverified.",
         "Explicit ordinary standard-pad content mode; this does not infer the cartridge's required peripheral from its filename or the number of connected pads.",
-        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. Turbo duplicates remain unbound.",
+        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. On Linux, two spare independent face buttons drive core Turbo B/A when calibrated.",
         "All remaining frontend ports are explicitly disconnected.",
         "Only button-shift mode is forced; the effective adapter-protocol option is preserved. Native launch snapshots effective config/options and writes only a private append/options layer; user save/state paths are not redirected."
       ],
@@ -39866,7 +39871,7 @@
       "conditions": [
         "Source-grounded core contract. Native macOS/Windows launch is limited to exact audited RetroArch/Nestopia binary identities and preserves frontend physical autoconfiguration; physical controller behavior remains unverified.",
         "Explicit ordinary standard-pad content mode; this does not infer the cartridge's required peripheral from its filename or the number of connected pads.",
-        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. Turbo duplicates remain unbound.",
+        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. On Linux, two spare independent face buttons drive core Turbo B/A when calibrated.",
         "The effective NES/Famicom adapter protocol is preserved; third/fourth pads enable the four-pad adapter.",
         "Only button-shift mode is forced; the effective adapter-protocol option is preserved. Native launch snapshots effective config/options and writes only a private append/options layer; user save/state paths are not redirected."
       ],
@@ -39914,7 +39919,7 @@
       "conditions": [
         "Source-grounded implementation; runtime verification is deferred.",
         "Explicit ordinary standard-pad content mode; this does not infer the cartridge's required peripheral from its filename or the number of connected pads.",
-        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. Turbo duplicates remain unbound.",
+        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. On Linux, two spare independent face buttons drive core Turbo B/A when calibrated.",
         "All remaining frontend ports are explicitly disconnected."
       ],
       "bindings": {
@@ -39961,7 +39966,7 @@
       "conditions": [
         "Source-grounded implementation; runtime verification is deferred.",
         "Explicit ordinary standard-pad content mode; this does not infer the cartridge's required peripheral from its filename or the number of connected pads.",
-        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. Turbo duplicates remain unbound.",
+        "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. On Linux, two spare independent face buttons drive core Turbo B/A when calibrated.",
         "NES Four Score only; Famicom expansion adapter mode 768 is not selected."
       ],
       "bindings": {
@@ -40376,6 +40381,7 @@
     },
     {
       "id": "retroarch:mednafen_pce_fast:pce2",
+      "retroarch_library": "Beetle PCE Fast",
       "retroarch_launch": {
         "platforms": [
           "NEC PC Engine",
@@ -40425,6 +40431,7 @@
     },
     {
       "id": "retroarch:gambatte:gameboy",
+      "retroarch_library": "Gambatte",
       "retroarch_launch": {
         "platforms": [
           "Nintendo Game Boy",
@@ -41291,7 +41298,8 @@
       "source": "https://docs.libretro.com/library/fceumm/#controller-tables",
       "conditions": [
         "Default core controls; no existing core/game remaps",
-        "Standard RetroPad joypad; not Zapper/paddle"
+        "Standard RetroPad joypad; not Zapper/paddle",
+        "On Linux, two spare independent face buttons drive Turbo B/A, with the core turbo option enabled for the session"
       ],
       "bindings": {
         "up": "DPadUp",
@@ -41302,6 +41310,9 @@
         "select": "Select",
         "a": "East",
         "b": "South"
+      },
+      "core_options": {
+        "fceumm_turbo_enable": "Both"
       }
     },
     {
@@ -41367,6 +41378,7 @@
     },
     {
       "id": "retroarch:genesis_plus_gx:gamegear",
+      "retroarch_library": "Genesis Plus GX",
       "name": "RetroArch · Genesis Plus GX · Game Gear",
       "core": "genesis_plus_gx",
       "target_layout": "gamegear",

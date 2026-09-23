@@ -86,7 +86,13 @@ which mode a device exposes from its marketing name. The wizard excludes known
 hardware repeat controls from independent calibration. PC Engine two-button and
 NES/GB mappings use the lower pair; independent four-button targets can use all
 four on a device that actually reports them. Hardware turbo is never treated as
-an extra independent face input.
+an extra independent face input. N30 model names alone therefore do not select
+either layout automatically; calibrate the independent upper pair as
+`horizontal-four`, or choose `n30-turbo` only when those buttons repeat A/B.
+For Linux RetroArch sessions, the two spare independent face buttons use a
+core's separate Turbo B/A inputs when available; otherwise a private remap
+makes them repeat the ordinary B/A actions. Hardware-repeat buttons continue
+to rely on the controller itself.
 
 ## Launch adapter evidence and limitations
 

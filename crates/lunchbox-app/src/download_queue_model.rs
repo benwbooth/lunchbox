@@ -733,6 +733,25 @@ fn refresh_jobs() -> Result<QueueUpdate> {
             .and_then(|selection| client.snapshot(&job.info_hash, selection.as_deref()));
         match snapshot {
             Ok(snapshot) => {
+                // Queue slots are shared with unrelated torrents. An explicitly
+                // requested Lunchbox download gets a temporary force-start,
+                // released when qBittorrent reports its selected payload done.
+                if snapshot.state == "complete" && snapshot.force_start {
+                    if let Err(error) = client.set_force_start_owned(&job.info_hash, false) {
+                        job.state = "complete".to_owned();
+                        job.message = format!(
+                            "Download complete; releasing temporary priority will retry automatically: {error}"
+                        );
+                        job.updated_at = settings::unix_timestamp();
+                        store.upsert_job(job)?;
+                        continue;
+                    }
+                }
+                let priority_error = if snapshot.queue_blocked && !snapshot.force_start {
+                    client.set_force_start_owned(&job.info_hash, true).err()
+                } else {
+                    None
+                };
                 if !snapshot.client_save_path.trim().is_empty()
                     && snapshot.client_save_path != job.client_save_path
                 {
@@ -759,7 +778,9 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                 job.download_speed = snapshot.download_speed;
                 job.downloaded_bytes = snapshot.downloaded_bytes;
                 job.total_bytes = snapshot.total_bytes;
-                job.message = snapshot.message;
+                job.message = priority_error.map_or(snapshot.message, |error| {
+                    format!("Could not force-start Lunchbox download; will retry: {error}")
+                });
                 job.updated_at = settings::unix_timestamp();
                 if job.state == "complete" {
                     if qbittorrent::is_collection_import_job(job) {

@@ -85,6 +85,8 @@ pub(crate) struct AddedTorrent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TorrentSnapshot {
     pub state: String,
+    pub queue_blocked: bool,
+    pub force_start: bool,
     pub progress: f64,
     pub download_speed: u64,
     pub downloaded_bytes: u64,
@@ -127,6 +129,12 @@ struct TorrentInfo {
     #[serde(default)]
     state: String,
     #[serde(default)]
+    force_start: bool,
+    #[serde(default)]
+    num_seeds: i64,
+    #[serde(default)]
+    availability: f64,
+    #[serde(default)]
     progress: f64,
     #[serde(default, deserialize_with = "signed_size")]
     dlspeed: u64,
@@ -146,6 +154,8 @@ struct TorrentFileInfo {
     name: String,
     size: u64,
     progress: f64,
+    #[serde(default)]
+    availability: f64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -432,18 +442,40 @@ impl QbittorrentClient {
             .torrent_info(info_hash)?
             .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
         ensure_owned(&info)?;
-        let (progress, downloaded_bytes, total_bytes) = if let Some(selected_files) = selected_files
-        {
-            selected_snapshot(&self.files(info_hash)?, selected_files)?
-        } else {
-            (info.progress, info.downloaded, info.size)
-        };
+        let (progress, downloaded_bytes, total_bytes, selected_unavailable) =
+            if let Some(selected_files) = selected_files {
+                let files = self.files(info_hash)?;
+                let (progress, downloaded_bytes, total_bytes) =
+                    selected_snapshot(&files, selected_files)?;
+                let unavailable = selected_files.iter().any(|(index, _)| {
+                    files.iter().any(|file| {
+                        file.index == *index
+                            && file.progress < 0.999_999
+                            && file.availability <= 0.0
+                    })
+                });
+                (progress, downloaded_bytes, total_bytes, unavailable)
+            } else {
+                (
+                    info.progress,
+                    info.downloaded,
+                    info.size,
+                    info.availability <= 0.0,
+                )
+            };
         let state = normalized_state(&info.state, progress);
+        let queue_blocked = info.state.eq_ignore_ascii_case("queuedDL");
         let message = match state.as_str() {
             "complete" => "Download complete".to_owned(),
             "paused" => "Paused in qBittorrent".to_owned(),
             "failed" => format!("qBittorrent reported {}", info.state),
+            "queued" if queue_blocked => {
+                "Waiting for a qBittorrent slot; Lunchbox will force-start this download".to_owned()
+            }
             "queued" => "Waiting in qBittorrent".to_owned(),
+            "downloading" if info.dlspeed == 0 && info.num_seeds == 0 && selected_unavailable => {
+                "Waiting for peers with the selected file; none are connected yet".to_owned()
+            }
             _ => format!(
                 "Downloading at {}/s",
                 crate::game_details::format_bytes(info.dlspeed)
@@ -451,6 +483,8 @@ impl QbittorrentClient {
         };
         Ok(TorrentSnapshot {
             state,
+            queue_blocked,
+            force_start: info.force_start,
             progress: progress.clamp(0.0, 1.0),
             download_speed: info.dlspeed,
             downloaded_bytes,
@@ -603,6 +637,29 @@ impl QbittorrentClient {
 
     fn start(&self, info_hash: &str) -> Result<()> {
         self.control_with_fallback("torrents/start", "torrents/resume", info_hash)
+    }
+
+    /// Only Lunchbox-owned torrents may bypass the shared client's queue.
+    /// The caller releases this override once the selected payload completes.
+    pub fn set_force_start_owned(&self, info_hash: &str, enabled: bool) -> Result<()> {
+        let info = self
+            .torrent_info(info_hash)?
+            .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
+        ensure_owned(&info)?;
+        if info.force_start == enabled {
+            return Ok(());
+        }
+        let response = self
+            .agent
+            .post(self.endpoint("torrents/setForceStart"))
+            .header("Referer", &self.base_url)
+            .send_form([
+                ("hashes", info_hash),
+                ("value", if enabled { "true" } else { "false" }),
+            ])
+            .context("setting Lunchbox torrent queue priority")?;
+        let (status, body) = response_text(response)?;
+        require_success(status, &body, "qBittorrent force-start request")
     }
 
     fn recheck(&self, info_hash: &str) -> Result<()> {
@@ -1465,7 +1522,14 @@ pub fn enqueue(
         .transpose()?
         .unwrap_or_default();
 
-    Ok(DownloadJob::queued(NewDownloadJob {
+    // This is a persisted Lunchbox game download. A failed priority request
+    // must not orphan the accepted torrent; the queue refresh will retry it.
+    let priority_warning = client
+        .set_force_start_owned(&info_hash, true)
+        .err()
+        .map(|error| error.to_string());
+
+    let mut job = DownloadJob::queued(NewDownloadJob {
         game_id: request.game_id,
         launchbox_db_id: request.launchbox_db_id,
         title: request.title,
@@ -1479,7 +1543,11 @@ pub fn enqueue(
         local_download_path: local_source_path,
         local_target_path,
         download_plan: serialized_plan,
-    }))
+    });
+    if let Some(error) = priority_warning {
+        job.message = format!("Could not force-start Lunchbox download; will retry: {error}");
+    }
+    Ok(job)
 }
 
 fn planned_local_target_path(
@@ -1984,6 +2052,68 @@ mod tests {
             version_request
                 .to_ascii_lowercase()
                 .contains("cookie: sid=lunchbox-test")
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn force_start_is_limited_to_lunchbox_owned_torrents_and_can_be_released() {
+        let hash = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","category":"lunchbox","state":"queuedDL","force_start":false}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"[{"hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","category":"lunchbox","state":"forcedUP","progress":1,"force_start":true}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+        client.set_force_start_owned(hash, true).unwrap();
+        client.set_force_start_owned(hash, false).unwrap();
+        let calls = (0..5).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(calls[2].starts_with("POST /api/v2/torrents/setForceStart HTTP/1.1"));
+        assert!(calls[2].contains("value=true"));
+        assert!(calls[4].starts_with("POST /api/v2/torrents/setForceStart HTTP/1.1"));
+        assert!(calls[4].contains("value=false"));
+        worker.join().unwrap();
+
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","category":"other","state":"queuedDL"}]"#,
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+        assert!(client.set_force_start_owned(hash, true).is_err());
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("POST /api/v2/auth/login")
+        );
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v2/torrents/info")
         );
         worker.join().unwrap();
     }
@@ -2722,6 +2852,36 @@ mod tests {
     }
 
     #[test]
+    fn queued_snapshot_explains_automatic_priority_and_active_snapshot_explains_missing_peers() {
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox","state":"queuedDL","progress":0,"availability":0}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox","state":"forcedDL","progress":0,"availability":0,"force_start":true,"num_seeds":0}]"#,
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+        let queued = client.snapshot("abc123", None).unwrap();
+        assert!(queued.queue_blocked);
+        assert!(queued.message.contains("force-start"));
+        let active = client.snapshot("abc123", None).unwrap();
+        assert!(!active.queue_blocked);
+        assert!(active.force_start);
+        assert!(active.message.contains("Waiting for peers"));
+        for _ in 0..3 {
+            requests.recv().unwrap();
+        }
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn torrent_paths_cannot_escape_the_download_root() {
         assert_eq!(
             safe_torrent_relative_path(r"Game Boy\Game.zip").unwrap(),
@@ -3033,12 +3193,14 @@ mod tests {
                 name: "Game (Disc 1).chd".into(),
                 size: 100,
                 progress: 1.0,
+                availability: 0.0,
             },
             TorrentFileInfo {
                 index: 4,
                 name: "Game (Disc 2).chd".into(),
                 size: 300,
                 progress: 0.0,
+                availability: 0.0,
             },
         ];
         assert_eq!(

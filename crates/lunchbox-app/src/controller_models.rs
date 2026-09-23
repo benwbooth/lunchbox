@@ -135,7 +135,10 @@ fn suggested_layout(model: &Model) -> Option<&'static str> {
         if name.contains("m30") {
             Some("genesis-6")
         } else if (name.contains("n30") || name.contains("nes30")) && !name.contains("pro") {
-            Some("n30-turbo")
+            // N30 variants and modes differ: the upper pair can be independent
+            // X/Y inputs or hardware repeats of A/B. The name alone cannot
+            // distinguish them, so let calibration establish the layout.
+            None
         } else if (name.contains("sn30") || name.contains("sfc30") || name.contains("sf30"))
             && !name.contains("pro")
         {
@@ -271,7 +274,7 @@ mod tests {
     fn layout_hints_never_relabel_a_pro_controller_as_a_two_button_pad() {
         let mut model = row("hint-test");
         model.name = "8BitDo N30".into();
-        assert_eq!(suggested_layout(&model), Some("n30-turbo"));
+        assert_eq!(suggested_layout(&model), None);
         model.name = "8BitDo N30 Pro 2".into();
         assert_eq!(suggested_layout(&model), None);
         for model in models() {

@@ -782,6 +782,8 @@ mod tests {
                 physical_id: physical.map(str::to_owned),
                 physical: physical.unwrap_or_default().into(),
                 input: physical.map(|_| input()),
+                alternate_physical_id: None,
+                alternate_input: None,
                 output: output.into(),
                 reason: String::new(),
             }
