@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -485,6 +485,10 @@ pub struct ControllerMappingSettings {
     /// Guided target choice, scoped independently for standalone and libretro.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub guided_target_selections: HashMap<String, String>,
+    /// Explicit button choices by scope, physical controller, and target layout.
+    /// Kept separate from the legacy per-profile calibration choices.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub guided_mapping_overrides: HashMap<String, BTreeMap<String, String>>,
     #[serde(default = "default_true")]
     pub calibrated_launch: bool,
     #[serde(default)]
@@ -621,6 +625,7 @@ impl Default for ControllerMappingSettings {
             calibrations: HashMap::new(),
             launch_mode_selections: HashMap::new(),
             guided_target_selections: HashMap::new(),
+            guided_mapping_overrides: HashMap::new(),
             calibrated_launch: true,
             preferred_devices: HashMap::new(),
             device_system_profiles: HashMap::new(),
@@ -1849,6 +1854,25 @@ impl ControllerMappingSettings {
             // Unknown/removed profiles must not prevent loading the user's
             // calibrations. Applicability is checked again at selection/launch.
         }
+        ensure!(
+            self.guided_mapping_overrides.len() <= 4096,
+            "Too many guided controller mappings"
+        );
+        for (key, choices) in &self.guided_mapping_overrides {
+            crate::controller_target::validate_mapping_key(key)?;
+            ensure!(choices.len() <= 128, "Too many guided mapping choices");
+            for (target, source) in choices {
+                ensure!(
+                    !target.is_empty()
+                        && target.len() <= 256
+                        && !target.chars().any(char::is_control)
+                        && !source.is_empty()
+                        && source.len() <= 256
+                        && !source.chars().any(char::is_control),
+                    "Invalid guided mapping choice"
+                );
+            }
+        }
         if self.launch_mode_selections.len() > 4096 {
             bail!("too many saved controller launch mode selections");
         }
@@ -2913,6 +2937,57 @@ impl SettingsStore {
         mapping
             .guided_target_selections
             .insert(scope.key(), profile.to_owned());
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn save_guided_mapping_override(
+        &self,
+        key: &str,
+        choices: &BTreeMap<String, String>,
+    ) -> Result<()> {
+        crate::controller_target::validate_mapping_key(key)?;
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        ensure!(
+            mapping.guided_mapping_overrides.len() < 4096
+                || mapping.guided_mapping_overrides.contains_key(key),
+            "Too many guided controller mappings"
+        );
+        mapping
+            .guided_mapping_overrides
+            .insert(key.to_owned(), choices.clone());
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn clear_guided_mapping_override(&self, key: &str) -> Result<()> {
+        crate::controller_target::validate_mapping_key(key)?;
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        mapping.guided_mapping_overrides.remove(key);
         transaction.execute(
             "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
             [serde_json::to_string(&mapping)?],
@@ -9204,6 +9279,43 @@ mod tests {
         assert_eq!(saved.controller_mapping.calibrations.len(), 2);
         assert_eq!(saved.controller_mapping.calibrations["first"], calibration);
         assert_eq!(saved.controller_mapping.calibrations["second"], calibration);
+    }
+
+    #[test]
+    fn scoped_guided_mapping_save_preserves_other_controller_data() {
+        let (_directory, store) = store();
+        let mut original = AppSettings::default();
+        original.qbittorrent_host = "unchanged.example".into();
+        original
+            .controller_mapping
+            .device_names
+            .insert("pad".into(), "Blue".into());
+        store.save(&original).unwrap();
+        let scope = crate::controller_target::Scope::from_label(
+            "RetroArch (fceumm)",
+            "Nintendo Entertainment System",
+        )
+        .unwrap();
+        let key = crate::controller_target::mapping_key("game", "metroid-id", &scope, "pad", "nes")
+            .unwrap();
+        let choices = BTreeMap::from([("a".to_owned(), "b".to_owned())]);
+        store.save_guided_mapping_override(&key, &choices).unwrap();
+        let saved = store.load().unwrap();
+        assert_eq!(
+            saved.controller_mapping.guided_mapping_overrides[&key],
+            choices
+        );
+        assert_eq!(saved.controller_mapping.device_names["pad"], "Blue");
+        assert_eq!(saved.qbittorrent_host, "unchanged.example");
+        store.clear_guided_mapping_override(&key).unwrap();
+        let cleared = store.load().unwrap();
+        assert!(
+            !cleared
+                .controller_mapping
+                .guided_mapping_overrides
+                .contains_key(&key)
+        );
+        assert_eq!(cleared.controller_mapping.device_names["pad"], "Blue");
     }
 
     #[test]

@@ -77,6 +77,32 @@ TestCase {
                 controller_revision++
                 return ""
             }
+            function scopedKey(id, profile, level, gameUid, platform, emulator) {
+                return [id, profile, level, level === "game" ? gameUid : level === "system" ? platform : emulator].join("/")
+            }
+            function scoped_guided_mapping_json(id, profile, level, gameUid, platform, emulator) {
+                const levels=level === "game" ? ["game","system","core"] : level === "system" ? ["system","core"] : ["core"]
+                for (const candidate of levels) {
+                    const key=scopedKey(id,profile,candidate,gameUid,platform,emulator)
+                    if (guidedMappings[key]) return JSON.stringify({choices:guidedMappings[key],source:candidate})
+                }
+                return JSON.stringify({choices:(calibrations[id] || {}).target_mappings?.[profile] || {},source:"existing core/system mapping"})
+            }
+            function save_scoped_guided_mapping(id, profile, choices, expected, level, gameUid, platform, emulator) {
+                if (failure) return failure
+                if (controller_calibration_json(id) !== expected) return "Controller setup changed"
+                const next=Object.assign({},guidedMappings)
+                next[scopedKey(id,profile,level,gameUid,platform,emulator)]=JSON.parse(choices)
+                guidedMappings=next; controller_revision++
+                return ""
+            }
+            function clear_scoped_guided_mapping(id, profile, level, gameUid, platform, emulator) {
+                if (failure) return failure
+                const next=Object.assign({},guidedMappings)
+                delete next[scopedKey(id,profile,level,gameUid,platform,emulator)]
+                guidedMappings=next; controller_revision++
+                return ""
+            }
             function guided_controller_preview(id, target, choices) {
                 if (!id || !target) return '{"rows":[],"error":""}'
                 return JSON.stringify({rows:[
@@ -95,11 +121,13 @@ TestCase {
             property string last_binding: '{"code":9,"kind":"button","direction":0,"logical":"South"}'
         }
         Lunchbox.GuidedControllerSetup { id: workflow; width: 1040; settingsModel: settings; gamepad: pad }
+        Lunchbox.ControllerLayoutExplorer { id: explorer; settingsModel: settings; gamepad: pad }
     }
     function init() {
         workflow.dirty=false; workflow.stage=0; workflow.setupResults=({})
         settings.ids=["sc2","brawler","unknown","steam-virtual"]
         settings.order=[]; settings.calibrations={brawler:settings.complete()}; settings.models=({})
+        settings.guidedMappings=({})
         settings.automaticCalls=0; settings.failure=""; settings.controller_revision++
         workflow.startForGame("", "", "")
         wait(1)
@@ -110,6 +138,7 @@ TestCase {
         return null
     }
     function cleanup() {
+        if (explorer.visible) explorer.close()
         if (workflow.calibrationActive) buttonNamed(workflow.calibrationContentItem.parent,"Cancel").clicked()
         tryCompare(workflow,"calibrationActive",false)
     }
@@ -145,19 +174,80 @@ TestCase {
         compare(settings.automaticCalls,1)
         verify(workflow.playersReady)
     }
-    function test_mapping_scope_is_system_and_core_not_opening_game() {
+    function test_mapping_scope_can_be_game_system_or_core() {
         workflow.startForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)")
         workflow.stage=1
         const scope=findChild(workflow,"controllerMappingScope")
         verify(scope.visible)
-        compare(workflow.mappingScope,
-            "all games on Nintendo Entertainment System using RetroArch (fceumm)")
+        compare(workflow.mappingScope, "all Nintendo Entertainment System games")
         verify(workflow.saveTarget("nes-target"))
         compare(settings.targetProfiles["RetroArch (fceumm)/Nintendo Entertainment System"],"nes-target")
         workflow.startForGame("Castlevania", "Nintendo Entertainment System", "RetroArch (fceumm)")
         compare(workflow.selectedProfile,"nes-target")
-        compare(workflow.mappingScope,
-            "all games on Nintendo Entertainment System using RetroArch (fceumm)")
+        compare(workflow.mappingScope, "all Nintendo Entertainment System games")
+        workflow.startForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        compare(workflow.selectedMappingLevel,"game")
+        compare(workflow.mappingScope,"Metroid")
+        workflow.selectedMappingLevel="core"
+        compare(workflow.mappingScope,"all games using RetroArch (fceumm)")
+    }
+    function test_saved_scope_choices_fall_back_without_leaking_between_games() {
+        workflow.startForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        workflow.assignPlayer(0,"brawler")
+        verify(workflow.saveTarget("nes-target"))
+        workflow.stage=2
+        workflow.selectedMappingLevel="core"
+        verify(!settings.save_scoped_guided_mapping("brawler","nes-target",JSON.stringify({a:"a"}),
+            settings.controller_calibration_json("brawler"),"core","metroid-id",workflow.gamePlatform,workflow.gameEmulator))
+        workflow.selectedMappingLevel="system"; workflow.loadMapping()
+        compare(workflow.mappingSource,"core")
+        compare(workflow.choices.a,"a")
+        verify(!settings.save_scoped_guided_mapping("brawler","nes-target",JSON.stringify({b:"b"}),
+            settings.controller_calibration_json("brawler"),"system","metroid-id",workflow.gamePlatform,workflow.gameEmulator))
+        workflow.selectedMappingLevel="game"; workflow.loadMapping()
+        compare(workflow.mappingSource,"system")
+        compare(workflow.choices.b,"b")
+        verify(!settings.save_scoped_guided_mapping("brawler","nes-target",JSON.stringify({a:"b"}),
+            settings.controller_calibration_json("brawler"),"game","metroid-id",workflow.gamePlatform,workflow.gameEmulator))
+        workflow.loadMapping()
+        compare(workflow.mappingSource,"game")
+        compare(workflow.choices.a,"b")
+        const remove=findChild(workflow,"removeMappingOverride")
+        verify(remove.visible)
+        remove.clicked()
+        compare(workflow.mappingSource,"system")
+        compare(workflow.choices.b,"b")
+        workflow.startForGame("Castlevania", "Nintendo Entertainment System", "RetroArch (fceumm)", "castlevania-id")
+        workflow.assignPlayer(0,"brawler")
+        workflow.loadMapping()
+        compare(workflow.mappingSource,"system")
+        compare(workflow.choices.b,"b")
+        verify(workflow.choices.a === undefined)
+    }
+    function test_save_does_not_oscillate_dialog_scroll_width() {
+        explorer.openForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        const nested=findChild(explorer,"controllerSetupWorkflow")
+        const scroll=findChild(explorer,"controllerSetupScroll")
+        verify(nested); verify(scroll)
+        nested.assignPlayer(0,"brawler")
+        verify(nested.saveTarget("nes-target"))
+        nested.stage=2
+        tryCompare(nested,"missing",0)
+        const save=findChild(explorer,"savePlayerMapping")
+        verify(save)
+        wait(100)
+        const width=scroll.availableWidth
+        const spy=createTemporaryObject(widthSpyComponent,workflow,{target:scroll})
+        verify(spy)
+        spy.clear()
+        save.clicked()
+        wait(600)
+        compare(scroll.availableWidth,width)
+        verify(spy.count < 5,"Dialog scroll width kept changing: " + spy.count)
+    }
+    Component {
+        id: widthSpyComponent
+        SignalSpy { signalName: "availableWidthChanged" }
     }
     function test_save_keeps_preview_and_selected_wire_stable() {
         workflow.startForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)")
@@ -178,7 +268,7 @@ TestCase {
         const preview=workflow.preview
         saveButton.clicked()
         compare(workflow.status,
-            "Player 1 mapping saved for all games on Nintendo Entertainment System using RetroArch (fceumm).")
+            "Player 1 mapping saved for all Nintendo Entertainment System games.")
         compare(workflow.preview,preview)
         compare(mapping.selected.target_id,"a")
         compare(workflow.calibrationBaseline,settings.controller_calibration_json("brawler"))

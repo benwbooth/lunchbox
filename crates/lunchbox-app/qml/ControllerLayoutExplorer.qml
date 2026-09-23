@@ -19,17 +19,22 @@ Dialog {
         if (settingsModel.controller_count() > 0)
             workflow.openCalibrationFor(0, "")
     }
-    function openForGame(name, platform, emulator) {
-        workflow.startForGame(name, platform, emulator)
+    function openForGame(name, platform, emulator, gameUid) {
+        workflow.startForGame(name, platform, emulator, gameUid)
         open()
     }
     contentItem: ScrollView {
         id: scroll
+        objectName: "controllerSetupScroll"
         clip: true
         contentWidth: availableWidth
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        // A transient scrollbar changes availableWidth, which changes the
+        // diagram height and flips the scrollbar again at the threshold.
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOn
         GuidedControllerSetup {
             id: workflow
+            objectName: "controllerSetupWorkflow"
             width: scroll.availableWidth
             settingsModel: explorer.settingsModel
             gamepad: explorer.gamepad

@@ -5825,11 +5825,74 @@ pub fn prepare_with_cancellation(
     plan: &mut LaunchPlan,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<Option<CalibratedLaunch>> {
+    prepare_for_game_with_cancellation(settings, "", platform, option, plan, cancel)
+}
+
+pub fn prepare_for_game_with_cancellation(
+    settings: &AppSettings,
+    game_uid: &str,
+    platform: &str,
+    option: &RomEmulatorOption,
+    plan: &mut LaunchPlan,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Option<CalibratedLaunch>> {
     check_preparation_cancel(cancel)?;
     let mapping = &settings.controller_mapping;
     if !mapping.calibrated_launch {
         return Ok(None);
     }
+    let selected_profile = crate::controller_target::selected(mapping, option, platform)?;
+    let inferred_profile = if selected_profile.is_none() {
+        crate::controller_target::inferred_from_mapping(mapping, option, platform, game_uid)?
+    } else {
+        None
+    };
+    let scoped = if let Some(profile) = selected_profile.or(inferred_profile) {
+        let scope = crate::controller_target::Scope::for_option(option, platform)?;
+        let resolved: Vec<_> = mapping
+            .calibrations
+            .keys()
+            .map(|device| {
+                crate::controller_target::mapping_choices(
+                    mapping, game_uid, &scope, device, profile, "game",
+                )
+                .map(|choice| choice.map(|(choices, _)| (device.clone(), choices.clone())))
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        if resolved.is_empty() && inferred_profile.is_none() {
+            None
+        } else {
+            let mut scoped = settings.clone();
+            if inferred_profile.is_some() {
+                scoped
+                    .controller_mapping
+                    .guided_target_selections
+                    .insert(scope.key(), profile.id.clone());
+            }
+            for (device, choices) in resolved {
+                let calibration = scoped
+                    .controller_mapping
+                    .calibrations
+                    .get_mut(&device)
+                    .context("Controller calibration disappeared")?;
+                calibration.target_mappings.insert(
+                    profile.id.clone(),
+                    choices
+                        .into_iter()
+                        .filter(|(target, _)| profile.bindings.contains_key(target))
+                        .collect(),
+                );
+                calibration.validate()?;
+            }
+            Some(scoped)
+        }
+    } else {
+        None
+    };
+    let settings = scoped.as_ref().unwrap_or(settings);
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     if let Some(session) =
         prepare_native_frontend_autoconfig(settings, platform, option, plan, cancel)?

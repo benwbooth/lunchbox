@@ -6190,8 +6190,8 @@ impl qobject::GameDetailsModel {
                         let plan_snapshot = plan.clone();
                         let outcome = match &controller_settings {
                             Ok(settings) => {
-                                crate::controller_launch::prepare_with_cancellation(
-                                    settings, platform, option, &mut plan, &launch_cancel,
+                                crate::controller_launch::prepare_for_game_with_cancellation(
+                                    settings, &game_id, platform, option, &mut plan, &launch_cancel,
                                 )
                                 .context("applying calibrated controller mappings")
                             }

@@ -1134,6 +1134,38 @@ pub mod qobject {
             expected: QString,
         ) -> QString;
         #[qinvokable]
+        fn scoped_guided_mapping_json(
+            self: &SettingsModel,
+            device: QString,
+            profile: QString,
+            level: QString,
+            game_uid: QString,
+            platform: QString,
+            emulator: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn save_scoped_guided_mapping(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+            profile: QString,
+            choices: QString,
+            expected: QString,
+            level: QString,
+            game_uid: QString,
+            platform: QString,
+            emulator: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn clear_scoped_guided_mapping(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+            profile: QString,
+            level: QString,
+            game_uid: QString,
+            platform: QString,
+            emulator: QString,
+        ) -> QString;
+        #[qinvokable]
         fn persist_controller_calibration(
             self: Pin<&mut SettingsModel>,
             device: QString,
@@ -10048,6 +10080,178 @@ impl qobject::SettingsModel {
                     .controller_mapping
                     .calibrations
                     .insert(device.to_string(), calibration);
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(error.to_string()),
+        }
+    }
+
+    pub fn scoped_guided_mapping_json(
+        &self,
+        device: QString,
+        profile: QString,
+        level: QString,
+        game_uid: QString,
+        platform: QString,
+        emulator: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<serde_json::Value> {
+            use anyhow::Context;
+            let scope = crate::controller_target::Scope::from_label(
+                &emulator.to_string(),
+                &platform.to_string(),
+            )?;
+            let target =
+                scope.profile(crate::controller_catalog::catalog(), &profile.to_string())?;
+            let mapping = &self.rust().controller_mapping;
+            let calibration = mapping
+                .calibrations
+                .get(&device.to_string())
+                .context("Set up this controller first")?;
+            let (choices, source) = match crate::controller_target::mapping_choices(
+                mapping,
+                &game_uid.to_string(),
+                &scope,
+                &device.to_string(),
+                target,
+                &level.to_string(),
+            )? {
+                Some((choices, source)) => (choices.clone(), source),
+                None => (
+                    calibration
+                        .target_mappings
+                        .get(&profile.to_string())
+                        .cloned()
+                        .unwrap_or_default(),
+                    "existing core/system mapping",
+                ),
+            };
+            Ok(serde_json::json!({"choices": choices, "source": source}))
+        })();
+        qstring(match result {
+            Ok(value) => value.to_string(),
+            Err(error) => {
+                serde_json::json!({"choices": {}, "error": error.to_string()}).to_string()
+            }
+        })
+    }
+
+    pub fn save_scoped_guided_mapping(
+        mut self: Pin<&mut Self>,
+        device: QString,
+        profile: QString,
+        choices: QString,
+        expected: QString,
+        level: QString,
+        game_uid: QString,
+        platform: QString,
+        emulator: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<_> {
+            use anyhow::{Context, ensure};
+            ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            ensure!(
+                self.as_ref()
+                    .controller_calibration_json(device.clone())
+                    .to_string()
+                    == expected.to_string(),
+                "Controller setup changed. Select it again before saving"
+            );
+            let scope = crate::controller_target::Scope::from_label(
+                &emulator.to_string(),
+                &platform.to_string(),
+            )?;
+            let profile_id = profile.to_string();
+            let target = scope.profile(crate::controller_catalog::catalog(), &profile_id)?;
+            let key = crate::controller_target::mapping_key(
+                &level.to_string(),
+                &game_uid.to_string(),
+                &scope,
+                &device.to_string(),
+                &target.target_layout,
+            )?;
+            let mut calibration = self
+                .as_ref()
+                .rust()
+                .controller_mapping
+                .calibrations
+                .get(&device.to_string())
+                .context("Set up this controller first")?
+                .clone();
+            ensure!(
+                calibration.os == std::env::consts::OS,
+                "Record this controller on this operating system first"
+            );
+            let choices: std::collections::BTreeMap<String, String> =
+                serde_json::from_str(&choices.to_string())?;
+            calibration
+                .target_mappings
+                .insert(profile_id.clone(), choices.clone());
+            calibration.validate()?;
+            let plan = calibration.plan(&profile_id)?;
+            let layout = crate::controller_catalog::catalog()
+                .layout(&target.target_layout)
+                .context("Missing target layout")?;
+            ensure!(
+                plan.rows.iter().all(|row| row.input.is_some()
+                    || layout
+                        .controls
+                        .iter()
+                        .any(|control| control.id == row.target_id && control.optional)),
+                "Some required controls are missing. Record them or choose another controller"
+            );
+            SettingsStore::open_default()?.save_guided_mapping_override(&key, &choices)?;
+            Ok((key, choices))
+        })();
+        match result {
+            Ok((key, choices)) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .guided_mapping_overrides
+                    .insert(key, choices);
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(error.to_string()),
+        }
+    }
+
+    pub fn clear_scoped_guided_mapping(
+        mut self: Pin<&mut Self>,
+        device: QString,
+        profile: QString,
+        level: QString,
+        game_uid: QString,
+        platform: QString,
+        emulator: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<_> {
+            anyhow::ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            let scope = crate::controller_target::Scope::from_label(
+                &emulator.to_string(),
+                &platform.to_string(),
+            )?;
+            let target =
+                scope.profile(crate::controller_catalog::catalog(), &profile.to_string())?;
+            let key = crate::controller_target::mapping_key(
+                &level.to_string(),
+                &game_uid.to_string(),
+                &scope,
+                &device.to_string(),
+                &target.target_layout,
+            )?;
+            SettingsStore::open_default()?.clear_guided_mapping_override(&key)?;
+            Ok(key)
+        })();
+        match result {
+            Ok(key) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .guided_mapping_overrides
+                    .remove(&key);
                 self.as_mut().bump_controller_revision();
                 qstring("")
             }

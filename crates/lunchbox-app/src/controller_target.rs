@@ -6,6 +6,7 @@ use crate::{
     settings::ControllerMappingSettings,
 };
 use anyhow::{Context, Result, ensure};
+use std::collections::BTreeMap;
 
 /// Standalone emulators whose user-facing name differs from their catalog core
 /// key. A launch option carries the emulator's display name (the database
@@ -192,6 +193,116 @@ impl Scope {
     }
 }
 
+/// Mapping scope precedence is game, system, core, then legacy profile choices.
+/// The target layout is part of the key so a system-wide map is only shared
+/// with emulator contracts that use the same controller shape.
+pub(crate) fn mapping_key(
+    level: &str,
+    game_uid: &str,
+    scope: &Scope,
+    device: &str,
+    layout: &str,
+) -> Result<String> {
+    ensure!(
+        !device.is_empty() && device.len() <= 512 && !device.chars().any(char::is_control),
+        "Choose a controller first"
+    );
+    ensure!(
+        catalog().layout(layout).is_some(),
+        "Choose a target controller first"
+    );
+    let identity = match level {
+        "game" => {
+            ensure!(
+                !game_uid.trim().is_empty()
+                    && game_uid.len() <= 512
+                    && !game_uid.chars().any(char::is_control),
+                "Choose a game first"
+            );
+            game_uid.to_owned()
+        }
+        "system" => scope.platform.clone(),
+        "core" => serde_json::to_string(&[
+            if scope.retroarch {
+                "retroarch"
+            } else {
+                "native"
+            },
+            &scope.core,
+        ])?,
+        _ => anyhow::bail!("Choose game, system, or emulator/core scope"),
+    };
+    Ok(serde_json::to_string(&[level, &identity, device, layout])?)
+}
+
+pub(crate) fn mapping_choices<'a>(
+    mapping: &'a ControllerMappingSettings,
+    game_uid: &str,
+    scope: &Scope,
+    device: &str,
+    profile: &EmulatorProfile,
+    maximum: &str,
+) -> Result<Option<(&'a BTreeMap<String, String>, &'static str)>> {
+    let levels: &[&str] = match maximum {
+        "game" => &["game", "system", "core"],
+        "system" => &["system", "core"],
+        "core" => &["core"],
+        _ => anyhow::bail!("Choose game, system, or emulator/core scope"),
+    };
+    for level in levels {
+        if *level == "game" && game_uid.is_empty() {
+            continue;
+        }
+        let key = mapping_key(level, game_uid, scope, device, &profile.target_layout)?;
+        if let Some(choices) = mapping.guided_mapping_overrides.get(&key) {
+            return Ok(Some((
+                choices,
+                match *level {
+                    "game" => "game",
+                    "system" => "system",
+                    _ => "core",
+                },
+            )));
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) fn validate_mapping_key(key: &str) -> Result<()> {
+    let [level, identity, device, layout]: [String; 4] = serde_json::from_str(key)?;
+    ensure!(
+        !identity.is_empty()
+            && identity.len() <= 512
+            && !identity.chars().any(char::is_control)
+            && !device.is_empty()
+            && device.len() <= 512
+            && !device.chars().any(char::is_control),
+        "Invalid guided mapping scope"
+    );
+    ensure!(
+        catalog().layout(&layout).is_some(),
+        "Unknown guided mapping target layout"
+    );
+    match level.as_str() {
+        "game" => {}
+        "system" => ensure!(
+            identity == identity.trim().to_lowercase(),
+            "Noncanonical system mapping scope"
+        ),
+        "core" => {
+            let [kind, core]: [String; 2] = serde_json::from_str(&identity)?;
+            ensure!(
+                matches!(kind.as_str(), "retroarch" | "native")
+                    && !core.is_empty()
+                    && core == core.trim().to_lowercase(),
+                "Invalid core mapping scope"
+            );
+        }
+        _ => anyhow::bail!("Invalid guided mapping level"),
+    }
+    Ok(())
+}
+
 pub(crate) fn selected(
     mapping: &ControllerMappingSettings,
     option: &RomEmulatorOption,
@@ -203,6 +314,40 @@ pub(crate) fn selected(
         .get(&scope.key())
         .map(|id| scope.profile(catalog(), id))
         .transpose()
+}
+
+/// A broader mapping can reach a new core/system context without requiring an
+/// otherwise redundant target-selection save, but only when its controller
+/// layout identifies exactly one non-explicit launch contract.
+pub(crate) fn inferred_from_mapping(
+    mapping: &ControllerMappingSettings,
+    option: &RomEmulatorOption,
+    platform: &str,
+    game_uid: &str,
+) -> Result<Option<&'static EmulatorProfile>> {
+    let scope = Scope::for_option(option, platform)?;
+    let mut matching = Vec::new();
+    for profile in catalog()
+        .emulator_profiles
+        .iter()
+        .filter(|profile| scope.accepts(profile) && !profile.explicit_selection)
+    {
+        let mut has_mapping = false;
+        for device in mapping.calibrations.keys() {
+            if mapping_choices(mapping, game_uid, &scope, device, profile, "game")?.is_some() {
+                has_mapping = true;
+                break;
+            }
+        }
+        if has_mapping {
+            matching.push(profile);
+        }
+    }
+    Ok(if matching.len() == 1 {
+        matching.pop()
+    } else {
+        None
+    })
 }
 
 /// Explicit native contracts, not a guess based on similar controller artwork.
@@ -284,6 +429,96 @@ pub(crate) fn add_native_metadata(db: &mut Catalog) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guided_mapping_scopes_override_in_game_system_core_order() {
+        let scope =
+            Scope::from_label("RetroArch (fceumm)", "Nintendo Entertainment System").unwrap();
+        let profile = scope.profile(catalog(), "retroarch:fceumm:nes").unwrap();
+        let mut mapping = ControllerMappingSettings::default();
+        let choices = |source: &str| BTreeMap::from([("a".to_owned(), source.to_owned())]);
+        for (level, uid, source) in [
+            ("core", "", "core-button"),
+            ("system", "", "system-button"),
+            ("game", "metroid-id", "game-button"),
+        ] {
+            let key = mapping_key(level, uid, &scope, "pad", &profile.target_layout).unwrap();
+            validate_mapping_key(&key).unwrap();
+            mapping
+                .guided_mapping_overrides
+                .insert(key, choices(source));
+        }
+        let find = |uid: &str, maximum: &str| {
+            mapping_choices(&mapping, uid, &scope, "pad", profile, maximum)
+                .unwrap()
+                .map(|(choices, source)| (choices["a"].clone(), source))
+        };
+        assert_eq!(
+            find("metroid-id", "game"),
+            Some(("game-button".into(), "game"))
+        );
+        assert_eq!(
+            find("other-id", "game"),
+            Some(("system-button".into(), "system"))
+        );
+        assert_eq!(
+            find("metroid-id", "system"),
+            Some(("system-button".into(), "system"))
+        );
+        assert_eq!(
+            find("metroid-id", "core"),
+            Some(("core-button".into(), "core"))
+        );
+        let other_system =
+            Scope::from_label("RetroArch (fceumm)", "Nintendo Famicom Disk System").unwrap();
+        assert_eq!(
+            mapping_key("core", "", &scope, "pad", &profile.target_layout).unwrap(),
+            mapping_key("core", "", &other_system, "pad", &profile.target_layout).unwrap()
+        );
+        assert_ne!(
+            mapping_key("system", "", &scope, "pad", &profile.target_layout).unwrap(),
+            mapping_key("system", "", &other_system, "pad", &profile.target_layout).unwrap()
+        );
+        let other_core =
+            Scope::from_label("RetroArch (nestopia)", "Nintendo Entertainment System").unwrap();
+        assert_eq!(
+            mapping_key("system", "", &scope, "pad", &profile.target_layout).unwrap(),
+            mapping_key("system", "", &other_core, "pad", &profile.target_layout).unwrap()
+        );
+        assert_ne!(
+            mapping_key("core", "", &scope, "pad", &profile.target_layout).unwrap(),
+            mapping_key("core", "", &other_core, "pad", &profile.target_layout).unwrap()
+        );
+        let calibration: crate::controller_catalog::Calibration =
+            serde_json::from_value(serde_json::json!({
+                "layout":"nes", "os":"linux", "backend":"gilrs-0.11",
+                "bindings":{
+                    "a":{"code":1,"kind":"button","direction":0,"logical":"South"},
+                    "b":{"code":2,"kind":"button","direction":0,"logical":"West"}
+                }
+            }))
+            .unwrap();
+        mapping.calibrations.insert("pad".into(), calibration);
+        let option = RomEmulatorOption::retroarch(
+            "retroarch-id".into(),
+            "RetroArch".into(),
+            "fceumm",
+            crate::emulator::EmulatorExecutable::Native("/unused/retroarch".into()),
+            "/unused/fceumm_libretro.so".into(),
+            false,
+        );
+        assert_eq!(
+            inferred_from_mapping(
+                &mapping,
+                &option,
+                "Nintendo Entertainment System",
+                "other-id"
+            )
+            .unwrap()
+            .map(|profile| profile.id.as_str()),
+            Some("retroarch:fceumm:nes")
+        );
+    }
 
     #[test]
     fn nestopia_ue_native_name_uses_the_catalog_core_key() {

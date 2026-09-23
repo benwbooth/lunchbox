@@ -2182,7 +2182,7 @@ ApplicationWindow {
         onTriggered: {
             if (gameDetails.loading || !gameDetails.title) return
             stop()
-            gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name)
+            gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name, gameDetails.game_id)
             controllerSetupSnapshot.start()
         }
     }
@@ -12702,7 +12702,7 @@ ApplicationWindow {
                             gameDetails.set_display_setting(field, value === undefined ? "" : value)
                         }
                         onPlayRequested: root.requestGameLaunch()
-                        onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name)
+                        onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name, gameDetails.game_id)
                         onCancelLaunchRequested: gameDetails.cancel_launch()
                         onSetupRequested: {
                             if (gameDetails.emulator_option_count === 0)
