@@ -154,7 +154,6 @@ fn main() {
                 "qml/SecretField.qml",
                 "qml/SidebarNavButton.qml",
                 "qml/SettingsNavButton.qml",
-                "qml/StatusPill.qml",
                 "qml/TorrentPayloadPicker.qml",
                 "qml/TorrentPlatformRegistration.qml",
                 "qml/TorrentSourceBatchReview.qml",

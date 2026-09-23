@@ -11802,27 +11802,6 @@ ApplicationWindow {
                         font.pixelSize: 12
                     }
                 }
-                StatusPill {
-                    visible: content.width > 900
-                    label: "local game files"
-                    value: library.local_file_count.toString()
-                    explanation: "Game files found on this computer, across the whole library. "
-                                 + "A game may have more than one file."
-                }
-                StatusPill {
-                    visible: content.width > 900
-                    label: "download listings"
-                    value: library.offer_count.toString()
-                    explanation: "Listings in the game download catalogs, across the whole library. "
-                                 + "One listing may contain many games. This is not the active download queue."
-                }
-                StatusPill {
-                    visible: content.width > 900
-                    label: "games with artwork"
-                    value: library.media_loading ? "…" : library.media_game_count.toString()
-                    explanation: "Games with at least one locally cached artwork image, "
-                                 + "across the whole library."
-                }
                 HeaderButton {
                     text: root.activeFilterCount > 0
                           ? "Filters  " + root.activeFilterCount : "Filters"
