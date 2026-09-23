@@ -9,6 +9,9 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -375,9 +378,6 @@ pub fn attach_launch_display_configuration(
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
     let mut black_sidebars = false;
-    let output_aspect = output_dimensions
-        .filter(|(_, height)| *height > 0)
-        .map(|(width, height)| f64::from(width) / f64::from(height));
     match customization.display_fullscreen.as_str() {
         "true" | "false" => {
             lines.push_str(&format!(
@@ -415,10 +415,27 @@ pub fn attach_launch_display_configuration(
         match selected.and_then(|overlay| {
             overlay
                 .map(|path| {
+                    // Qt's reported device-pixel size and RetroArch's GL
+                    // backing surface can both be scaled again on fractional
+                    // displays. Match the monitor resolution used to place
+                    // the full-screen overlay instead.
+                    let dimensions = if ultrawide {
+                        let probe_driver = (!customization.display_shader.is_empty()
+                            && resolve_shader_preset(executable, &customization.display_shader)
+                                .is_some())
+                        .then(|| slang_driver_override(executable))
+                        .flatten();
+                        Some(probe_retroarch_output_dimensions(executable, probe_driver)?)
+                    } else {
+                        output_dimensions
+                    };
+                    let output_aspect = dimensions
+                        .filter(|(_, height)| *height > 0)
+                        .map(|(width, height)| f64::from(width) / f64::from(height));
                     let (prepared, pillarboxed) = aspect_fitted_overlay(&path, output_aspect)?;
                     let viewport =
                         if ultrawide {
-                            let (width, height) = output_dimensions
+                            let (width, height) = dimensions
                                 .context("the output resolution is needed for 21:9 artwork")?;
                             Some(ultrawide_viewport(width, height).context(
                                 "the output resolution cannot fit the 21:9 game opening",
@@ -441,8 +458,10 @@ pub fn attach_launch_display_configuration(
                 lines.push_str("input_overlay_aspect_adjust_landscape = \"0.000000\"\n");
                 if let Some((x, y, width, height)) = viewport {
                     // RetroArch's current custom-aspect index is 23. The
-                    // Duimon transparent opening is exactly 4:3; explicitly
-                    // fit content to it instead of covering the game edges.
+                    // Duimon's transparent opening is centered and exactly
+                    // 4:3. RetroArch centers custom viewport dimensions;
+                    // custom_viewport_x/y are additional offsets, not the
+                    // opening's absolute screen coordinates.
                     if customization.display_fullscreen.is_empty() {
                         lines.push_str("video_fullscreen = \"true\"\n");
                     }
@@ -518,6 +537,9 @@ pub fn attach_launch_display_configuration(
             Some(warnings.join("; "))
         };
     }
+    // These are launch-only overrides. RetroArch must not save the temporary
+    // custom viewport (or input/display settings) back into retroarch.cfg.
+    lines.push_str("config_save_on_exit = \"false\"\n");
     let config_path = write_launch_display_config(&lines);
     match config_path {
         Ok(path) => {
@@ -544,6 +566,91 @@ pub fn attach_launch_display_configuration(
     } else {
         Some(warnings.join("; "))
     }
+}
+
+/// A one-frame, content-free RetroArch run reports the display mode to which
+/// its full-screen overlay is fitted. The later "Using resolution" log line
+/// may describe a larger GL backing surface under fractional scaling; using
+/// that size for the custom viewport pushes the game under the bezel.
+/// If the frontend cannot report a size, skip the 21:9 bezel rather than
+/// place the game partly behind its art.
+fn probe_retroarch_output_dimensions(
+    executable: &EmulatorExecutable,
+    video_driver: Option<&str>,
+) -> Result<(u32, u32)> {
+    let mut settings =
+        String::from("video_fullscreen = \"true\"\nconfig_save_on_exit = \"false\"\n");
+    if let Some(driver) = video_driver {
+        settings.push_str(&format!("video_driver = \"{driver}\"\n"));
+    }
+    let config = write_launch_display_config(&settings)?;
+    let log = std::env::temp_dir().join(format!(
+        "lunchbox-retroarch-display-{}.log",
+        Uuid::new_v4().simple()
+    ));
+    let result = (|| -> Result<_> {
+        let file = fs::File::create(&log)?;
+        let mut command = match executable {
+            EmulatorExecutable::Native(path) => Command::new(path),
+            EmulatorExecutable::Flatpak { command, app_id } => {
+                let mut process = Command::new(command);
+                process.arg("run").arg(app_id);
+                process
+            }
+            EmulatorExecutable::Wine { .. } => {
+                anyhow::bail!("RetroArch resolution probing does not support a Wine executable")
+            }
+        };
+        command
+            .arg(format!("--appendconfig={}", config.display()))
+            .args(["--menu", "--max-frames=1", "--verbose"])
+            .stdout(Stdio::from(file.try_clone()?))
+            .stderr(Stdio::from(file));
+        let mut child = command
+            .spawn()
+            .context("starting RetroArch display probe")?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(8);
+        loop {
+            if let Some(status) = child.try_wait()? {
+                anyhow::ensure!(
+                    status.success(),
+                    "RetroArch display probe exited with {status}"
+                );
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                anyhow::bail!("RetroArch display probe timed out")
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        let report = fs::read_to_string(&log)?;
+        parse_retroarch_output_dimensions(&report)
+            .context("RetroArch did not report its output resolution")
+    })();
+    let _ = fs::remove_file(&log);
+    let _ = fs::remove_file(&config);
+    result
+}
+
+fn parse_retroarch_output_dimensions(report: &str) -> Option<(u32, u32)> {
+    let parse = |line: &str, marker: &str| {
+        let dimensions = line.split_once(marker)?.1;
+        let token = dimensions.split_whitespace().next()?.trim_end_matches('.');
+        let (width, height) = token.split_once('x')?;
+        let width: u32 = width.parse().ok()?;
+        let height: u32 = height.parse().ok()?;
+        (width > 0 && height > 0).then_some((width, height))
+    };
+    report
+        .lines()
+        .find_map(|line| parse(line, "Detecting screen resolution: "))
+        .or_else(|| {
+            report
+                .lines()
+                .find_map(|line| parse(line, "Using resolution "))
+        })
 }
 
 /// Place fixed-aspect artwork inside a wider (or taller) output without
@@ -611,8 +718,9 @@ fn fitted_overlay_rect(
     })
 }
 
-/// Pixel viewport corresponding to Duimon's transparent 4:3 opening after
-/// fitting its unmodified 2560x1080 artwork to the current output.
+/// Custom viewport dimensions corresponding to Duimon's centered transparent
+/// 4:3 opening after fitting its unmodified 2560x1080 artwork to the output.
+/// RetroArch centers these dimensions, so x and y must remain zero offsets.
 fn ultrawide_viewport(output_width: u32, output_height: u32) -> Option<(u32, u32, u32, u32)> {
     if output_width == 0 || output_height == 0 {
         return None;
@@ -620,27 +728,23 @@ fn ultrawide_viewport(output_width: u32, output_height: u32) -> Option<(u32, u32
     let (image_width, image_height) = crate::bezel_orionsangel::ULTRAWIDE_DIMENSIONS;
     let (hole_x, hole_y, hole_width, hole_height) =
         crate::bezel_orionsangel::ULTRAWIDE_SCREEN_OPENING;
+    if hole_x.checked_mul(2)?.checked_add(hole_width)? != image_width
+        || hole_y.checked_mul(2)?.checked_add(hole_height)? != image_height
+    {
+        return None;
+    }
     let output_aspect = f64::from(output_width) / f64::from(output_height);
-    let (outer_x, outer_y, outer_width, outer_height) =
+    let (_, _, outer_width, outer_height) =
         fitted_overlay_rect(image_width, image_height, output_aspect)
             .unwrap_or((0.0, 0.0, 1.0, 1.0));
-    let left = ((outer_x + outer_width * f64::from(hole_x) / f64::from(image_width))
-        * f64::from(output_width))
-    .round() as u32;
-    let top = ((outer_y + outer_height * f64::from(hole_y) / f64::from(image_height))
-        * f64::from(output_height))
-    .round() as u32;
     let width = (outer_width * f64::from(hole_width) / f64::from(image_width)
         * f64::from(output_width))
     .round() as u32;
     let height = (outer_height * f64::from(hole_height) / f64::from(image_height)
         * f64::from(output_height))
     .round() as u32;
-    (width > 0
-        && height > 0
-        && left.checked_add(width)? <= output_width
-        && top.checked_add(height)? <= output_height)
-        .then_some((left, top, width, height))
+    (width > 0 && height > 0 && width <= output_width && height <= output_height)
+        .then_some((0, 0, width, height))
 }
 
 fn attach_shader_argument(
@@ -665,7 +769,7 @@ fn attach_shader_argument(
     }
 }
 
-fn write_launch_display_config(contents: &str) -> Result<PathBuf> {
+pub(crate) fn write_launch_display_config(contents: &str) -> Result<PathBuf> {
     let directory = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox")
         .map(|dirs| dirs.data_local_dir().join("launch-display"))
         .context("could not determine the Lunchbox data directory")?;
@@ -703,6 +807,19 @@ fn prune_stale_launch_display_configs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retroarch_probe_uses_display_mode_not_scaled_gl_backing_surface() {
+        let report = "[INFO] [GLCore] Detecting screen resolution: 5120x2160.\n[INFO] [GLCore] Using resolution 6656x2808.\n";
+        let dimensions = parse_retroarch_output_dimensions(report);
+        assert_eq!(dimensions, Some((5120, 2160)));
+        assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
+        assert_eq!(
+            parse_retroarch_output_dimensions("Using resolution 1920x1080."),
+            Some((1920, 1080))
+        );
+        assert_eq!(parse_retroarch_output_dimensions("no video output"), None);
+    }
 
     #[test]
     fn sixteen_nine_art_is_centered_without_stretching_on_ultrawide() {
@@ -758,14 +875,12 @@ mod tests {
 
     #[test]
     fn native_ultrawide_art_places_game_in_its_transparent_opening() {
-        assert_eq!(
-            ultrawide_viewport(5120, 2160),
-            Some((1374, 192, 2372, 1776))
-        );
-        assert_eq!(ultrawide_viewport(2560, 1080), Some((687, 96, 1186, 888)));
+        assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
+        assert_eq!(ultrawide_viewport(2560, 1080), Some((0, 0, 1186, 888)));
         assert_eq!(ultrawide_viewport(0, 1080), None);
         let (x, y, width, height) = ultrawide_viewport(1920, 1080).unwrap();
-        assert!(x > 0 && y > 0 && x + width < 1920 && y + height < 1080);
+        assert_eq!((x, y), (0, 0));
+        assert!(width < 1920 && height < 1080);
     }
 
     #[test]

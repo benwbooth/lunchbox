@@ -1153,6 +1153,34 @@ impl VirtualGamepad {
         &self.system_name
     }
 
+    /// Resolve this publisher's own event node, never another pad by name or
+    /// by a guessed event number. udev may take a moment to expose the child.
+    pub fn event_path(&self) -> Result<Option<std::path::PathBuf>> {
+        use std::os::unix::fs::FileTypeExt;
+        let root = std::path::Path::new("/sys/class/input").join(&self.system_name);
+        let entries = match std::fs::read_dir(root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let Some(number) = name.strip_prefix("event") else {
+                continue;
+            };
+            if number.is_empty() || !number.bytes().all(|byte| byte.is_ascii_digit()) {
+                continue;
+            }
+            let path = std::path::Path::new("/dev/input").join(name);
+            if std::fs::metadata(&path).is_ok_and(|meta| meta.file_type().is_char_device()) {
+                return Ok(Some(path));
+            }
+        }
+        Ok(None)
+    }
+
     fn neutral_frame(&self) -> std::collections::BTreeMap<GamepadControl, i32> {
         self.buttons
             .iter()

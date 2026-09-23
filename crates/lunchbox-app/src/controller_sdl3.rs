@@ -98,6 +98,23 @@ pub fn connected(id: &str) -> bool {
         .iter()
         .any(|(key, _)| key == id)
 }
+
+/// The RetroArch fallback may route a controller automatically only when its
+/// SDL3 identity is unambiguous. Never pick one of several pads by list order.
+pub fn unique_pad() -> Option<(String, Pad)> {
+    let state = inventory().lock().ok()?;
+    (state.pads.len() == 1).then(|| state.pads[0].clone())
+}
+
+pub fn pad_by_id(id: &str) -> Option<Pad> {
+    inventory()
+        .lock()
+        .ok()?
+        .pads
+        .iter()
+        .find(|(key, _)| key == id)
+        .map(|(_, pad)| pad.clone())
+}
 pub fn mapping(id: &str) -> Option<String> {
     inventory()
         .lock()

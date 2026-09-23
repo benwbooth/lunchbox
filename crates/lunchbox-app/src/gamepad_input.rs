@@ -84,6 +84,7 @@ pub struct GamepadInputRust {
     navigation_revision: i32,
     stop: Arc<AtomicBool>,
     navigation_gate: Arc<AtomicBool>,
+    steam_virtual_gilrs: Arc<AtomicBool>,
 }
 
 impl Default for GamepadInputRust {
@@ -111,6 +112,7 @@ impl Default for GamepadInputRust {
             navigation_revision: 0,
             stop: Arc::new(AtomicBool::new(false)),
             navigation_gate: Arc::new(AtomicBool::new(true)),
+            steam_virtual_gilrs: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -347,11 +349,13 @@ impl qobject::GamepadInput {
         self.as_mut()
             .set_status_message(qstring("Starting cross-platform gamepad input…"));
         let sdl_stop = Arc::clone(&self.as_ref().rust().stop);
+        let sdl_virtual_gilrs = Arc::clone(&self.as_ref().rust().steam_virtual_gilrs);
         let sdl_qt = self.as_ref().qt_thread();
         let sdl_thread = std::thread::Builder::new()
             .name("lunchbox-sdl3-input".into())
             .spawn(move || {
                 let result = crate::controller_sdl3::run(&sdl_stop, |event| {
+                    let virtual_gilrs = Arc::clone(&sdl_virtual_gilrs);
                     let _ = sdl_qt.queue(move |mut model| match event {
                         crate::controller_sdl3::InputEvent::Press {
                             key,
@@ -380,7 +384,13 @@ impl qobject::GamepadInput {
                             model.as_mut().set_last_capture_started(first);
                             let revision = model.as_ref().input_revision().wrapping_add(1);
                             model.as_mut().set_input_revision(revision);
-                            if let Some(action) = action {
+                            // Steam Input can expose the same SC2 as a
+                            // virtual Xbox pad. GilRs handles that pad with
+                            // repeat/hotplug support; publishing SDL3 too
+                            // would move the UI twice per button press.
+                            if let Some(action) = action
+                                && !virtual_gilrs.load(Ordering::Acquire)
+                            {
                                 model.as_mut().publish_action(
                                     action,
                                     "Steam Controller 2 (2026)".into(),
@@ -416,6 +426,7 @@ impl qobject::GamepadInput {
         }
         let stop = Arc::clone(&self.as_ref().rust().stop);
         let navigation_gate = Arc::clone(&self.as_ref().rust().navigation_gate);
+        let steam_virtual_gilrs = Arc::clone(&self.as_ref().rust().steam_virtual_gilrs);
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-gamepad-input".into())
@@ -434,6 +445,7 @@ impl qobject::GamepadInput {
                 };
 
                 let mut active_id = None;
+                steam_virtual_gilrs.store(has_steam_virtual_gamepad(&gilrs), Ordering::Release);
                 let snapshot = controller_snapshot(&gilrs, active_id);
                 active_id = snapshot.active_id;
                 if qt_thread
@@ -499,6 +511,8 @@ impl qobject::GamepadInput {
                         }
 
                         if connection_changed {
+                            steam_virtual_gilrs
+                                .store(has_steam_virtual_gamepad(&gilrs), Ordering::Release);
                             diagnostics.remove(&event.id);
                             translators.remove(&event.id);
                             if let Some(mut capture) = captures.remove(&event.id) {
@@ -928,6 +942,16 @@ fn native_input(
     }
 }
 
+fn is_steam_virtual_xbox(vendor: Option<u16>, product: Option<u16>) -> bool {
+    vendor == Some(0x28de) && product == Some(0x11ff)
+}
+
+fn has_steam_virtual_gamepad(gilrs: &Gilrs) -> bool {
+    gilrs
+        .gamepads()
+        .any(|(_, gamepad)| is_steam_virtual_xbox(gamepad.vendor_id(), gamepad.product_id()))
+}
+
 fn controller_snapshot(gilrs: &Gilrs, preferred: Option<GamepadId>) -> ControllerSnapshot {
     let connected = gilrs
         .gamepads()
@@ -1072,6 +1096,23 @@ fn gamepad_ui_probe_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn steam_virtual_pad_identity_does_not_suppress_other_gamepads() {
+        assert!(is_steam_virtual_xbox(Some(0x28de), Some(0x11ff)));
+        assert!(!is_steam_virtual_xbox(Some(0x28de), Some(0x1302)));
+        assert!(!is_steam_virtual_xbox(Some(0x045e), Some(0x028e)));
+    }
+
+    #[test]
+    #[ignore = "requires Steam's live virtual Xbox pad in gamepad mode"]
+    fn live_steam_virtual_pad_reaches_gilrs_navigation() {
+        let gilrs = GilrsBuilder::new()
+            .with_force_feedback(false)
+            .build()
+            .unwrap();
+        assert!(has_steam_virtual_gamepad(&gilrs));
+    }
 
     #[test]
     fn calibration_tracks_button_release_without_repeating_held_inputs() {

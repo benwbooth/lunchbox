@@ -6202,6 +6202,50 @@ impl qobject::GameDetailsModel {
                             }
                         }
                     }
+                    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+                    let mut steam_route = None;
+                    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+                    if calibrated_session.is_none()
+                        && let LaunchInput::Rom { option, .. } = &launch_input
+                        && option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                    {
+                        match crate::controller_sdl3_retroarch::RetroArchControllerSession::start() {
+                            Ok(Some(route)) => {
+                                let attached = (|| -> anyhow::Result<_> {
+                                    let path = crate::display_setup::write_launch_display_config(
+                                        &route.config(),
+                                    )?;
+                                    let mut candidate = plan.clone();
+                                    crate::controller_launch::attach_config(
+                                        &mut candidate,
+                                        &option.executable,
+                                        &path,
+                                    )?;
+                                    Ok(candidate)
+                                })();
+                                match attached {
+                                    Ok(candidate) => {
+                                        plan = candidate;
+                                        steam_route = Some(route);
+                                    }
+                                    Err(error) => {
+                                        let detail = format!(
+                                            "Steam Controller 2 routing was skipped: {error:#}"
+                                        );
+                                        eprintln!("LUNCHBOX_STEAM_RETROARCH_SKIPPED: {error:#}");
+                                        calibration_warning = Some(detail);
+                                    }
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                let detail =
+                                    format!("Steam Controller 2 routing was skipped: {error:#}");
+                                eprintln!("LUNCHBOX_STEAM_RETROARCH_SKIPPED: {error:#}");
+                                calibration_warning = Some(detail);
+                            }
+                        }
+                    }
                     // Display settings attach last so their private config
                     // wins RetroArch's appendconfig merge order against the
                     // calibrated session config. Any failure degrades into a
@@ -6440,6 +6484,22 @@ impl qobject::GameDetailsModel {
                     };
                     let mut controller_failure = None;
                     let status = loop {
+                        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+                        if controller_failure.is_none()
+                            && let Some(route) = &steam_route
+                            && let Err(error) = route.check_health()
+                        {
+                            let warning = format!("Steam Controller 2 disconnected or routing failed: {error:#}. Reconnect and relaunch to restore input.");
+                            controller_failure = Some(warning.clone());
+                            let warning_game_id = game_id.clone();
+                            let _ = started_thread.queue(move |mut model| {
+                                if generation == model.as_ref().rust().launch_generation
+                                    && model.as_ref().game_id().to_string() == warning_game_id
+                                {
+                                    model.as_mut().set_launch_status(qstring(warning));
+                                }
+                            });
+                        }
                         if controller_failure.is_none()
                             && let Some(session) = &calibrated_session
                             && let Err(error) = session.check_health()
@@ -6465,6 +6525,8 @@ impl qobject::GameDetailsModel {
                         }
                     };
                     drop(controller_session);
+                    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+                    drop(steam_route);
                     drop(calibrated_session);
                     let status = status.context("waiting for the emulator process")?;
                     let outcome = if probe_terminated {

@@ -165,6 +165,8 @@ mod controller_sameboy;
 mod controller_scummvm;
 mod controller_scummvm_native;
 mod controller_sdl3;
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+mod controller_sdl3_retroarch;
 mod controller_shadps4_native;
 mod controller_sheepshaver_standalone;
 mod controller_simcoupe_native;
