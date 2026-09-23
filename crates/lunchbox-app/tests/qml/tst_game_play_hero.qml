@@ -107,6 +107,30 @@ TestCase {
         compare(fullscreen.currentValue, "true")
     }
 
+    function test_display_choices_use_the_available_pane_width() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        for (const name of ["displayFullscreenCombo", "displayShaderCombo",
+                            "displayBezelCombo", "displaySaveStatesCombo"]) {
+            const combo = findChild(hero, name)
+            verify(combo)
+            verify(combo.width >= hero.width - 40, name + " is too narrow")
+        }
+    }
+
+    function test_narrow_display_choice_wraps_instead_of_eliding() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            width: 260,
+            displayInheritedShaderLabel: "Inherit → RetroTube TV · bezel + ambient light (Koko-AIO)"
+        })
+        verify(hero)
+        const shader = findChild(hero, "displayShaderCombo")
+        verify(shader)
+        compare(shader.contentItem.elide, Text.ElideNone)
+        compare(shader.contentItem.wrapMode, Text.WordWrap)
+        verify(shader.contentItem.implicitHeight > 14)
+    }
+
     function test_inherit_options_name_the_parent_value() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
@@ -137,6 +161,30 @@ TestCase {
         hero.displayBezel = "ultrawide"
         hero.displayRevision++
         compare(bezel.currentValue, "ultrawide")
+    }
+
+    function test_bezel_popup_renders_long_choices_without_elision() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const bezel = findChild(hero, "displayBezelCombo")
+        bezel.popup.open()
+        verify(bezel.popup.visible)
+        let found = false
+        for (let attempt = 0; attempt < 50 && !found; ++attempt) {
+            const rows = bezel.popup.contentItem.contentItem.children
+            for (let i = 0; i < rows.length; ++i) {
+                const content = rows[i].contentItem
+                if (content && content.text === "Duimon · ultrawide 21:9 night") {
+                    compare(content.wrapMode, Text.WordWrap)
+                    compare(content.elide, Text.ElideNone)
+                    found = true
+                    break
+                }
+            }
+            if (!found)
+                wait(20)
+        }
+        verify(found)
     }
 
     function test_display_section_hides_for_unsupported_adapters() {

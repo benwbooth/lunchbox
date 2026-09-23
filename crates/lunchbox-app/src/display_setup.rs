@@ -272,22 +272,39 @@ fn install_generated_preset(root: &Path, choice: &ShaderPresetChoice) -> Option<
 }
 
 /// Koko-AIO's configured Base preset includes its own bezel. When a separate
-/// Bezel Project overlay is active, reference that preset with only its built-in
-/// bezel disabled; scanlines, phosphor mask, curvature, and ambient light stay on.
-fn install_retrotube_system_bezel_variant(root: &Path, base: &Path) -> Result<PathBuf> {
+/// artwork overlay is active, disable the shader's built-in bezel. Keep its
+/// ambient light except when it would illuminate the blank sidebars beside
+/// aspect-fitted artwork.
+fn install_retrotube_system_bezel_variant(
+    root: &Path,
+    base: &Path,
+    black_sidebars: bool,
+) -> Result<PathBuf> {
     let relative = base
         .strip_prefix(root)
         .context("RetroTube TV preset is outside the shader directory")?;
     let directory = root.join("lunchbox");
     fs::create_dir_all(&directory)?;
-    let path = directory.join("retrotube-tv-system-bezel.slangp");
+    let name = if black_sidebars {
+        "retrotube-tv-black-sidebars.slangp"
+    } else {
+        "retrotube-tv-system-bezel.slangp"
+    };
+    let path = directory.join(name);
     let reference = Path::new("..")
         .join(relative)
         .to_string_lossy()
         .replace('\\', "/");
+    let ambient = if black_sidebars {
+        // Koko's ambient light otherwise paints into the transparent space
+        // outside a centered 16:9 overlay on an ultrawide display.
+        "DO_AMBILIGHT = \"0.0\"\n"
+    } else {
+        ""
+    };
     fs::write(
         &path,
-        format!("#reference \"{reference}\"\nDO_BEZEL = \"0.0\"\n"),
+        format!("#reference \"{reference}\"\nDO_BEZEL = \"0.0\"\n{ambient}"),
     )
     .with_context(|| format!("writing {}", path.display()))?;
     Ok(path)
@@ -357,6 +374,7 @@ pub fn attach_launch_display_configuration(
     let mut lines = String::new();
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
+    let mut black_sidebars = false;
     let output_aspect = output_dimensions
         .filter(|(_, height)| *height > 0)
         .map(|(width, height)| f64::from(width) / f64::from(height));
@@ -397,7 +415,7 @@ pub fn attach_launch_display_configuration(
         match selected.and_then(|overlay| {
             overlay
                 .map(|path| {
-                    let prepared = aspect_fitted_overlay(&path, output_aspect)?;
+                    let (prepared, pillarboxed) = aspect_fitted_overlay(&path, output_aspect)?;
                     let viewport =
                         if ultrawide {
                             let (width, height) = output_dimensions
@@ -408,12 +426,13 @@ pub fn attach_launch_display_configuration(
                         } else {
                             None
                         };
-                    Ok((prepared, viewport))
+                    Ok((prepared, viewport, pillarboxed))
                 })
                 .transpose()
         }) {
-            Ok(Some((overlay_path, viewport))) => {
+            Ok(Some((overlay_path, viewport, pillarboxed))) => {
                 external_bezel_active = true;
+                black_sidebars = pillarboxed;
                 lines.push_str("input_overlay_enable = \"true\"\n");
                 lines.push_str(&format!("input_overlay = \"{}\"\n", overlay_path.display()));
                 lines.push_str("input_overlay_opacity = \"1.000000\"\n");
@@ -454,7 +473,11 @@ pub fn attach_launch_display_configuration(
                     && external_bezel_active
                     && let Some(root) = shader_root(executable)
                 {
-                    match install_retrotube_system_bezel_variant(&root, &preset_path) {
+                    match install_retrotube_system_bezel_variant(
+                        &root,
+                        &preset_path,
+                        black_sidebars,
+                    ) {
                         Ok(path) => preset_path = path,
                         Err(error) => warnings.push(format!(
                             "RetroTube TV could not disable its built-in bezel: {error:#}"
@@ -527,10 +550,10 @@ pub fn attach_launch_display_configuration(
 /// stretching the console artwork. The overlay itself remains full-screen;
 /// its rectangle is centered within that screen. RetroArch's documented
 /// overlay0_rect coordinates are normalized to the full-screen rectangle.
-fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<PathBuf> {
+fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<(PathBuf, bool)> {
     let Some(output_aspect) = output_aspect.filter(|value| value.is_finite() && *value > 0.0)
     else {
-        return Ok(path.to_path_buf());
+        return Ok((path.to_path_buf(), false));
     };
     let contents = fs::read_to_string(path)
         .with_context(|| format!("reading selected bezel {}", path.display()))?;
@@ -550,7 +573,7 @@ fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<Path
     let (width, height) = crate::bezel_orionsangel::png_dimensions(&bytes)
         .context("selected bezel image has no valid PNG dimensions")?;
     let Some((x, y, w, h)) = fitted_overlay_rect(width, height, output_aspect) else {
-        return Ok(path.to_path_buf());
+        return Ok((path.to_path_buf(), false));
     };
     let mut fitted = String::new();
     for line in contents.lines() {
@@ -564,7 +587,7 @@ fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<Path
     fitted.push_str(&format!(
         "overlay0_rect = \"{x:.6},{y:.6},{w:.6},{h:.6}\"\n"
     ));
-    write_launch_display_config(&fitted)
+    Ok((write_launch_display_config(&fitted)?, w < 1.0))
 }
 
 fn fitted_overlay_rect(
@@ -692,6 +715,32 @@ mod tests {
     }
 
     #[test]
+    fn fitted_overlay_config_preserves_source_art_and_leaves_sidebars() {
+        let temporary = tempfile::tempdir().unwrap();
+        let image = temporary.path().join("art.png");
+        let mut header = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        header.extend_from_slice(&1920_u32.to_be_bytes());
+        header.extend_from_slice(&1080_u32.to_be_bytes());
+        fs::write(&image, header).unwrap();
+        let source = temporary.path().join("art.cfg");
+        let original = "overlays = 1\noverlay0_overlay = \"art.png\"\noverlay0_full_screen = true\noverlay0_descs = 0\n";
+        fs::write(&source, original).unwrap();
+
+        let (prepared, black_sidebars) =
+            aspect_fitted_overlay(&source, Some(5120.0 / 2160.0)).unwrap();
+        assert!(black_sidebars);
+        let fitted = fs::read_to_string(prepared).unwrap();
+        assert!(fitted.contains("overlay0_rect = \"0.125000,0.000000,0.750000,1.000000\""));
+        assert!(fitted.contains("overlay0_full_screen = true"));
+        assert!(fitted.contains(&format!("overlay0_overlay = \"{}\"", image.display())));
+        assert_eq!(fs::read_to_string(&source).unwrap(), original);
+
+        let (same_aspect, no_sidebars) = aspect_fitted_overlay(&source, Some(16.0 / 9.0)).unwrap();
+        assert_eq!(same_aspect, source);
+        assert!(!no_sidebars);
+    }
+
+    #[test]
     fn bezel_choices_include_both_sources_for_snes() {
         let choices = bezel_choices("Super Nintendo Entertainment System");
         assert_eq!(
@@ -743,10 +792,16 @@ mod tests {
                 "#reference \"../koko-aio-ng.slangp\"\nDO_PIXELGRID = \"1.0\"\n",
             )
             .unwrap();
-            let variant = install_retrotube_system_bezel_variant(root, &base).unwrap();
+            let variant = install_retrotube_system_bezel_variant(root, &base, false).unwrap();
             let contents = fs::read_to_string(&variant).unwrap();
             assert!(contents.contains("DO_BEZEL = \"0.0\""));
+            assert!(!contents.contains("DO_AMBILIGHT"));
             assert!(!contents.contains("DO_PIXELGRID = \"0.0\""));
+            let pillarbox_variant =
+                install_retrotube_system_bezel_variant(root, &base, true).unwrap();
+            assert_ne!(variant, pillarbox_variant);
+            let pillarbox_contents = fs::read_to_string(pillarbox_variant).unwrap();
+            assert!(pillarbox_contents.contains("DO_AMBILIGHT = \"0.0\""));
             let reference = contents
                 .lines()
                 .next()

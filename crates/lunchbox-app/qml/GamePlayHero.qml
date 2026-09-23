@@ -232,7 +232,7 @@ Rectangle {
                 }
             }
             Column {
-                width: (parent.width - 12) / 3
+                width: parent.width
                 spacing: 2
                 visible: hero.displayFullscreenSupported
                 Text {
@@ -279,7 +279,7 @@ Rectangle {
                         font.pixelSize: 10
                         font.weight: Font.DemiBold
                         verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
+                        wrapMode: Text.WordWrap
                     }
                 }
                 Text {
@@ -291,11 +291,11 @@ Rectangle {
                     wrapMode: Text.WordWrap
                 }
             }
-            Row {
+            Column {
                 width: parent.width
                 spacing: 6
                 Column {
-                    width: (parent.width - 12) / 3
+                    width: parent.width
                     spacing: 2
                     visible: hero.displayShaderSupported
                     Text {
@@ -336,7 +336,7 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayShaderCombo.syncValue() }
                         }
-background: Rectangle {
+                        background: Rectangle {
                             radius: 8
                             color: "#0d211a"
                             border.width: 2
@@ -350,14 +350,21 @@ background: Rectangle {
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
                             verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
+                            wrapMode: Text.WordWrap
                         }
                         delegate: ItemDelegate {
                             required property int index
                             width: displayShaderCombo.width
-                            text: displayShaderCombo.model[index].label
-                            font.pixelSize: 10
+                            implicitHeight: Math.max(32, shaderChoiceText.implicitHeight + topPadding + bottomPadding)
                             highlighted: displayShaderCombo.highlightedIndex === index
+                            contentItem: Text {
+                                id: shaderChoiceText
+                                text: displayShaderCombo.model[index].label
+                                color: hero.ink
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
                     }
                     Text {
@@ -370,7 +377,7 @@ background: Rectangle {
                     }
                 }
                 Column {
-                    width: (parent.width - 12) / 3
+                    width: parent.width
                     spacing: 2
                     visible: hero.displayBezelSupported
                     Text {
@@ -413,7 +420,7 @@ background: Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayBezelCombo.syncValue() }
                         }
-background: Rectangle {
+                        background: Rectangle {
                             radius: 8
                             color: "#0d211a"
                             border.width: 2
@@ -427,14 +434,21 @@ background: Rectangle {
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
                             verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
+                            wrapMode: Text.WordWrap
                         }
                         delegate: ItemDelegate {
                             required property int index
                             width: displayBezelCombo.width
-                            text: displayBezelCombo.model[index].label
-                            font.pixelSize: 10
+                            implicitHeight: Math.max(32, bezelChoiceText.implicitHeight + topPadding + bottomPadding)
                             highlighted: displayBezelCombo.highlightedIndex === index
+                            contentItem: Text {
+                                id: bezelChoiceText
+                                text: displayBezelCombo.model[index].label
+                                color: hero.ink
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
                     }
                     Text {
@@ -457,7 +471,7 @@ background: Rectangle {
                     }
                 }
                 Column {
-                    width: (parent.width - 12) / 3
+                    width: parent.width
                     spacing: 2
                     visible: hero.displaySaveStatesSupported
                     Text {
@@ -492,7 +506,7 @@ background: Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displaySaveStatesCombo.syncValue() }
                         }
-background: Rectangle {
+                        background: Rectangle {
                             radius: 8
                             color: "#0d211a"
                             border.width: 2
@@ -506,7 +520,7 @@ background: Rectangle {
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
                             verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
+                            wrapMode: Text.WordWrap
                         }
                         delegate: ItemDelegate {
                             required property int index
