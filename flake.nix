@@ -116,7 +116,10 @@
             export QML_IMPORT_PATH="${qtEnv}/lib/qt-6/qml"
             export QT_PLUGIN_PATH="${qtEnv}/lib/qt-6/plugins"
             export XDG_CACHE_HOME="$TMPDIR/lunchbox-test-cache"
-            mkdir -p "$XDG_CACHE_HOME"
+            # Display-session tests write private RetroArch appendconfigs via
+            # ProjectDirs. A Nix build has no writable user home.
+            export XDG_DATA_HOME="$TMPDIR/lunchbox-test-data"
+            mkdir -p "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
             QT_QPA_PLATFORM=offscreen qmltestrunner \
               -input crates/lunchbox-app/tests/qml
             cargo test --package lunchbox-app --lib --release \
