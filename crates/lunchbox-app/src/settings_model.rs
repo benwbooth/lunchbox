@@ -46,6 +46,12 @@ pub mod qobject {
         #[qproperty(QString, shader_message)]
         #[qproperty(bool, shader_requires_confirmation)]
         #[qproperty(i32, shader_revision)]
+        #[qproperty(bool, translation_enabled)]
+        #[qproperty(QString, translation_model)]
+        #[qproperty(QString, translation_source_language)]
+        #[qproperty(bool, translation_busy)]
+        #[qproperty(i32, translation_progress)]
+        #[qproperty(QString, translation_status)]
         #[qproperty(bool, controller_enabled)]
         #[qproperty(bool, controller_automatic)]
         #[qproperty(bool, controller_calibrated_launch)]
@@ -169,6 +175,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn open_shader_target(self: Pin<&mut SettingsModel>, index: i32);
+
+        #[qinvokable]
+        fn check_translation_service(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn install_translation_model(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn cancel_translation_model(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
         fn refresh_controllers(self: Pin<&mut SettingsModel>);
@@ -1344,6 +1359,13 @@ pub struct SettingsModelRust {
     shader_inventory: ShaderInventory,
     shader_generation: u64,
     shader_cancel: Option<Arc<AtomicBool>>,
+    translation_enabled: bool,
+    translation_model: QString,
+    translation_source_language: QString,
+    translation_busy: bool,
+    translation_progress: i32,
+    translation_status: QString,
+    translation_cancel: Option<Arc<AtomicBool>>,
     controller_enabled: bool,
     controller_automatic: bool,
     controller_calibrated_launch: bool,
@@ -1438,6 +1460,13 @@ impl Default for SettingsModelRust {
             shader_inventory: ShaderInventory::default(),
             shader_generation: 0,
             shader_cancel: None,
+            translation_enabled: false,
+            translation_model: QString::from("translategemma:12b"),
+            translation_source_language: QString::from("auto"),
+            translation_busy: false,
+            translation_progress: 0,
+            translation_status: QString::from("Check local Ollama before enabling translation."),
+            translation_cancel: None,
             controller_enabled: false,
             controller_automatic: false,
             controller_calibrated_launch: true,
@@ -1960,6 +1989,108 @@ impl qobject::SettingsModel {
         self.as_mut().set_message(qstring(
             "Default media source priority restored. Save settings to reindex cached media.",
         ));
+    }
+
+    pub fn check_translation_service(mut self: Pin<&mut Self>) {
+        if *self.as_ref().translation_busy() {
+            return;
+        }
+        let model = self.as_ref().translation_model().to_string();
+        self.as_mut().set_translation_busy(true);
+        self.as_mut()
+            .set_translation_status(qstring("Checking local Ollama…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-translation-check".into())
+            .spawn(move || {
+                let result =
+                    crate::translation::model_available(&model).map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model_object| {
+                    model_object.as_mut().set_translation_busy(false);
+                    let status = match result {
+                        Ok(true) => format!("{model} is installed in local Ollama and ready."),
+                        Ok(false) => format!("Ollama is running, but {model} is not installed."),
+                        Err(error) => format!("Local Ollama is unavailable: {error}"),
+                    };
+                    model_object
+                        .as_mut()
+                        .set_translation_status(qstring(status));
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_translation_busy(false);
+            self.as_mut()
+                .set_translation_status(qstring(format!("Could not start Ollama check: {error}")));
+        }
+    }
+
+    pub fn install_translation_model(mut self: Pin<&mut Self>) {
+        if *self.as_ref().translation_busy() {
+            return;
+        }
+        let model = self.as_ref().translation_model().to_string();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().translation_cancel = Some(Arc::clone(&cancel));
+        self.as_mut().set_translation_busy(true);
+        self.as_mut().set_translation_progress(0);
+        self.as_mut()
+            .set_translation_status(qstring(format!("Downloading {model} into Ollama…")));
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-translation-download".into())
+            .spawn(move || {
+                let result = crate::translation::pull_model(&model, &cancel, |percent, status| {
+                    let _ = progress_thread.queue(move |mut model_object| {
+                        if *model_object.as_ref().translation_busy() {
+                            model_object
+                                .as_mut()
+                                .set_translation_progress(i32::from(percent));
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(status));
+                        }
+                    });
+                })
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model_object| {
+                    model_object.as_mut().rust_mut().translation_cancel = None;
+                    model_object.as_mut().set_translation_busy(false);
+                    match result {
+                        Ok(()) => {
+                            model_object.as_mut().set_translation_progress(100);
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(format!(
+                                    "{model} is ready for local game translation."
+                                )));
+                        }
+                        Err(error) => {
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(format!(
+                                    "Model download did not finish: {error}"
+                                )))
+                        }
+                    }
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().rust_mut().translation_cancel = None;
+            self.as_mut().set_translation_busy(false);
+            self.as_mut().set_translation_status(qstring(format!(
+                "Could not start model download: {error}"
+            )));
+        }
+    }
+
+    pub fn cancel_translation_model(mut self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().translation_cancel.as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+            self.as_mut().set_translation_status(qstring(
+                "Cancelling the model download; already downloaded layers remain in Ollama.",
+            ));
+        }
     }
 
     pub fn refresh_retroarch_shaders(mut self: Pin<&mut Self>) {
@@ -11259,6 +11390,12 @@ impl qobject::SettingsModel {
             crate::media::effective_provider_priority(&settings.media_provider_priority);
         let controller_mapping = settings.controller_mapping.clone();
         self.as_mut()
+            .set_translation_enabled(settings.translation.enabled);
+        self.as_mut()
+            .set_translation_model(qstring(&settings.translation.model));
+        self.as_mut()
+            .set_translation_source_language(qstring(&settings.translation.source_language));
+        self.as_mut()
             .set_onboarding_complete(settings.onboarding_complete);
         self.as_mut()
             .set_qbittorrent_host(qstring(settings.qbittorrent_host));
@@ -11350,6 +11487,11 @@ impl qobject::SettingsModel {
                 mapping.enabled = *self.controller_enabled();
                 mapping.output_target = self.controller_output_target().to_string();
                 mapping
+            },
+            translation: crate::translation::TranslationSettings {
+                enabled: *self.translation_enabled(),
+                model: self.translation_model().to_string(),
+                source_language: self.translation_source_language().to_string(),
             },
         };
         settings.validate().map_err(|error| error.to_string())?;

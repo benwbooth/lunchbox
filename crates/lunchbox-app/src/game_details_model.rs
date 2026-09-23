@@ -6260,6 +6260,7 @@ impl qobject::GameDetailsModel {
                     // warning; the game still launches.
                     let mut display_warning: Option<String> = None;
                     let mut auto_save_observation = None;
+                    let mut translation_session = None;
                     if let LaunchInput::Rom {
                         path,
                         platform,
@@ -6352,6 +6353,33 @@ impl qobject::GameDetailsModel {
                                 )
                             {
                                 eprintln!("LUNCHBOX_DISPLAY_SETTING_DEGRADED: {warning}");
+                                if let Some(existing) = &mut display_warning {
+                                    existing.push_str("; ");
+                                    existing.push_str(&warning);
+                                } else {
+                                    display_warning = Some(warning);
+                                }
+                            }
+                        }
+                    }
+                    if let LaunchInput::Rom { option, .. } = &launch_input
+                        && option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                        && let Ok(settings) = &controller_settings
+                        && settings.translation.enabled
+                    {
+                        let snapshot = plan.clone();
+                        match crate::translation::TranslationSession::attach(
+                            &mut plan,
+                            &option.executable,
+                            &settings.translation,
+                        ) {
+                            Ok(session) => translation_session = session,
+                            Err(error) => {
+                                plan = snapshot;
+                                let warning = format!(
+                                    "Local game translation was skipped: {error:#}"
+                                );
+                                eprintln!("LUNCHBOX_TRANSLATION_SKIPPED: {error:#}");
                                 if let Some(existing) = &mut display_warning {
                                     existing.push_str("; ");
                                     existing.push_str(&warning);
@@ -6592,6 +6620,7 @@ impl qobject::GameDetailsModel {
                     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
                     drop(steam_route);
                     drop(calibrated_session);
+                    drop(translation_session);
                     let status = status.context("waiting for the emulator process")?;
                     let outcome = if probe_terminated {
                         "terminated"

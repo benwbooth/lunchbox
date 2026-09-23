@@ -280,6 +280,7 @@ mod single_instance;
 mod steamgriddb;
 pub mod steamgriddb_model;
 mod tags;
+mod translation;
 mod watched_torrent;
 pub mod watched_torrent_model;
 pub mod web_artwork_model;

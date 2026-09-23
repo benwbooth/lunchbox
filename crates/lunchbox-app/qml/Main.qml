@@ -807,6 +807,7 @@ ApplicationWindow {
              : requestedSettingsSection === "savecloud" ? saveCloudSettingsSection
              : requestedSettingsSection === "emulators" ? emulatorSettingsSection
              : requestedSettingsSection === "controllers" ? controllerSection
+             : requestedSettingsSection === "translation" ? translationSettingsSection
              : null
     }
 
@@ -903,6 +904,9 @@ ApplicationWindow {
         function onController_calibrated_launchChanged() { root.markSettingsDirty() }
         function onController_output_targetChanged() { root.markSettingsDirty() }
         function onController_revisionChanged() { root.markSettingsDirty() }
+        function onTranslation_enabledChanged() { root.markSettingsDirty() }
+        function onTranslation_modelChanged() { root.markSettingsDirty() }
+        function onTranslation_source_languageChanged() { root.markSettingsDirty() }
     }
 
     function openCatalogLink(label, destination) {
@@ -19680,6 +19684,7 @@ ApplicationWindow {
         onOpened: {
             appSettings.refresh_controllers()
             appSettings.refresh_retroarch_shaders()
+            appSettings.check_translation_service()
             library.refresh_couch_themes()
             steamGridDb.initialize()
             igdb.initialize()
@@ -19809,6 +19814,14 @@ ApplicationWindow {
                     SettingsNavButton {
                         text: "RetroArch shaders"
                         onClicked: root.positionSettingsItem(retroarchShaderSection)
+                    }
+                    SettingsNavButton {
+                        text: "Game translation"
+                        active: root.requestedSettingsSection === "translation"
+                        onClicked: {
+                            root.requestedSettingsSection = "translation"
+                            root.positionSettingsItem(translationSettingsSection)
+                        }
                     }
                     SettingsNavButton {
                         text: "Cloud saves & states"
@@ -22246,6 +22259,151 @@ ApplicationWindow {
                                         else
                                             appSettings.install_retroarch_shaders(false)
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    id: translationSettingsSection
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        text: "LOCAL GAME TRANSLATION"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: translationSettingsColumn.implicitHeight + 32
+                        radius: 12
+                        color: "#101823"
+                        border.color: root.line
+
+                        ColumnLayout {
+                            id: translationSettingsColumn
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 12
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Translate RetroArch game screens locally"
+                                color: root.ink
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Requires Ollama running on this computer. Lunchbox sends screenshots only to the local Ollama service and draws English captions over the game. No cloud account is needed."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            Switch {
+                                text: "Enable for RetroArch games"
+                                checked: appSettings.translation_enabled
+                                onToggled: appSettings.translation_enabled = checked
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text {
+                                    text: "Model"
+                                    color: root.ink
+                                    font.pixelSize: 11
+                                }
+                                ComboBox {
+                                    id: translationModelChoice
+                                    Layout.fillWidth: true
+                                    model: ["translategemma:4b", "translategemma:12b", "translategemma:27b"]
+                                    currentIndex: model.indexOf(appSettings.translation_model)
+                                    onActivated: {
+                                        appSettings.translation_model = currentText
+                                        appSettings.check_translation_service()
+                                    }
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: appSettings.translation_model === "translategemma:27b"
+                                      ? "27B: about 17 GB to download; best quality, higher VRAM use."
+                                      : appSettings.translation_model === "translategemma:12b"
+                                        ? "12B: about 8.1 GB to download; recommended starting point."
+                                        : "4B: about 3.3 GB to download; quickest on smaller hardware."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text {
+                                    text: "Source language"
+                                    color: root.ink
+                                    font.pixelSize: 11
+                                }
+                                TextField {
+                                    Layout.fillWidth: true
+                                    text: appSettings.translation_source_language
+                                    placeholderText: "auto, ja, fr, de…"
+                                    onEditingFinished: appSettings.translation_source_language = text.trim()
+                                    Accessible.description: "Use auto or a language code such as ja for Japanese."
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "In a game, press F8 once to start automatic captions; press it again to stop. You can also bind RetroArch's AI Service hotkey to a gamepad button."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: appSettings.translation_status
+                                color: root.accentCool
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            InlineProgressBar {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 7
+                                visible: appSettings.translation_busy || appSettings.translation_progress > 0
+                                from: 0
+                                to: 100
+                                value: appSettings.translation_progress
+                                fillColor: root.accent
+                                trackColor: root.line
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                PaneButton {
+                                    text: "Get Ollama"
+                                    onClicked: Qt.openUrlExternally("https://ollama.com/download")
+                                }
+                                Item { Layout.fillWidth: true }
+                                PaneButton {
+                                    text: "Check Ollama"
+                                    enabled: !appSettings.translation_busy
+                                    onClicked: appSettings.check_translation_service()
+                                }
+                                PaneButton {
+                                    visible: appSettings.translation_busy
+                                    text: "Cancel download"
+                                    onClicked: appSettings.cancel_translation_model()
+                                }
+                                HeaderButton {
+                                    text: "Download selected model"
+                                    active: true
+                                    enabled: !appSettings.translation_busy
+                                    onClicked: appSettings.install_translation_model()
                                 }
                             }
                         }

@@ -353,6 +353,18 @@ require the separate Mega Bezel shader stack. The game viewport is fitted to
 the artwork's 4:3 opening in fullscreen. If fullscreen is explicitly disabled,
 the launch continues without the ultrawide overlay and reports why.
 
+Local game translation is opt-in under Settings → Game translation. Install and
+start [Ollama](https://ollama.com/download) natively on Linux, macOS, or
+Windows (or provide it through Nix on NixOS), then use Lunchbox to check the
+local service and explicitly download a TranslateGemma 4B, 12B, or 27B model.
+For RetroArch launches, Lunchbox starts a session-only loopback bridge for
+RetroArch's [AI Service](https://docs.libretro.com/guides/ai-service/) and
+returns a transparent English caption overlay. Press F8 once in-game to start
+automatic translation and again to stop; RetroArch's AI Service gamepad hotkey
+can also be bound. Screenshots are not persisted or sent to a cloud endpoint.
+The feature does not patch ROMs or affect standalone emulators, and it leaves
+game launch available when Ollama or the chosen model is missing.
+
 Game Details also keeps file management separate from launching. `Open Folder`
 uses Qt's native URL handling on Linux, macOS, and Windows. New acquisitions
 record every installed plan member with its lossless native path, file type,

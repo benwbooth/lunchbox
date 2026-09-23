@@ -94,6 +94,7 @@ pub struct AppSettings {
     pub version_preference: String,
     pub media_provider_priority: Vec<String>,
     pub controller_mapping: ControllerMappingSettings,
+    pub translation: crate::translation::TranslationSettings,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -136,6 +137,7 @@ impl Default for AppSettings {
             version_preference: "latest".to_owned(),
             media_provider_priority: crate::media::default_provider_priority(),
             controller_mapping: ControllerMappingSettings::default(),
+            translation: crate::translation::TranslationSettings::default(),
         }
     }
 }
@@ -1468,6 +1470,7 @@ impl AppSettings {
             );
         }
         self.controller_mapping.validate()?;
+        self.translation.validate()?;
         Ok(())
     }
 
@@ -2779,7 +2782,7 @@ impl SettingsStore {
                         file_link_mode, seeding_policy,
                         preferred_region, version_preference, region_priority_json,
                         controller_mapping_json, media_provider_priority_json,
-                        onboarding_complete, minimize_during_game
+                        onboarding_complete, minimize_during_game, translation_json
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
@@ -2827,6 +2830,15 @@ impl SettingsStore {
                                 Box::new(error),
                             )
                         })?,
+                        translation: serde_json::from_str(&row.get::<_, String>(20)?).map_err(
+                            |error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    20,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(error),
+                                )
+                            },
+                        )?,
                     })
                 },
             )
@@ -2860,8 +2872,8 @@ impl SettingsStore {
                  file_link_mode, seeding_policy,
                  preferred_region, version_preference, region_priority_json,
                  controller_mapping_json, media_provider_priority_json,
-                 onboarding_complete, minimize_during_game
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                 onboarding_complete, minimize_during_game, translation_json
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -2882,7 +2894,8 @@ impl SettingsStore {
                  controller_mapping_json=excluded.controller_mapping_json,
                  media_provider_priority_json=excluded.media_provider_priority_json,
                  onboarding_complete=excluded.onboarding_complete,
-                 minimize_during_game=excluded.minimize_during_game",
+                 minimize_during_game=excluded.minimize_during_game,
+                 translation_json=excluded.translation_json",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -2907,6 +2920,8 @@ impl SettingsStore {
                     .context("encoding media provider priority")?,
                 settings.onboarding_complete,
                 settings.minimize_during_game,
+                serde_json::to_string(&settings.translation)
+                    .context("encoding translation settings")?,
             ],
         )?;
         transaction.commit()?;
@@ -6419,7 +6434,8 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              minimize_during_game INTEGER NOT NULL DEFAULT 0 CHECK (
                  minimize_during_game IN (0, 1)
-             )
+             ),
+             translation_json TEXT NOT NULL DEFAULT '{}'
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -7684,6 +7700,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "app_settings", "minimize_during_game")? {
         connection.execute(
             "ALTER TABLE app_settings ADD COLUMN minimize_during_game INTEGER NOT NULL DEFAULT 0 CHECK (minimize_during_game IN (0, 1))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "app_settings", "translation_json")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN translation_json TEXT NOT NULL DEFAULT '{}'",
             [],
         )?;
     }
@@ -9426,6 +9448,11 @@ name"
                     }],
                 }],
                 ..ControllerMappingSettings::default()
+            },
+            translation: crate::translation::TranslationSettings {
+                enabled: true,
+                model: "translategemma:27b".into(),
+                source_language: "ja".into(),
             },
         };
         store.save(&expected).unwrap();
@@ -12709,6 +12736,10 @@ identity"
         assert_eq!(settings.preferred_region, "USA");
         assert!(settings.region_priority.is_empty());
         assert_eq!(settings.version_preference, "latest");
+        assert_eq!(
+            settings.translation,
+            crate::translation::TranslationSettings::default()
+        );
         assert!(settings.watched_torrent_directory.as_os_str().is_empty());
         assert!(
             settings
@@ -12734,6 +12765,7 @@ identity"
         );
         assert!(column_exists(&connection, "app_settings", "onboarding_complete").unwrap());
         assert!(column_exists(&connection, "app_settings", "minimize_during_game").unwrap());
+        assert!(column_exists(&connection, "app_settings", "translation_json").unwrap());
         assert!(column_exists(&connection, "sidebar_preferences", "details_width").unwrap());
         assert!(
             column_exists(
