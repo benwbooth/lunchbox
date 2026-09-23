@@ -68,10 +68,22 @@ TestCase {
             }
             function save_guided_controller_mapping(id, profile, choices, expected) {
                 if (failure) return failure
+                if (controller_calibration_json(id) !== expected) return "Controller setup changed"
                 const next=Object.assign({},guidedMappings); next[id]={profile:profile,choices:JSON.parse(choices)}; guidedMappings=next
+                const calibration=JSON.parse(controller_calibration_json(id))
+                calibration.target_mappings=Object.assign({},calibration.target_mappings)
+                calibration.target_mappings[profile]=JSON.parse(choices)
+                const updated=Object.assign({},calibrations); updated[id]=calibration; calibrations=updated
+                controller_revision++
                 return ""
             }
-            function guided_controller_preview(id, target, choices) { return '{"rows":[],"error":""}' }
+            function guided_controller_preview(id, target, choices) {
+                if (!id || !target) return '{"rows":[],"error":""}'
+                return JSON.stringify({rows:[
+                    {physical_id:"b",physical:"B",target_id:"b",target:"B",reason:"Mapped"},
+                    {physical_id:"a",physical:"A",target_id:"a",target:"A",reason:"Mapped"}
+                ], twins:[], error:""})
+            }
             function controller_diagram(layout, active) { return "" }
             function validate_controller_capture(layout, control, binding) { return "" }
         }
@@ -146,6 +158,41 @@ TestCase {
         compare(workflow.selectedProfile,"nes-target")
         compare(workflow.mappingScope,
             "all games on Nintendo Entertainment System using RetroArch (fceumm)")
+    }
+    function test_save_keeps_preview_and_selected_wire_stable() {
+        workflow.startForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)")
+        workflow.assignPlayer(0,"brawler")
+        workflow.stage=1
+        verify(workflow.saveTarget("nes-target"))
+        workflow.stage=2
+        const mapping=findChild(workflow,"guidedMappingView")
+        const saveButton=findChild(workflow,"savePlayerMapping")
+        verify(mapping !== null)
+        verify(saveButton !== null)
+        compare(workflow.preview.rows.length,2)
+        workflow.choices={a:"a"}
+        workflow.dirty=true
+        workflow.generate()
+        mapping.chooseControl(1,"a")
+        compare(mapping.selected.target_id,"a")
+        const preview=workflow.preview
+        saveButton.clicked()
+        compare(workflow.status,
+            "Player 1 mapping saved for all games on Nintendo Entertainment System using RetroArch (fceumm).")
+        compare(workflow.preview,preview)
+        compare(mapping.selected.target_id,"a")
+        compare(workflow.calibrationBaseline,settings.controller_calibration_json("brawler"))
+        verify(!workflow.dirty)
+        wait(100)
+        compare(workflow.preview,preview)
+        compare(mapping.selected.target_id,"a")
+        saveButton.clicked()
+        compare(workflow.preview,preview)
+        compare(mapping.selected.target_id,"a")
+        workflow.choices={b:"a"}
+        workflow.loadMapping()
+        compare(workflow.choices.a,"a")
+        verify(workflow.choices.b === undefined)
     }
     function test_duplicate_assignment_and_save_failure_do_not_change_players() {
         workflow.assignPlayer(0,"brawler"); workflow.addPlayer()

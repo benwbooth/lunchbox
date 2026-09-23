@@ -428,7 +428,7 @@ ColumnLayout {
             currentIndex: setup.selectedPlayer; enabled: !setup.dirty
             onActivated: { setup.selectedPlayer = currentIndex; setup.selectDevice(setup.playerDevices[currentIndex]) }
         }
-        ControllerMappingView { id: mapping; Layout.fillWidth: true; settingsModel: setup.settingsModel; sourceLayout: setup.sourceLayout; destinationLayout: setup.targetLayout; rows: setup.preview.rows || []; twinRoutes: setup.preview.twins || []; simple: true }
+        ControllerMappingView { id: mapping; objectName: "guidedMappingView"; Layout.fillWidth: true; settingsModel: setup.settingsModel; sourceLayout: setup.sourceLayout; destinationLayout: setup.targetLayout; rows: setup.preview.rows || []; twinRoutes: setup.preview.twins || []; simple: true }
         Label {
             Layout.fillWidth: true; wrapMode: Text.WordWrap
             text: setup.preview.error || (setup.missing ? setup.missing + " required controls need an assignment." : "All required target controls have an assignment.")
@@ -466,13 +466,21 @@ ColumnLayout {
             Button { text: "Reset to automatic"; onClicked: { setup.choices = ({}); setup.generate(); setup.dirty = true } }
             Button { text: "Discard changes"; visible: setup.dirty; onClicked: setup.loadMapping() }
             Button {
+                objectName: "savePlayerMapping"
                 text: "Save Player " + (setup.selectedPlayer + 1) + " for system"; highlighted: true
                 Accessible.description: "Save this controller mapping for " + setup.mappingScope
                 enabled: !setup.settingsModel.busy && !setup.preview.error && setup.preview.rows.length > 0 && setup.missing === 0
                 onClicked: {
                     const error = setup.settingsModel.save_guided_controller_mapping(setup.selectedDevice, setup.selectedProfile, JSON.stringify(setup.choices), setup.calibrationBaseline)
                     if (error) setup.status = error
-                    else { setup.selectDevice(setup.selectedDevice); setup.status = "Player " + (setup.selectedPlayer + 1) + " mapping saved for " + setup.mappingScope + "." }
+                    else {
+                        // The preview already shows these exact choices. Rebuilding it here
+                        // resets selection and repaints the diagram beneath the pointer.
+                        setup.calibrationBaseline = setup.settingsModel.controller_calibration_json(setup.selectedDevice)
+                        setup.calibration = JSON.parse(setup.calibrationBaseline)
+                        setup.dirty = false
+                        setup.status = "Player " + (setup.selectedPlayer + 1) + " mapping saved for " + setup.mappingScope + "."
+                    }
                 }
             }
         }
