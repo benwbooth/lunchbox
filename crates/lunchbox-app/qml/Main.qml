@@ -3675,18 +3675,31 @@ ApplicationWindow {
                           : "Syncing save data with the cloud…"
                 root.saveSyncToastGood = false
                 saveSyncToastHideTimer.stop()
-            } else if (saveSync.status === "complete"
-                       || saveSync.status === "skipped") {
-                root.saveSyncToast = saveSync.status === "complete"
-                        ? "Save data synced ✓ "
-                          + Qt.formatDateTime(new Date(), "h:mm ap")
-                        : "Save data checked — no changes"
+            } else if (saveSync.status === "complete") {
+                root.saveSyncToast = "Save backup synchronized ✓ "
+                        + Qt.formatDateTime(new Date(), "h:mm ap")
                 root.saveSyncToastGood = true
                 saveSyncToastHideTimer.restart()
-                root.rememberNotification(
-                            (gameDetails.title.length > 0 ? gameDetails.title + ": " : "")
-                            + (saveSync.operation === "post_exit" ? "After play: " : "")
-                            + saveSync.message, true)
+                if (saveSync.operation === "post_exit"
+                        && saveSync.provider === "local_folder"
+                        && saveSync.local_folder_root.length > 0) {
+                    const destination = saveSync.local_folder_root + "/saves"
+                    root.saveFileToast = gameDetails.title
+                            + ": Save backup synchronized to " + destination
+                            + " (versioned files)"
+                    root.saveFileToastGood = true
+                    saveFileToastHideTimer.restart()
+                    root.rememberNotification(root.saveFileToast, true)
+                } else {
+                    root.rememberNotification(
+                                (gameDetails.title.length > 0 ? gameDetails.title + ": " : "")
+                                + (saveSync.operation === "post_exit" ? "After play: " : "")
+                                + saveSync.message, true)
+                }
+            } else if (saveSync.status === "skipped") {
+                root.saveSyncToast = saveSync.message
+                root.saveSyncToastGood = false
+                saveSyncToastHideTimer.restart()
             }
             if (saveSync.status === "conflicts") {
                 saveSyncConflictDialog.open()
@@ -3697,6 +3710,13 @@ ApplicationWindow {
                 return
             }
             if (saveSync.status === "error") {
+                if (saveSync.operation === "post_exit") {
+                    root.saveFileToast = gameDetails.title
+                            + ": Saved locally, but backup failed: " + saveSync.message
+                    root.saveFileToastGood = false
+                    saveFileToastHideTimer.restart()
+                    root.rememberNotification(root.saveFileToast, false)
+                }
                 root.cloudSyncError = saveSync.message
                 cloudSyncErrorDialog.open()
                 return

@@ -87,14 +87,14 @@ impl AutoSaveObservation {
             return None;
         }
         let state = if state_saved {
-            format!("save state saved to {}", self.state.display())
+            "save state written locally for RetroArch".to_owned()
         } else if self.auto_state_save_enabled {
             "save state not updated".to_owned()
         } else {
             "automatic save state disabled".to_owned()
         };
         let sram = if sram_saved {
-            format!("saved RAM written to {}", self.sram.display())
+            "saved RAM written locally for RetroArch".to_owned()
         } else if self.sram_before.is_some() {
             "saved RAM not updated".to_owned()
         } else {
@@ -284,8 +284,10 @@ mod tests {
         fs::write(&sram, b"sram").unwrap();
         let (notice, success) = observation.exit_notice().unwrap();
         assert!(success);
-        assert!(notice.contains(&format!("save state saved to {}", state.display())));
-        assert!(notice.contains(&format!("saved RAM written to {}", sram.display())));
+        assert_eq!(
+            notice,
+            "save state written locally for RetroArch; saved RAM written locally for RetroArch"
+        );
         observation.state_before = modified(&state);
         observation.sram_before = modified(&sram);
         assert_eq!(
@@ -317,10 +319,7 @@ mod tests {
         assert_eq!(
             observation.exit_notice(),
             Some((
-                format!(
-                    "save state saved to {}; no saved RAM file created",
-                    state.display()
-                ),
+                "save state written locally for RetroArch; no saved RAM file created".into(),
                 true
             ))
         );
