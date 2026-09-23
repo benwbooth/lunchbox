@@ -381,11 +381,14 @@ fn needs_widget_application(
 
 pub fn run() -> i32 {
     if std::env::args().any(|arg| arg == "--sdl3-display-inspect") {
-        return match lunchbox_controller_probe::live_sdl3::primary_display_pixels(
+        return match lunchbox_controller_probe::live_sdl3::primary_display_metrics(
             &controller_sdl3::runtime_path(),
         ) {
-            Ok((width, height)) => {
-                println!("{width}x{height}");
+            Ok(metrics) => {
+                println!(
+                    "{}x{}@{}@{}",
+                    metrics.width, metrics.height, metrics.pixel_density, metrics.video_driver
+                );
                 0
             }
             Err(error) => {

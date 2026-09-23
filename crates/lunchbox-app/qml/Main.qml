@@ -8835,19 +8835,10 @@ ApplicationWindow {
                         gameVideoPlayer.play()
                 }
             }
-            Slider {
+            VideoSeekSlider {
                 id: fullscreenPosition
+                mediaPlayer: gameVideoPlayer
                 Layout.fillWidth: true
-                from: 0
-                to: Math.max(1, gameVideoPlayer.duration)
-                onMoved: {
-                    if (gameVideoPlayer.seekable)
-                        gameVideoPlayer.position = value
-                }
-                Binding on value {
-                    when: !fullscreenPosition.pressed
-                    value: gameVideoPlayer.position
-                }
             }
             Text {
                 Layout.preferredWidth: 112
@@ -13162,19 +13153,10 @@ ApplicationWindow {
                                         }
                                     }
 
-                                    Slider {
+                                    VideoSeekSlider {
                                         id: videoPosition
+                                        mediaPlayer: gameVideoPlayer
                                         Layout.fillWidth: true
-                                        from: 0
-                                        to: Math.max(1, gameVideoPlayer.duration)
-                                        onMoved: {
-                                            if (gameVideoPlayer.seekable)
-                                                gameVideoPlayer.position = value
-                                        }
-                                        Binding on value {
-                                            when: !videoPosition.pressed
-                                            value: gameVideoPlayer.position
-                                        }
                                         background: Rectangle {
                                             x: videoPosition.leftPadding
                                             y: videoPosition.topPadding

@@ -48,7 +48,14 @@ struct DisplayMode {
 /// Query the host's current primary display mode without creating a window.
 /// This runs in a short-lived helper process because SDL's video API requires
 /// its process main thread, while Lunchbox prepares launches on a worker.
-pub fn primary_display_pixels(path: &Path) -> Result<(u32, u32)> {
+pub struct DisplayMetrics {
+    pub width: u32,
+    pub height: u32,
+    pub pixel_density: f32,
+    pub video_driver: String,
+}
+
+pub fn primary_display_metrics(path: &Path) -> Result<DisplayMetrics> {
     const SDL_INIT_VIDEO: u32 = 0x0000_0020;
     unsafe {
         let library = Library::new(path).context("Loading SDL3 display runtime")?;
@@ -56,6 +63,8 @@ pub fn primary_display_pixels(path: &Path) -> Result<(u32, u32)> {
         let init = *library.get::<unsafe extern "C" fn(u32) -> bool>(b"SDL_InitSubSystem\0")?;
         let quit = *library.get::<unsafe extern "C" fn(u32)>(b"SDL_QuitSubSystem\0")?;
         let primary = *library.get::<unsafe extern "C" fn() -> u32>(b"SDL_GetPrimaryDisplay\0")?;
+        let video_driver = *library
+            .get::<unsafe extern "C" fn() -> *const c_char>(b"SDL_GetCurrentVideoDriver\0")?;
         let mode = *library.get::<unsafe extern "C" fn(u32) -> *const DisplayMode>(
             b"SDL_GetCurrentDisplayMode\0",
         )?;
@@ -99,7 +108,12 @@ pub fn primary_display_pixels(path: &Path) -> Result<(u32, u32)> {
                 && height <= f64::from(u32::MAX),
             "SDL3 display pixels are out of range"
         );
-        Ok((width as u32, height as u32))
+        Ok(DisplayMetrics {
+            width: width as u32,
+            height: height as u32,
+            pixel_density: mode.pixel_density,
+            video_driver: super::string(video_driver())?.unwrap_or_default(),
+        })
     }
 }
 

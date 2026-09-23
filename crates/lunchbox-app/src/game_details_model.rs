@@ -1664,7 +1664,11 @@ fn display_value_labels(
             if base_value("input_overlay_enable").as_deref() == Some("true")
                 && base_value("input_overlay").is_some_and(|path| !path.is_empty())
             {
-                "RetroArch overlay".to_owned()
+                match crate::display_setup::inherited_ultrawide_bezel(&option.executable) {
+                    Some("ultrawide-night") => "Duimon ultrawide night (RetroArch)".to_owned(),
+                    Some(_) => "Duimon ultrawide (RetroArch)".to_owned(),
+                    None => "RetroArch overlay".to_owned(),
+                }
             } else {
                 "Off (RetroArch default)".to_owned()
             }

@@ -148,6 +148,7 @@ fn main() {
                 "qml/RomDownloadStatus.qml",
                 "qml/RomScanScheduleCard.qml",
                 "qml/RetryingMediaPlayer.qml",
+                "qml/VideoSeekSlider.qml",
                 "qml/ReleaseFilterPanel.qml",
                 "qml/ScreenScraperSettings.qml",
                 "qml/SaveCloudSettings.qml",

@@ -344,6 +344,36 @@ fn config_value_from_text(text: &str, wanted_key: &str) -> Option<String> {
     result
 }
 
+/// RetroArch can retain a custom viewport from a previous bezel session.
+/// When its inherited overlay is one of Lunchbox's Duimon 21:9 overlays,
+/// rebuild that viewport for this launch instead of inheriting stale pixels.
+pub(crate) fn inherited_ultrawide_bezel(executable: &EmulatorExecutable) -> Option<&'static str> {
+    let config =
+        fs::read_to_string(retroarch_config_base(executable)?.join("retroarch.cfg")).ok()?;
+    ultrawide_bezel_from_retroarch_config(&config)
+}
+
+fn ultrawide_bezel_from_retroarch_config(config: &str) -> Option<&'static str> {
+    if config_value_from_text(config, "input_overlay_enable").as_deref() != Some("true") {
+        return None;
+    }
+    let overlay = config_value_from_text(config, "input_overlay")?;
+    let path = Path::new(&overlay);
+    if !path
+        .components()
+        .any(|part| part.as_os_str() == "duimon-ultrawide")
+        || path.extension().and_then(|part| part.to_str()) != Some("cfg")
+    {
+        return None;
+    }
+    let name = path.file_stem()?.to_str()?.to_ascii_lowercase();
+    Some(if name.contains("night") {
+        "ultrawide-night"
+    } else {
+        "ultrawide"
+    })
+}
+
 fn slang_driver_override(executable: &EmulatorExecutable) -> Option<&'static str> {
     slang_driver_override_for(user_video_driver(executable).as_deref())
 }
@@ -394,6 +424,12 @@ pub fn attach_launch_display_configuration(
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
     let mut black_sidebars = false;
+    let inherited_bezel = customization
+        .display_bezel
+        .is_empty()
+        .then(|| inherited_ultrawide_bezel(executable))
+        .flatten();
+    let display_bezel = inherited_bezel.unwrap_or(&customization.display_bezel);
     match customization.display_fullscreen.as_str() {
         "true" | "false" => {
             lines.push_str(&format!(
@@ -403,14 +439,12 @@ pub fn attach_launch_display_configuration(
         }
         _ => {}
     }
-    if customization.display_bezel == "off" {
+    if display_bezel == "off" {
         lines.push_str("input_overlay_enable = \"false\"\n");
-    } else if !customization.display_bezel.is_empty() {
-        let ultrawide = matches!(
-            customization.display_bezel.as_str(),
-            "ultrawide" | "ultrawide-night"
-        );
-        let selected = match customization.display_bezel.as_str() {
+        lines.push_str("aspect_ratio_index = \"22\"\n");
+    } else if !display_bezel.is_empty() {
+        let ultrawide = matches!(display_bezel, "ultrawide" | "ultrawide-night");
+        let selected = match display_bezel {
             "system" => crate::bezel_project::system_bezel_overlay(platform, rom_stem),
             "themed" => crate::bezel_project::bezel_overlay(
                 platform,
@@ -431,12 +465,14 @@ pub fn attach_launch_display_configuration(
         match selected.and_then(|overlay| {
             overlay
                 .map(|path| {
-                    // Qt's reported device-pixel size and RetroArch's GL
-                    // backing surface can both be scaled again on fractional
-                    // displays. Match the monitor resolution used to place
-                    // the full-screen overlay instead.
+                    // Custom viewports use RetroArch's render-buffer pixels;
+                    // this can differ from the monitor mode under fractional
+                    // scaling. The overlay itself remains full-screen.
                     let dimensions = if ultrawide {
-                        Some(probe_host_output_dimensions(output_dimensions)?)
+                        Some(probe_retroarch_output_dimensions(
+                            executable,
+                            output_dimensions,
+                        )?)
                     } else {
                         output_dimensions
                     };
@@ -486,10 +522,12 @@ pub fn attach_launch_display_configuration(
             }
             Ok(None) => {
                 lines.push_str("input_overlay_enable = \"false\"\n");
+                lines.push_str("aspect_ratio_index = \"22\"\n");
                 warnings.push("The selected bezel source has no artwork for this game or system, so the game started without one".to_owned());
             }
             Err(error) => {
                 lines.push_str("input_overlay_enable = \"false\"\n");
+                lines.push_str("aspect_ratio_index = \"22\"\n");
                 warnings.push(format!(
                     "The selected bezel could not be prepared: {error:#}"
                 ));
@@ -579,10 +617,15 @@ pub fn attach_launch_display_configuration(
     }
 }
 
-/// SDL3 reads the native mode without creating a window. The short-lived
-/// helper owns SDL's video subsystem on its process main thread. Qt's rounded
-/// device-pixel ratio cannot be used for the custom viewport on this host.
-fn probe_host_output_dimensions(qt_dimensions: Option<(u32, u32)>) -> Result<(u32, u32)> {
+/// SDL3 reads the native mode and content scale without creating a window.
+/// RetroArch's Wayland context currently applies that scale once more to its
+/// GL backing surface, so custom viewport pixels must use the same units.
+/// Other contexts use the native mode directly. No host-specific DPI is baked
+/// into the launch profile or the artwork.
+fn probe_retroarch_output_dimensions(
+    executable: &EmulatorExecutable,
+    qt_dimensions: Option<(u32, u32)>,
+) -> Result<(u32, u32)> {
     let output = Command::new(std::env::current_exe()?)
         .arg("--sdl3-display-inspect")
         .env(
@@ -596,8 +639,9 @@ fn probe_host_output_dimensions(qt_dimensions: Option<(u32, u32)>) -> Result<(u3
         "SDL3 display query failed: {}",
         String::from_utf8_lossy(&output.stderr).trim()
     );
-    let dimensions = parse_sdl3_display_dimensions(&String::from_utf8(output.stdout)?)
+    let metrics = parse_sdl3_display_metrics(&String::from_utf8(output.stdout)?)
         .context("SDL3 did not report its display mode")?;
+    let dimensions = (metrics.width, metrics.height);
     if let Some((width, height)) = qt_dimensions {
         let qt_aspect = f64::from(width) / f64::from(height);
         let sdl_aspect = f64::from(dimensions.0) / f64::from(dimensions.1);
@@ -606,14 +650,60 @@ fn probe_host_output_dimensions(qt_dimensions: Option<(u32, u32)>) -> Result<(u3
             "The primary display differs from Lunchbox's current screen; 21:9 artwork was skipped"
         );
     }
-    Ok(dimensions)
+    let context = retroarch_config_value(executable, "video_context_driver");
+    let scale = retroarch_render_scale(
+        &metrics.video_driver,
+        context.as_deref(),
+        metrics.pixel_density,
+    );
+    scaled_display_dimensions(dimensions, scale)
+        .context("RetroArch's render size could not be determined")
 }
 
-fn parse_sdl3_display_dimensions(report: &str) -> Option<(u32, u32)> {
-    let (width, height) = report.trim().split_once('x')?;
+struct Sdl3DisplayMetrics {
+    width: u32,
+    height: u32,
+    pixel_density: f32,
+    video_driver: String,
+}
+
+fn parse_sdl3_display_metrics(report: &str) -> Option<Sdl3DisplayMetrics> {
+    let (dimensions, remainder) = report.trim().split_once('@')?;
+    let (density, video_driver) = remainder.split_once('@')?;
+    let (width, height) = dimensions.split_once('x')?;
     let width: u32 = width.parse().ok()?;
     let height: u32 = height.parse().ok()?;
-    (width > 0 && height > 0).then_some((width, height))
+    let pixel_density: f32 = density.parse().ok()?;
+    (width > 0 && height > 0 && pixel_density.is_finite() && pixel_density > 0.0).then(|| {
+        Sdl3DisplayMetrics {
+            width,
+            height,
+            pixel_density,
+            video_driver: video_driver.to_owned(),
+        }
+    })
+}
+
+fn scaled_display_dimensions(dimensions: (u32, u32), scale: f32) -> Option<(u32, u32)> {
+    let width = (f64::from(dimensions.0) * f64::from(scale)).round();
+    let height = (f64::from(dimensions.1) * f64::from(scale)).round();
+    (width.is_finite()
+        && height.is_finite()
+        && width > 0.0
+        && height > 0.0
+        && width <= f64::from(u32::MAX)
+        && height <= f64::from(u32::MAX))
+    .then_some((width as u32, height as u32))
+}
+
+fn retroarch_render_scale(video_driver: &str, context: Option<&str>, density: f32) -> f32 {
+    if video_driver == "wayland"
+        && context.is_none_or(|value| value.is_empty() || value == "wayland")
+    {
+        density
+    } else {
+        1.0
+    }
 }
 
 /// Place fixed-aspect artwork inside a wider (or taller) output without
@@ -804,14 +894,24 @@ mod tests {
 
     #[test]
     fn windowless_display_query_uses_native_pixels() {
-        let dimensions = parse_sdl3_display_dimensions("5120x2160\n");
-        assert_eq!(dimensions, Some((5120, 2160)));
-        assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
+        let metrics = parse_sdl3_display_metrics("5120x2160@1.3@wayland\n").unwrap();
+        assert_eq!((metrics.width, metrics.height), (5120, 2160));
+        assert_eq!(metrics.video_driver, "wayland");
         assert_eq!(
-            parse_sdl3_display_dimensions("1920x1080"),
+            scaled_display_dimensions((5120, 2160), metrics.pixel_density),
+            Some((6656, 2808))
+        );
+        assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
+        assert_eq!(ultrawide_viewport(6656, 2808), Some((0, 0, 3084, 2309)));
+        assert_eq!(
+            scaled_display_dimensions((1920, 1080), 1.0),
             Some((1920, 1080))
         );
-        assert_eq!(parse_sdl3_display_dimensions("no video output"), None);
+        assert_eq!(retroarch_render_scale("wayland", Some(""), 1.3), 1.3);
+        assert_eq!(retroarch_render_scale("wayland", Some("x"), 1.3), 1.0);
+        assert_eq!(retroarch_render_scale("x11", Some(""), 1.3), 1.0);
+        assert_eq!(retroarch_render_scale("windows", None, 1.5), 1.0);
+        assert!(parse_sdl3_display_metrics("no video output").is_none());
     }
 
     #[test]
@@ -874,6 +974,30 @@ mod tests {
         let (x, y, width, height) = ultrawide_viewport(1920, 1080).unwrap();
         assert_eq!((x, y), (0, 0));
         assert!(width < 1920 && height < 1080);
+    }
+
+    #[test]
+    fn inherited_duimon_overlay_rebuilds_the_ultrawide_viewport() {
+        let config = "input_overlay_enable = \"true\"\ninput_overlay = \"~/.local/share/lunchbox/bezels/duimon-ultrawide/Nintendo_SNES/SNES.cfg\"\ncustom_viewport_x = \"2114\"\n";
+        assert_eq!(
+            ultrawide_bezel_from_retroarch_config(config),
+            Some("ultrawide")
+        );
+        assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
+        assert_eq!(
+            ultrawide_bezel_from_retroarch_config(&config.replace("SNES.cfg", "NES_Night.cfg")),
+            Some("ultrawide-night")
+        );
+        assert_eq!(
+            ultrawide_bezel_from_retroarch_config(&config.replace("= \"true\"", "= \"false\"")),
+            None
+        );
+        assert_eq!(
+            ultrawide_bezel_from_retroarch_config(
+                &config.replace("duimon-ultrawide", "other-pack")
+            ),
+            None
+        );
     }
 
     #[test]
