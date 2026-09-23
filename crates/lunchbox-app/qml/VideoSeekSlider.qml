@@ -8,6 +8,9 @@ Slider {
 
     from: 0
     to: mediaPlayer ? Math.max(1, mediaPlayer.duration) : 1
+    // Custom 4px tracks and 12px handles have no implicit size. Without a
+    // minimum, RowLayout collapses the styled details slider to zero height.
+    implicitHeight: 36
     enabled: mediaPlayer && mediaPlayer.seekable && mediaPlayer.duration > 0
     Accessible.name: "Video position"
 
