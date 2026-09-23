@@ -8,6 +8,7 @@ TestCase {
     when: windowShown
     width: 1100; height: 900
     ApplicationWindow {
+        id: appWindow
         visible: true; width: 1100; height: 900
         QtObject {
             id: settings
@@ -124,6 +125,7 @@ TestCase {
         Lunchbox.ControllerLayoutExplorer { id: explorer; settingsModel: settings; gamepad: pad }
     }
     function init() {
+        appWindow.height=900
         workflow.dirty=false; workflow.stage=0; workflow.setupResults=({})
         settings.ids=["sc2","brawler","unknown","steam-virtual"]
         settings.order=[]; settings.calibrations={brawler:settings.complete()}; settings.models=({})
@@ -244,6 +246,22 @@ TestCase {
         wait(600)
         compare(scroll.availableWidth,width)
         verify(spy.count < 5,"Dialog scroll width kept changing: " + spy.count)
+    }
+    function test_review_uses_tall_screen_without_exceeding_small_screen() {
+        appWindow.height=1600
+        explorer.openForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        const nested=findChild(explorer,"controllerSetupWorkflow")
+        const scroll=findChild(explorer,"controllerSetupScroll")
+        verify(nested)
+        tryCompare(explorer,"height",900)
+        nested.assignPlayer(0,"brawler")
+        verify(nested.saveTarget("nes-target"))
+        nested.stage=2
+        tryCompare(explorer,"height",1400)
+        verify(scroll.contentHeight <= scroll.height,
+               "Review still needs scrolling: " + scroll.contentHeight + " > " + scroll.height)
+        appWindow.height=800
+        tryCompare(explorer,"height",760)
     }
     Component {
         id: widthSpyComponent

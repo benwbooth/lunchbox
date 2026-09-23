@@ -10,7 +10,10 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     width: Math.min(1100, parent ? parent.width - 40 : 1100)
-    height: Math.min(900, parent ? parent.height - 40 : 900)
+    // The review step includes two diagrams and mapping controls; use the
+    // available screen height so its actions are visible without a long scroll.
+    height: Math.min(workflow.stage === 2 ? 1400 : 900,
+                     parent ? parent.height - 40 : 900)
     padding: 24
     modal: true
     closePolicy: Popup.NoAutoClose
