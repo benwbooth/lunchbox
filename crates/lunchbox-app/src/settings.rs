@@ -7215,7 +7215,7 @@ fn migrate(connection: &Connection) -> Result<()> {
                  CHECK (display_fullscreen IN ('', 'true', 'false')),
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
-                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain')),
+                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night')),
              save_states TEXT NOT NULL DEFAULT ''
                  CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
@@ -7656,7 +7656,7 @@ fn emulator_launch_profiles_supports_bezel_choices(connection: &Connection) -> R
         [],
         |row| row.get(0),
     )?;
-    Ok(definition.contains("'orionsangel-plain'"))
+    Ok(definition.contains("'ultrawide-night'"))
 }
 
 // Existing databases carry a CHECK that demands a non-empty argument or
@@ -7694,7 +7694,7 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
                  CHECK (display_fullscreen IN ('', 'true', 'false')),
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
-                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain')),
+                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night')),
              save_states TEXT NOT NULL DEFAULT ''
                  CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
@@ -8539,7 +8539,8 @@ fn validate_display_profile_values(
         other => bail!("unknown fullscreen display setting: {other}"),
     }
     match display_bezel {
-        "" | "off" | "system" | "themed" | "orionsangel" | "orionsangel-plain" => {}
+        "" | "off" | "system" | "themed" | "orionsangel" | "orionsangel-plain" | "ultrawide"
+        | "ultrawide-night" => {}
         other => bail!("unknown bezel display setting: {other}"),
     }
     match save_states {
@@ -11287,7 +11288,7 @@ identity"
     }
 
     #[test]
-    fn existing_save_states_survive_the_new_bezel_choices_migration() {
+    fn existing_bezel_and_save_states_survive_ultrawide_migration() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.db");
         {
@@ -11305,7 +11306,7 @@ identity"
                          display_fullscreen TEXT NOT NULL DEFAULT '',
                          display_shader TEXT NOT NULL DEFAULT '',
                          display_bezel TEXT NOT NULL DEFAULT ''
-                             CHECK (display_bezel IN ('', 'off', 'system')),
+                             CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain')),
                          save_states TEXT NOT NULL DEFAULT ''
                              CHECK (save_states IN ('', 'off', 'on')),
                          updated_at INTEGER NOT NULL,
@@ -11317,7 +11318,7 @@ identity"
                          scope_kind, scope_key, emulator_id, runtime_kind, core_name,
                          display_bezel, save_states, updated_at
                      ) VALUES ('game', 'game-id', 'snes-id', 'retroarch', 'snes9x',
-                               'system', 'on', 7);",
+                               'orionsangel', 'on', 7);",
                 )
                 .unwrap();
         }
@@ -11326,7 +11327,7 @@ identity"
             .emulator_launch_profile("game", "game-id", "snes-id", "retroarch", "snes9x")
             .unwrap()
             .unwrap();
-        assert_eq!(profile.display_bezel, "system");
+        assert_eq!(profile.display_bezel, "orionsangel");
         assert_eq!(profile.save_states, "on");
         store
             .set_emulator_launch_profile(&EmulatorLaunchProfile {
@@ -11335,11 +11336,17 @@ identity"
                 emulator_id: "snes-id".into(),
                 runtime_kind: "retroarch".into(),
                 core_name: "snes9x".into(),
-                display_bezel: "orionsangel".into(),
+                display_bezel: "ultrawide-night".into(),
                 save_states: "on".into(),
                 ..EmulatorLaunchProfile::default()
             })
             .unwrap();
+        let updated = store
+            .emulator_launch_profile("game", "game-id", "snes-id", "retroarch", "snes9x")
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.display_bezel, "ultrawide-night");
+        assert_eq!(updated.save_states, "on");
     }
 
     #[test]

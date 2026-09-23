@@ -215,6 +215,8 @@ impl LaunchProfileRow {
                 "system" => "Bezel Project system art",
                 "themed" => "Bezel Project game art",
                 "orionsangel" | "orionsangel-plain" => "Orionsangel console art",
+                "ultrawide" => "Duimon 21:9 art",
+                "ultrawide-night" => "Duimon 21:9 night art",
                 _ => "Custom bezel",
             });
         }

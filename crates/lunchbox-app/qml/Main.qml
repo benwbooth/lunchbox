@@ -2175,8 +2175,10 @@ ApplicationWindow {
 
     GameDetailsModel {
         id: gameDetails
-        display_output_width: root.screen ? root.screen.width : 0
-        display_output_height: root.screen ? root.screen.height : 0
+        display_output_width: root.screen
+                              ? Math.floor(root.screen.width * root.screen.devicePixelRatio) : 0
+        display_output_height: root.screen
+                               ? Math.floor(root.screen.height * root.screen.devicePixelRatio) : 0
     }
 
     GamepadInput {
@@ -3057,9 +3059,9 @@ ApplicationWindow {
             launchProfileDisplayShader.storedValue =
                     launchProfileManager.editor_display_shader
             launchProfileDisplayBezel.currentIndex =
-                    ["", "off", "system", "themed", "orionsangel", "orionsangel-plain"].indexOf(
+                    ["", "off", "system", "themed", "orionsangel", "orionsangel-plain", "ultrawide", "ultrawide-night"].indexOf(
                         launchProfileManager.editor_display_bezel) >= 0
-                    ? ["", "off", "system", "themed", "orionsangel", "orionsangel-plain"].indexOf(
+                    ? ["", "off", "system", "themed", "orionsangel", "orionsangel-plain", "ultrawide", "ultrawide-night"].indexOf(
                           launchProfileManager.editor_display_bezel) : 0
             launchProfileDisplaySaveStates.currentIndex =
                     ["", "off", "on"].indexOf(
@@ -23992,7 +23994,9 @@ ApplicationWindow {
                                     { value: "system", label: "Bezel Project · system art" },
                                     { value: "themed", label: "Bezel Project · game art" },
                                     { value: "orionsangel", label: "Orionsangel · console" },
-                                    { value: "orionsangel-plain", label: "Orionsangel · plain console" }
+                                    { value: "orionsangel-plain", label: "Orionsangel · plain console" },
+                                    { value: "ultrawide", label: "Duimon · ultrawide 21:9" },
+                                    { value: "ultrawide-night", label: "Duimon · ultrawide 21:9 night" }
                                 ]
                                 textRole: "label"
                                 valueRole: "value"

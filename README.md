@@ -344,6 +344,15 @@ Pong driver. A dedicated Daphne runtime profile and TeknoParrot remain explicit
 follow-on work; Daphne-source media already normalizes to the validated
 Hypseus-compatible layout.
 
+RetroArch display profiles can select The Bezel Project, Orionsangel console
+art, or Duimon's native 21:9 day/night artwork per platform or game. The 21:9
+artwork is an unmodified transparent overlay fetched on first use from
+[`Duimon-Mega-Bezel-Potato-21x9`](https://github.com/Duimon/Duimon-Mega-Bezel-Potato-21x9),
+which is licensed CC BY-NC-ND 4.0; Lunchbox does not redistribute the images or
+require the separate Mega Bezel shader stack. The game viewport is fitted to
+the artwork's 4:3 opening in fullscreen. If fullscreen is explicitly disabled,
+the launch continues without the ultrawide overlay and reports why.
+
 Game Details also keeps file management separate from launching. `Open Folder`
 uses Qt's native URL handling on Linux, macOS, and Windows. New acquisitions
 record every installed plan member with its lossless native path, file type,

@@ -54,13 +54,15 @@ TestCase {
             displayShaderPresetCount: function() { return 0 }
             displayShaderPresetIdAt: function(index) { return "" }
             displayShaderPresetLabelAt: function(index) { return "" }
-            displayBezelChoiceCount: function() { return 4 }
+            displayBezelChoiceCount: function() { return 6 }
             displayBezelChoiceIdAt: function(index) {
-                return ["system", "themed", "orionsangel", "orionsangel-plain"][index]
+                return ["system", "themed", "orionsangel", "orionsangel-plain",
+                        "ultrawide", "ultrawide-night"][index]
             }
             displayBezelChoiceLabelAt: function(index) {
                 return ["Bezel Project · system art", "Bezel Project · game art",
-                        "Orionsangel · console", "Orionsangel · plain console"][index]
+                        "Orionsangel · console", "Orionsangel · plain console",
+                        "Duimon · ultrawide 21:9", "Duimon · ultrawide 21:9 night"][index]
             }
             displayScopeSelected: function(scope) {}
             displaySettingSaved: function(field, value) {}
@@ -125,14 +127,16 @@ TestCase {
         verify(hero)
         const bezel = findChild(hero, "displayBezelCombo")
         verify(bezel)
-        compare(bezel.model.length, 6)
+        compare(bezel.model.length, 8)
         compare(bezel.model[2].label, "Bezel Project · system art")
         compare(bezel.model[3].label, "Bezel Project · game art")
         compare(bezel.model[4].label, "Orionsangel · console")
         compare(bezel.model[5].label, "Orionsangel · plain console")
-        hero.displayBezel = "orionsangel"
+        compare(bezel.model[6].label, "Duimon · ultrawide 21:9")
+        compare(bezel.model[7].label, "Duimon · ultrawide 21:9 night")
+        hero.displayBezel = "ultrawide"
         hero.displayRevision++
-        compare(bezel.currentValue, "orionsangel")
+        compare(bezel.currentValue, "ultrawide")
     }
 
     function test_display_section_hides_for_unsupported_adapters() {

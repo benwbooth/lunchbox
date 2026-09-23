@@ -130,6 +130,16 @@ pub fn bezel_choices(platform: &str) -> Vec<BezelChoice> {
             label: "Orionsangel · plain console",
         });
     }
+    if crate::bezel_orionsangel::ultrawide_supported(platform) {
+        choices.push(BezelChoice {
+            id: "ultrawide",
+            label: "Duimon · ultrawide 21:9",
+        });
+        choices.push(BezelChoice {
+            id: "ultrawide-night",
+            label: "Duimon · ultrawide 21:9 night",
+        });
+    }
     choices
 }
 
@@ -338,7 +348,7 @@ pub fn attach_launch_display_configuration(
     platform: &str,
     rom_stem: &str,
     customization: &ResolvedLaunchCustomization,
-    output_aspect: Option<f64>,
+    output_dimensions: Option<(u32, u32)>,
 ) -> Option<String> {
     if plan.retroarch_content.is_none() {
         return None;
@@ -347,6 +357,9 @@ pub fn attach_launch_display_configuration(
     let mut lines = String::new();
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
+    let output_aspect = output_dimensions
+        .filter(|(_, height)| *height > 0)
+        .map(|(width, height)| f64::from(width) / f64::from(height));
     match customization.display_fullscreen.as_str() {
         "true" | "false" => {
             lines.push_str(&format!(
@@ -359,6 +372,10 @@ pub fn attach_launch_display_configuration(
     if customization.display_bezel == "off" {
         lines.push_str("input_overlay_enable = \"false\"\n");
     } else if !customization.display_bezel.is_empty() {
+        let ultrawide = matches!(
+            customization.display_bezel.as_str(),
+            "ultrawide" | "ultrawide-night"
+        );
         let selected = match customization.display_bezel.as_str() {
             "system" => crate::bezel_project::system_bezel_overlay(platform, rom_stem),
             "themed" => crate::bezel_project::bezel_overlay(
@@ -368,14 +385,34 @@ pub fn attach_launch_display_configuration(
             ),
             "orionsangel" => crate::bezel_orionsangel::overlay(platform, false),
             "orionsangel-plain" => crate::bezel_orionsangel::overlay(platform, true),
+            "ultrawide" | "ultrawide-night" if customization.display_fullscreen == "false" => {
+                Err(anyhow::anyhow!(
+                    "21:9 artwork needs fullscreen; change Display fullscreen to On or Inherit"
+                ))
+            }
+            "ultrawide" => crate::bezel_orionsangel::ultrawide_overlay(platform, false),
+            "ultrawide-night" => crate::bezel_orionsangel::ultrawide_overlay(platform, true),
             other => Err(anyhow::anyhow!("Unknown bezel choice {other}")),
         };
         match selected.and_then(|overlay| {
             overlay
-                .map(|path| aspect_fitted_overlay(&path, output_aspect))
+                .map(|path| {
+                    let prepared = aspect_fitted_overlay(&path, output_aspect)?;
+                    let viewport =
+                        if ultrawide {
+                            let (width, height) = output_dimensions
+                                .context("the output resolution is needed for 21:9 artwork")?;
+                            Some(ultrawide_viewport(width, height).context(
+                                "the output resolution cannot fit the 21:9 game opening",
+                            )?)
+                        } else {
+                            None
+                        };
+                    Ok((prepared, viewport))
+                })
                 .transpose()
         }) {
-            Ok(Some(overlay_path)) => {
+            Ok(Some((overlay_path, viewport))) => {
                 external_bezel_active = true;
                 lines.push_str("input_overlay_enable = \"true\"\n");
                 lines.push_str(&format!("input_overlay = \"{}\"\n", overlay_path.display()));
@@ -383,6 +420,20 @@ pub fn attach_launch_display_configuration(
                 lines.push_str("input_overlay_auto_scale = \"false\"\n");
                 lines.push_str("input_overlay_scale_landscape = \"1.000000\"\n");
                 lines.push_str("input_overlay_aspect_adjust_landscape = \"0.000000\"\n");
+                if let Some((x, y, width, height)) = viewport {
+                    // RetroArch's current custom-aspect index is 23. The
+                    // Duimon transparent opening is exactly 4:3; explicitly
+                    // fit content to it instead of covering the game edges.
+                    if customization.display_fullscreen.is_empty() {
+                        lines.push_str("video_fullscreen = \"true\"\n");
+                    }
+                    lines.push_str("aspect_ratio_index = \"23\"\n");
+                    lines.push_str("video_scale_integer = \"false\"\n");
+                    lines.push_str(&format!("custom_viewport_x = \"{x}\"\n"));
+                    lines.push_str(&format!("custom_viewport_y = \"{y}\"\n"));
+                    lines.push_str(&format!("custom_viewport_width = \"{width}\"\n"));
+                    lines.push_str(&format!("custom_viewport_height = \"{height}\"\n"));
+                }
             }
             Ok(None) => {
                 lines.push_str("input_overlay_enable = \"false\"\n");
@@ -537,6 +588,38 @@ fn fitted_overlay_rect(
     })
 }
 
+/// Pixel viewport corresponding to Duimon's transparent 4:3 opening after
+/// fitting its unmodified 2560x1080 artwork to the current output.
+fn ultrawide_viewport(output_width: u32, output_height: u32) -> Option<(u32, u32, u32, u32)> {
+    if output_width == 0 || output_height == 0 {
+        return None;
+    }
+    let (image_width, image_height) = crate::bezel_orionsangel::ULTRAWIDE_DIMENSIONS;
+    let (hole_x, hole_y, hole_width, hole_height) =
+        crate::bezel_orionsangel::ULTRAWIDE_SCREEN_OPENING;
+    let output_aspect = f64::from(output_width) / f64::from(output_height);
+    let (outer_x, outer_y, outer_width, outer_height) =
+        fitted_overlay_rect(image_width, image_height, output_aspect)
+            .unwrap_or((0.0, 0.0, 1.0, 1.0));
+    let left = ((outer_x + outer_width * f64::from(hole_x) / f64::from(image_width))
+        * f64::from(output_width))
+    .round() as u32;
+    let top = ((outer_y + outer_height * f64::from(hole_y) / f64::from(image_height))
+        * f64::from(output_height))
+    .round() as u32;
+    let width = (outer_width * f64::from(hole_width) / f64::from(image_width)
+        * f64::from(output_width))
+    .round() as u32;
+    let height = (outer_height * f64::from(hole_height) / f64::from(image_height)
+        * f64::from(output_height))
+    .round() as u32;
+    (width > 0
+        && height > 0
+        && left.checked_add(width)? <= output_width
+        && top.checked_add(height)? <= output_height)
+        .then_some((left, top, width, height))
+}
+
 fn attach_shader_argument(
     plan: &mut LaunchPlan,
     executable: &EmulatorExecutable,
@@ -613,8 +696,27 @@ mod tests {
         let choices = bezel_choices("Super Nintendo Entertainment System");
         assert_eq!(
             choices.iter().map(|choice| choice.id).collect::<Vec<_>>(),
-            ["system", "themed", "orionsangel", "orionsangel-plain"]
+            [
+                "system",
+                "themed",
+                "orionsangel",
+                "orionsangel-plain",
+                "ultrawide",
+                "ultrawide-night"
+            ]
         );
+    }
+
+    #[test]
+    fn native_ultrawide_art_places_game_in_its_transparent_opening() {
+        assert_eq!(
+            ultrawide_viewport(5120, 2160),
+            Some((1374, 192, 2372, 1776))
+        );
+        assert_eq!(ultrawide_viewport(2560, 1080), Some((687, 96, 1186, 888)));
+        assert_eq!(ultrawide_viewport(0, 1080), None);
+        let (x, y, width, height) = ultrawide_viewport(1920, 1080).unwrap();
+        assert!(x > 0 && y > 0 && x + width < 1920 && y + height < 1080);
     }
 
     #[test]

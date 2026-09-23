@@ -1667,6 +1667,8 @@ fn display_value_labels(
         "themed" => "Bezel Project · game art".to_owned(),
         "orionsangel" => "Orionsangel · console".to_owned(),
         "orionsangel-plain" => "Orionsangel · plain console".to_owned(),
+        "ultrawide" => "Duimon · ultrawide 21:9".to_owned(),
+        "ultrawide-night" => "Duimon · ultrawide 21:9 night".to_owned(),
         "off" => "Off".to_owned(),
         other => other.to_owned(),
     };
@@ -6087,8 +6089,8 @@ impl qobject::GameDetailsModel {
         let activity_database_id = self.as_ref().rust().database_id;
         let output_width = *self.as_ref().display_output_width();
         let output_height = *self.as_ref().display_output_height();
-        let output_aspect = (output_width > 0 && output_height > 0)
-            .then(|| f64::from(output_width) / f64::from(output_height));
+        let output_dimensions = (output_width > 0 && output_height > 0)
+            .then(|| (output_width as u32, output_height as u32));
         let rom_probe = is_local_launch_probe();
         let preparing_archived_playlist = matches!(
             &launch_input,
@@ -6267,7 +6269,7 @@ impl qobject::GameDetailsModel {
                                     platform,
                                     &rom_stem,
                                     &customization,
-                                    output_aspect,
+                                    output_dimensions,
                                 )
                             {
                                 eprintln!("LUNCHBOX_DISPLAY_SETTING_DEGRADED: {warning}");

@@ -445,6 +445,16 @@ background: Rectangle {
                         font.pixelSize: 8
                         wrapMode: Text.WordWrap
                     }
+                    Text {
+                        width: parent.width
+                        visible: (hero.displayBezel === "ultrawide"
+                                  || hero.displayBezel === "ultrawide-night")
+                                 && hero.displayFullscreen === "false"
+                        text: "21:9 art requires fullscreen"
+                        color: hero.muted
+                        font.pixelSize: 8
+                        wrapMode: Text.WordWrap
+                    }
                 }
                 Column {
                     width: (parent.width - 12) / 3
