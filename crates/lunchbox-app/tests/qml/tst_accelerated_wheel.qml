@@ -64,15 +64,9 @@ TestCase {
     }
 
     function test_real_wheel_event_reaches_the_handler() {
-        compare(handler.parent, scroller,
-                "the wheel interceptor must be parented to the viewport")
-        verify(handler.visible && handler.enabled
-               && handler.width === scroller.width
-               && handler.height === scroller.height,
-               "the wheel interceptor must cover the viewport: visible="
-               + handler.visible + " enabled=" + handler.enabled + " size="
-               + handler.width + "x" + handler.height + " viewport="
-               + scroller.width + "x" + scroller.height)
+        verify(handler.parent === scroller || handler.parent === scroller.contentItem,
+               "the wheel handler must be scoped to the scroller")
+        verify(handler.enabled)
         mouseWheel(scroller, scroller.width / 2, scroller.height / 2,
                    0, -120, Qt.LeftButton, Qt.NoModifier)
         verify(scroller.contentY > 550,

@@ -3604,7 +3604,7 @@ ApplicationWindow {
                     Accessible.name: "Clear notification history"
                 }
             }
-            ListView {
+            MomentumListView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -3613,7 +3613,7 @@ ApplicationWindow {
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                 delegate: Rectangle {
                     required property var modelData
-                    width: ListView.view.width
+                    width: (ListView.view.verticalContentWidth || ListView.view.width)
                     height: notificationMessage.implicitHeight + 52
                     radius: 8
                     color: modelData.good ? "#18372c" : "#2c2a25"
@@ -3769,7 +3769,7 @@ ApplicationWindow {
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
             }
-            ListView {
+            MomentumListView {
                 id: remoteDeviceList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -3785,7 +3785,7 @@ ApplicationWindow {
                         try { return JSON.parse(saveSync.remote_device_json(index)) }
                         catch (error) { return {} }
                     }
-                    width: remoteDeviceList.width
+                    width: remoteDeviceList.verticalContentWidth
                     height: 72
                     text: {
                         const stamp = new Date(detail.updated_unix_ms).toLocaleString()
@@ -3838,7 +3838,7 @@ ApplicationWindow {
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
             }
-            ListView {
+            MomentumListView {
                 id: saveConflictList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -3855,7 +3855,7 @@ ApplicationWindow {
                         try { return JSON.parse(saveSync.conflict_json(index)) }
                         catch (error) { return {} }
                     }
-                    width: saveConflictList.width
+                    width: saveConflictList.verticalContentWidth
                     height: 142
                     radius: 9
                     color: "#111923"
@@ -8912,7 +8912,7 @@ ApplicationWindow {
             border.color: root.line
             border.width: 1
         }
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             id: filterScroll
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -9534,7 +9534,7 @@ ApplicationWindow {
                     font.letterSpacing: 1
                 }
 
-                ListView {
+                MomentumListView {
                     id: selectedColumnsList
                     anchors.left: parent.left
                     anchors.right: parent.right
@@ -9550,7 +9550,7 @@ ApplicationWindow {
                     delegate: Rectangle {
                         required property int index
                         required property string modelData
-                        width: selectedColumnsList.width
+                        width: selectedColumnsList.verticalContentWidth
                         height: 46
                         radius: 9
                         color: "#1a2330"
@@ -9635,7 +9635,7 @@ ApplicationWindow {
                     font.letterSpacing: 1
                 }
 
-                ListView {
+                MomentumListView {
                     id: availableColumnsList
                     anchors.left: parent.left
                     anchors.right: parent.right
@@ -9650,7 +9650,7 @@ ApplicationWindow {
 
                     delegate: Rectangle {
                         required property var modelData
-                        width: availableColumnsList.width
+                        width: availableColumnsList.verticalContentWidth
                         height: 46
                         radius: 9
                         color: addColumnButton.enabled ? "#1a2330" : "#141b25"
@@ -9897,7 +9897,7 @@ ApplicationWindow {
                     color: root.panel
                     border.color: root.line
 
-                    ListView {
+                    MomentumListView {
                         id: facetValuesList
                         anchors.fill: parent
                         anchors.margins: 6
@@ -9917,7 +9917,7 @@ ApplicationWindow {
                                 library.list_filter_revision
                                 return library.list_filter_value_selected_at(index)
                             }
-                            width: facetValuesList.width
+                            width: facetValuesList.verticalContentWidth
                             height: 44
                             leftPadding: 9
                             rightPadding: 12
@@ -10034,8 +10034,9 @@ ApplicationWindow {
         elide: Text.ElideRight
     }
 
-    component GameGrid: GridView {
+    component GameGrid: MomentumGridView {
         id: grid
+        defaultWheelMomentum: false
         function startupArtworkReady() {
             let visibleTiles = 0
             for (const item of contentItem.children) {
@@ -10750,8 +10751,9 @@ ApplicationWindow {
         }
     }
 
-    component GameList: ListView {
+    component GameList: MomentumListView {
         id: list
+        defaultWheelMomentum: false
         function startupArtworkReady() {
             let visibleRows = 0
             for (const item of contentItem.children) {
@@ -11538,7 +11540,7 @@ ApplicationWindow {
             }
         }
 
-        ListView {
+        MomentumListView {
             id: collectionList
             anchors.left: parent.left
             anchors.right: parent.right
@@ -11648,8 +11650,9 @@ ApplicationWindow {
                                                      library.sidebar_width)
         }
 
-        ListView {
+        MomentumListView {
             id: platformList
+            defaultWheelMomentum: false
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: platformSearchBox.bottom
@@ -11968,7 +11971,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Flickable {
+                    MomentumFlickable {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 59
                         contentWidth: collectionMetricRow.width
@@ -12348,7 +12351,7 @@ ApplicationWindow {
                     font.weight: Font.Bold
                     font.letterSpacing: 1.2
                 }
-                ListView {
+                MomentumListView {
                     width: parent.width
                     height: Math.min(contentHeight, 278)
                     clip: true
@@ -12359,7 +12362,7 @@ ApplicationWindow {
                         id: membershipDelegate
                         required property int index
                         property int revision: library.collection_revision
-                        width: ListView.view.width
+                        width: (ListView.view.verticalContentWidth || ListView.view.width)
                         text: {
                             revision
                             return library.collection_name_at(index)
@@ -12395,14 +12398,15 @@ ApplicationWindow {
             }
         }
 
-        Flickable {
+        MomentumFlickable {
             id: detailScroll
+            defaultWheelMomentum: false
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: detailHeader.bottom
             anchors.bottom: parent.bottom
             clip: true
-            contentWidth: width
+            contentWidth: verticalContentWidth
             contentHeight: detailContent.height
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -12418,7 +12422,7 @@ ApplicationWindow {
 
             Column {
                 id: detailContent
-                width: detailScroll.width
+                width: detailScroll.verticalContentWidth
                 spacing: 0
 
                 Rectangle {
@@ -13701,7 +13705,7 @@ ApplicationWindow {
                             wrapMode: Text.WordWrap
                         }
 
-                        ListView {
+                        MomentumListView {
                             id: releaseVariantList
                             width: parent.width
                             height: 112
@@ -14005,7 +14009,7 @@ ApplicationWindow {
                             wrapMode: Text.WordWrap
                         }
 
-                        ListView {
+                        MomentumListView {
                             id: relatedGamesList
                             width: parent.width
                             height: gameDetails.related_game_count > 0 ? 246 : 0
@@ -15072,7 +15076,7 @@ ApplicationWindow {
                     radius: 11
                     color: "#101720"
                     border.color: root.line
-                    ListView {
+                    MomentumListView {
                         id: managedCollectionList
                         anchors.fill: parent
                         anchors.margins: 8
@@ -15085,7 +15089,7 @@ ApplicationWindow {
                             id: managedCollectionRow
                             required property int index
                             property int revision: library.collection_revision
-                            width: ListView.view.width
+                            width: (ListView.view.verticalContentWidth || ListView.view.width)
                             height: 82
                             radius: 9
                             color: ListView.isCurrentItem ? "#272c34"
@@ -15283,7 +15287,7 @@ ApplicationWindow {
                             }
                         }
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
-                        ListView {
+                        MomentumListView {
                             id: collectionMemberList
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -15306,7 +15310,7 @@ ApplicationWindow {
                                                 collectionInspector.selectedIndex,
                                                 memberRow.index)
                                 }
-                                width: ListView.view.width
+                                width: (ListView.view.verticalContentWidth || ListView.view.width)
                                 height: 52
                                 radius: 7
                                 color: memberHover.hovered ? "#1a2432" : "transparent"
@@ -15748,7 +15752,7 @@ ApplicationWindow {
                 color: "#0d141e"
                 border.color: root.line
 
-                ListView {
+                MomentumListView {
                     id: libraryAuditList
                     anchors.fill: parent
                     anchors.margins: 1
@@ -15775,7 +15779,7 @@ ApplicationWindow {
                     delegate: Rectangle {
                         id: auditRow
                         required property int index
-                        width: ListView.view.width
+                        width: (ListView.view.verticalContentWidth || ListView.view.width)
                         height: 92
                         color: rowHover.hovered ? "#182230" : "transparent"
                         border.color: "#202a39"
@@ -16260,7 +16264,7 @@ ApplicationWindow {
                 color: "#0d141e"
                 border.color: root.line
 
-                ListView {
+                MomentumListView {
                     id: mediaAuditList
                     anchors.fill: parent
                     anchors.margins: 1
@@ -16294,7 +16298,7 @@ ApplicationWindow {
                     delegate: Rectangle {
                         id: mediaAuditRow
                         required property int index
-                        width: ListView.view.width
+                        width: (ListView.view.verticalContentWidth || ListView.view.width)
                         height: 94
                         color: mediaRowHover.hovered ? "#182230" : "transparent"
                         border.color: "#202a39"
@@ -17341,7 +17345,7 @@ ApplicationWindow {
                 }
             }
 
-            ListView {
+            MomentumListView {
                 id: downloadRecoveryHistoryList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -17353,7 +17357,7 @@ ApplicationWindow {
                 delegate: Rectangle {
                     id: recoveryEventRow
                     required property int index
-                    width: ListView.view.width
+                    width: (ListView.view.verticalContentWidth || ListView.view.width)
                     height: 96
                     color: index % 2 === 0 ? "#131c28" : "#101721"
                     radius: 10
@@ -18063,7 +18067,7 @@ ApplicationWindow {
                 }
                 }
 
-                ListView {
+                MomentumListView {
                 id: importResults
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -18076,7 +18080,7 @@ ApplicationWindow {
                     id: importRow
                     required property int index
                     property int importRevision: localImport.revision
-                    width: importResults.width
+                    width: importResults.verticalContentWidth
                     height: 61
                     radius: 7
                     color: rowHover.hovered ? "#202a38" : index % 2 ? "#141b26" : "#111824"
@@ -18307,7 +18311,7 @@ ApplicationWindow {
                         color: "#101722"
                         border.color: root.line
 
-                        ListView {
+                        MomentumListView {
                             id: scanHistoryList
                             anchors.fill: parent
                             anchors.margins: 8
@@ -18352,7 +18356,7 @@ ApplicationWindow {
                                     scanHistoryRevision
                                     return localImport.history_profile_index_at(index)
                                 }
-                                width: scanHistoryList.width
+                                width: scanHistoryList.verticalContentWidth
                                 height: errorValue.length > 0 ? 112 : 96
                                 radius: 10
                                 color: historyHover.hovered ? "#202a38"
@@ -18803,7 +18807,7 @@ ApplicationWindow {
                 }
             }
 
-            ListView {
+            MomentumListView {
                 id: manualMatchResults
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -18816,7 +18820,7 @@ ApplicationWindow {
                     id: manualCandidateRow
                     required property int index
                     property int candidateRevision: localImport.match_revision
-                    width: manualMatchResults.width
+                    width: manualMatchResults.verticalContentWidth
                     height: 58
                     radius: 7
                     color: manualCandidateHover.hovered ? "#202a38"
@@ -19215,7 +19219,7 @@ ApplicationWindow {
                         color: "#0f151f"
                         border.color: root.line
                     }
-                    ListView {
+                    MomentumListView {
                         id: steamGridDbGames
                         anchors.fill: parent
                         anchors.margins: 8
@@ -19233,7 +19237,7 @@ ApplicationWindow {
                             id: steamGridDbGameRow
                             required property int index
                             property int providerRevision: root.artworkProviderModel.revision
-                            width: steamGridDbGames.width - 10
+                            width: steamGridDbGames.verticalContentWidth - 10
                             height: 66
                             radius: 8
                             color: steamGridDbGameHover.hovered ? "#202a38"
@@ -19297,13 +19301,13 @@ ApplicationWindow {
                         color: "#0f151f"
                         border.color: root.line
                     }
-                    GridView {
+                    MomentumGridView {
                         id: steamGridDbArtwork
                         anchors.fill: parent
                         anchors.margins: 9
                         clip: true
                         reuseItems: true
-                        cellWidth: Math.max(190, Math.floor(width / 4))
+                        cellWidth: Math.max(190, Math.floor(verticalContentWidth / 4))
                         cellHeight: 220
                         model: {
                             if (root.artworkProvider === "emumovies")
@@ -19842,8 +19846,9 @@ ApplicationWindow {
 
             // A plain Flickable (not ScrollView) so the wheel handler can
             // drive momentum scrolling directly.
-            Flickable {
+            MomentumFlickable {
                 id: settingsScroll
+                defaultWheelMomentum: false
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -19977,7 +19982,7 @@ ApplicationWindow {
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
                     }
-                    ListView {
+                    MomentumListView {
                         id: couchThemeList
                         Layout.fillWidth: true
                         Layout.preferredHeight: 166
@@ -20585,7 +20590,7 @@ ApplicationWindow {
                         border.color: root.line
                         border.width: 1
 
-                        ListView {
+                        MomentumListView {
                             id: regionPriorityList
                             anchors.fill: parent
                             anchors.margins: 7
@@ -20601,7 +20606,7 @@ ApplicationWindow {
                             delegate: Rectangle {
                                 id: regionRow
                                 required property int index
-                                width: regionPriorityList.width - 10
+                                width: regionPriorityList.verticalContentWidth - 10
                                 height: 36
                                 radius: 7
                                 color: index < 3 ? "#1c2a35" : "#161e29"
@@ -20731,7 +20736,7 @@ ApplicationWindow {
                         border.color: root.line
                         border.width: 1
 
-                        ListView {
+                        MomentumListView {
                             id: mediaProviderPriorityList
                             anchors.fill: parent
                             anchors.margins: 7
@@ -20747,7 +20752,7 @@ ApplicationWindow {
                             delegate: Rectangle {
                                 id: mediaProviderRow
                                 required property int index
-                                width: mediaProviderPriorityList.width - 10
+                                width: mediaProviderPriorityList.verticalContentWidth - 10
                                 height: 48
                                 radius: 7
                                 color: index === 0 ? "#1c2a35" : "#161e29"
@@ -21308,7 +21313,7 @@ ApplicationWindow {
                             }
                         }
 
-                        ListView {
+                        MomentumListView {
                             id: controllerList
                             anchors.fill: parent
                             anchors.margins: 7
@@ -21328,7 +21333,7 @@ ApplicationWindow {
                             delegate: Rectangle {
                                 id: controllerRow
                                 required property int index
-                                width: controllerList.width - 10
+                                width: controllerList.verticalContentWidth - 10
                                 height: 142
                                 radius: 8
                                 color: index === 0 ? "#1c2a35" : "#161e29"
@@ -21590,7 +21595,7 @@ ApplicationWindow {
                             }
                         }
 
-                        ListView {
+                        MomentumListView {
                             id: customControllerProfileList
                             anchors.fill: parent
                             anchors.margins: 6
@@ -21610,7 +21615,7 @@ ApplicationWindow {
                             delegate: Rectangle {
                                 id: customProfileRow
                                 required property int index
-                                width: customControllerProfileList.width - 8
+                                width: customControllerProfileList.verticalContentWidth - 8
                                 height: 58
                                 radius: 7
                                 color: "#161e29"
@@ -21976,7 +21981,7 @@ ApplicationWindow {
                                             font.weight: Font.Bold
                                             font.letterSpacing: 0.9
                                         }
-                                        ListView {
+                                        MomentumListView {
                                             id: controllerProfileMappingList
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
@@ -21988,7 +21993,7 @@ ApplicationWindow {
                                             }
                                             delegate: Rectangle {
                                                 required property int index
-                                                width: controllerProfileMappingList.width
+                                                width: controllerProfileMappingList.verticalContentWidth
                                                 height: 25
                                                 radius: 5
                                                 color: "#1d2a39"
@@ -23038,7 +23043,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                ListView {
+                MomentumListView {
                     id: emulatorList
                     anchors.fill: parent
                     anchors.leftMargin: 12
@@ -23351,7 +23356,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
-                    ListView {
+                    MomentumListView {
                         id: emulatorUpdateList
                         anchors.fill: parent
                         anchors.margins: 13
@@ -23373,7 +23378,7 @@ ApplicationWindow {
                                 modelRevision
                                 return emulatorUpdates.status_detail_at(index)
                             }
-                            width: ListView.view.width
+                            width: (ListView.view.verticalContentWidth || ListView.view.width)
                             height: updateDetail.length > 0 ? 98 : 80
                             radius: 10
                             color: updateHover.hovered ? "#1b2330" : "#151c27"
@@ -23888,7 +23893,7 @@ ApplicationWindow {
                                 }
                             }
                         }
-                        ListView {
+                        MomentumListView {
                             id: launchProfileList
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -23904,7 +23909,7 @@ ApplicationWindow {
                                 readonly property int modelRevision: launchProfileManager.revision
                                 readonly property bool customized:
                                     launchProfileManager.customized_at(index)
-                                width: ListView.view.width
+                                width: (ListView.view.verticalContentWidth || ListView.view.width)
                                 height: 66
                                 color: launchProfileRowMouse.containsMouse
                                        ? "#1b2532" : index % 2 === 0
@@ -24620,13 +24625,14 @@ ApplicationWindow {
                     }
                 }
             }
-            ScrollView {
+            MomentumScrollView {
+                id: downloadsScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 Column {
-                    width: downloadsDrawer.width
+                    width: downloadsScroll.availableWidth
                     spacing: 9
                     leftPadding: 14
                     rightPadding: 14
@@ -24636,7 +24642,7 @@ ApplicationWindow {
                             id: downloadRow
                             required property int index
                             property int queueRevision: downloadQueue.revision
-                            width: downloadsDrawer.width - 28
+                            width: downloadsScroll.availableWidth - 28
                             height: 142
                             radius: 11
                             color: root.panelRaised
@@ -25041,7 +25047,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                ListView {
+                MomentumListView {
                     id: sessionHistoryList
                     anchors.fill: parent
                     anchors.leftMargin: 24
@@ -25059,7 +25065,7 @@ ApplicationWindow {
                         readonly property int sourceIndex: modelData
                         readonly property string outcome:
                             gameDetails.session_outcome_at(sourceIndex)
-                        width: ListView.view.width
+                        width: (ListView.view.verticalContentWidth || ListView.view.width)
                         height: 82
                         radius: 11
                         color: "#171f2b"
@@ -25390,7 +25396,7 @@ ApplicationWindow {
                 currentIndex: metadataTabs.currentIndex
                 enabled: !gameDetails.metadata_busy
 
-                ScrollView {
+                MomentumScrollView {
                     id: metadataOverviewScroll
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -25512,7 +25518,7 @@ ApplicationWindow {
                     }
                 }
 
-                ScrollView {
+                MomentumScrollView {
                     id: metadataDetailsScroll
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -25759,7 +25765,7 @@ ApplicationWindow {
                     }
                 }
 
-                ScrollView {
+                MomentumScrollView {
                     id: metadataCustomFieldsScroll
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff

@@ -346,7 +346,7 @@ Dialog {
         function onNeutral_revisionChanged() { wizard.receiveNeutral() }
     }
 
-    contentItem: ScrollView {
+    contentItem: MomentumScrollView {
         id: scroll
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff

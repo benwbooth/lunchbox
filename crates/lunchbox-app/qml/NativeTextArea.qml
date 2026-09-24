@@ -37,13 +37,13 @@ FocusScope {
         border.color: control.activeFocus ? control.accent : control.line
     }
 
-    Flickable {
+    MomentumFlickable {
         id: editorFlick
         anchors.fill: parent
         anchors.margins: 9
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        contentWidth: width
+        contentWidth: verticalContentWidth
         contentHeight: Math.max(height, editor.contentHeight)
         flickableDirection: Flickable.VerticalFlick
         ScrollBar.vertical: ScrollBar {
@@ -53,7 +53,7 @@ FocusScope {
 
         TextEdit {
             id: editor
-            width: editorFlick.width
+            width: editorFlick.verticalContentWidth
             height: Math.max(editorFlick.height, contentHeight)
             color: control.color
             selectionColor: control.selectionColor
@@ -67,6 +67,7 @@ FocusScope {
         Text {
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.rightMargin: editorFlick.verticalScrollBarGutter
             anchors.top: parent.top
             visible: editor.text.length === 0
             text: control.placeholderText

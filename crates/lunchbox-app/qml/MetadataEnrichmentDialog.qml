@@ -314,7 +314,7 @@ Dialog {
             }
         }
 
-        ListView {
+        MomentumListView {
             id: candidateList
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -328,7 +328,7 @@ Dialog {
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             delegate: Button {
                 required property int index
-                width: candidateList.width
+                width: candidateList.verticalContentWidth
                 height: 62
                 flat: true
                 enabled: !dialog.activeModel.busy
@@ -400,7 +400,7 @@ Dialog {
                     onClicked: dialog.activeModel.search_games(searchField.text)
                 }
             }
-            ListView {
+            MomentumListView {
                 id: fieldList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -417,7 +417,7 @@ Dialog {
                     required property bool same
                     required property bool missing
                     required property bool checked
-                    width: fieldList.width
+                    width: fieldList.verticalContentWidth
                     height: comparisonRow.implicitHeight + 20
                     radius: 9
                     color: checked ? "#172a2b" : "#151e2a"

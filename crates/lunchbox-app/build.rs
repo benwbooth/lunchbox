@@ -71,6 +71,11 @@ fn main() {
             .depend("QtMultimedia")
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
+                "qml/MomentumWheelHandler.qml",
+                "qml/MomentumFlickable.qml",
+                "qml/MomentumListView.qml",
+                "qml/MomentumGridView.qml",
+                "qml/MomentumScrollView.qml",
                 "qml/WindowPlacement.qml",
                 "qml/StartupPresentation.qml",
                 "qml/ProbeArguments.qml",

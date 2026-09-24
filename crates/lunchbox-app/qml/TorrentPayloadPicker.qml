@@ -152,7 +152,7 @@ Rectangle {
             }
         }
 
-        ListView {
+        MomentumListView {
             id: payloadFiles
             objectName: "torrentPayloadList"
             Layout.fillWidth: true
@@ -184,7 +184,7 @@ Rectangle {
                 }
 
                 objectName: "torrentPayloadRow-" + sourceIndex
-                width: ListView.view.width
+                width: (ListView.view.verticalContentWidth || ListView.view.width)
                 height: 58
                 highlighted: !root.torrent.collection_mode && chosen
                 enabled: !root.torrent.busy && sourceIndex >= 0

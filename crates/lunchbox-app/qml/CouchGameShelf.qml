@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 
-ListView {
+MomentumListView {
     id: shelf
 
     required property var library

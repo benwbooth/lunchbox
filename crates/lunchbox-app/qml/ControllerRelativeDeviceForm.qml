@@ -12,7 +12,7 @@ Dialog {
     modal: true
     title: "Add relative device to draft"
     standardButtons: Dialog.Cancel
-    contentItem: ScrollView {
+    contentItem: MomentumScrollView {
         id: scroll
         clip: true
         ColumnLayout {

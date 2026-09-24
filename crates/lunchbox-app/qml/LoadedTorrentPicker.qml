@@ -333,7 +333,7 @@ Rectangle {
                 }
             }
 
-            ListView {
+            MomentumListView {
                 id: torrentList
                 objectName: "loadedTorrentList"
                 Layout.fillWidth: true
@@ -374,7 +374,7 @@ Rectangle {
                     property bool selected: batchSelected || exactSelected
 
                     objectName: "loadedTorrentRow-" + sourceIndex
-                    width: ListView.view.width
+                    width: (ListView.view.verticalContentWidth || ListView.view.width)
                     height: 62
                     property bool highlighted: index === root.highlightedRow || selected
                     property bool hovered: torrentRowMouse.containsMouse

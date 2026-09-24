@@ -64,7 +64,7 @@ Rectangle {
     signal gameDefaultRequested(int rowIndex)
     signal platformDefaultRequested(int rowIndex)
 
-    width: ListView.view ? ListView.view.width : 720
+    width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : 720
     height: (defaultActionsAvailable ? 116 : 78) + (operationActive ? 12 : 0)
     radius: 10
     color: emulatorHover.hovered ? "#1b2330" : "#151c27"

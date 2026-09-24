@@ -167,7 +167,7 @@ ColumnLayout {
         border.color: root.line
         border.width: 1
 
-        ListView {
+        MomentumListView {
             id: inboxList
             objectName: "watchedTorrentList"
             anchors.fill: parent
@@ -185,7 +185,7 @@ ColumnLayout {
                 id: inboxRow
                 required property int index
                 readonly property string status: root.inboxModel.status_at(index)
-                width: inboxList.width - 10
+                width: inboxList.verticalContentWidth - 10
                 height: 62
                 radius: 7
                 color: status === "pending" ? "#1d2934" : "#151e29"

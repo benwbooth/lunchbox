@@ -94,7 +94,7 @@ ColumnLayout {
         border.color: root.line
         border.width: 1
 
-        ListView {
+        MomentumListView {
             id: providerList
             objectName: "localProviderList"
             anchors.fill: parent
@@ -112,7 +112,7 @@ ColumnLayout {
                 id: providerRow
                 required property int index
                 readonly property bool available: root.manifestModel.file_available_at(index)
-                width: providerList.width - 10
+                width: providerList.verticalContentWidth - 10
                 height: 70
                 radius: 7
                 color: "#151e29"

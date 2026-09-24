@@ -234,7 +234,7 @@ Dialog {
             font.letterSpacing: 1.1
         }
 
-        ScrollView {
+        MomentumScrollView {
             id: memberScroll
             Layout.fillWidth: true
             Layout.fillHeight: true

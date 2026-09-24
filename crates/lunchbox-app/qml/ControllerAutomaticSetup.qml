@@ -22,7 +22,7 @@ ColumnLayout {
                 wrapMode: Text.WordWrap
                 text: "Edit a JSON list of emulator_id, executable, executable_sha256, joystick_provider and players. Each player has player (1–8), controller_id, native_device_id, panel (six/eight), and controls for up/down/left/right/start/coin/button1–6 or button1–8. Controls use native MAME items, e.g. {\"kind\":\"button\",\"number\":1} or {\"kind\":\"hat\",\"number\":1,\"direction\":\"up\"}. Native device IDs and item numbers must not be guessed from SDL/joydev. Launch also requires cfg_directory and runtime {probe_program, sdl_library} with absolute paths. threshold_basis_points defaults to 3000 (0.3). Partial raw-SDL dispatch is untested."
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 240
                 TextArea { id: mameNativeText; wrapMode: TextEdit.Wrap; selectByMouse: true; onTextChanged: mameNativeEditor.reviews = [] }
@@ -49,7 +49,7 @@ ColumnLayout {
                     }
                 }
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 280
                 ColumnLayout {
@@ -80,7 +80,7 @@ ColumnLayout {
                     }
                 }
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 180
                 TextArea { id: mameNativeResult; readOnly: true; wrapMode: TextEdit.Wrap; selectByMouse: true }
@@ -948,7 +948,7 @@ ColumnLayout {
                     ? "Edit a JSON list with emulator_id, content (absolute path), game_id, source_system (native PSP/SYSTEM path), controller_id, probe_program, sdl_library, mapping_database (PPSSPP's bundled gamecontrollerdb.txt), bubblewrap_program, and executable_sha256. All paths must be absolute and executables/libraries trusted. Native SDL2 launches use a private SYSTEM overlay; saves stay in their native location. The child must confirm its runtime and mapping order. This implementation has not been runtime-tested."
                     : "Edit a JSON list with emulator_id, content (absolute ROM path), data_root, serial, first_disc_serial (null only for a confirmed single-disc game), and players. Players need pad (1–8), controller_id and controller_type (DigitalController or AnalogController). For native launch add runtime: {probe_program, sdl_library, runtime_libraries: [absolute dependency paths], executable_sha256}; Flatpak launch resolves the same runtime from the installed org.duckstation.DuckStation application (data_root must be its config/duckstation profile). These must belong to trusted DuckStation 0a53bc47c / SDL 3.2.20. Existing controller types are preserved; guided first launches discover Flatpak setups automatically. Wine is not enabled."
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 190
                 TextArea {
@@ -958,7 +958,7 @@ ColumnLayout {
                     onTextChanged: duckstationSetups.review = []
                 }
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 ColumnLayout {
@@ -1649,7 +1649,7 @@ ColumnLayout {
                 wrapMode: Text.WordWrap
                 text: "These paths must identify the exact device and may need updating after reconnect/reboot. Staging checks the data only. Frontend routing is unfinished: saving these settings does not enable emulator mouse input or start capture."
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 TextArea { id: relativeEditor; selectByMouse: true; font.family: "monospace"; wrapMode: TextEdit.NoWrap }
@@ -1800,7 +1800,7 @@ ColumnLayout {
         standardButtons: Dialog.Close
         onClosed: { clearNativeBindings.close(); setup.settingsModel.cancel_native_controller_capture() }
         onChangesChanged: selectedChange = -1
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             clip: true
             contentWidth: availableWidth
             ColumnLayout {

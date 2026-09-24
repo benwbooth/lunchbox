@@ -16,7 +16,7 @@ Rectangle {
     Keys.onEnterPressed: clicked()
     Keys.onSpacePressed: clicked()
 
-    width: ListView.view ? ListView.view.width : parent ? parent.width : 228
+    width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : parent ? parent.width : 228
     // Two-line platform names ("Super Nintendo Entertainment System") get a
     // taller row instead of being elided; single-line rows keep 43px.
     height: Math.max(43, labelText.implicitHeight + 21)

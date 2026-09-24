@@ -160,7 +160,7 @@ Popup {
             }
         }
 
-        ScrollView {
+        MomentumScrollView {
             anchors.fill: parent
             anchors.topMargin: 78
             clip: true

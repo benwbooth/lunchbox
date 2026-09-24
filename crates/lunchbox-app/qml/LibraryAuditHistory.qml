@@ -90,8 +90,9 @@ Dialog {
         color: "#0d141e"
         border.color: view.line
 
-        ListView {
+        MomentumListView {
             id: historyList
+            defaultWheelMomentum: false
             objectName: "libraryAuditHistoryList"
             anchors.fill: parent
             anchors.margins: 1
@@ -141,7 +142,7 @@ Dialog {
             delegate: Rectangle {
                 id: historyRow
                 required property int index
-                width: ListView.view.width
+                width: (ListView.view.verticalContentWidth || ListView.view.width)
                 height: 94
                 color: historyRow.index === historyList.currentIndex
                        ? "#1a2533" : rowHover.hovered ? "#151f2c" : "transparent"

@@ -1,22 +1,15 @@
 import QtQuick
 
-MouseArea {
+WheelHandler {
     id: handler
 
     required property Flickable scroller
-    // This transparent viewport layer handles wheels even when the pointer is
-    // over a delegate's image or label. It accepts no mouse buttons, so taps,
-    // hover, selection, and scrollbar dragging stay with their real controls.
+    // A pointer handler receives wheels over delegates without a visual layer
+    // that can steal events from nested scrollable panes or their scrollbars.
     parent: scroller
-    x: 0
-    y: 0
-    width: scroller.width
-    height: scroller.height
-    visible: true
-    z: 900
-    acceptedButtons: Qt.NoButton
-    hoverEnabled: false
-    scrollGestureEnabled: true
+    target: null
+    blocking: false
+    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
     // A mouse-wheel notch should cover meaningful ground in a large library.
     // The velocity model lets quick successive notches accumulate naturally,
@@ -39,6 +32,11 @@ MouseArea {
     property int burstCount: 0
     property int lastDirection: 0
     property bool advancing: false
+
+    onEnabledChanged: {
+        if (!enabled)
+            stopMomentum()
+    }
 
     function lowerBound() {
         return scroller.originY
@@ -167,6 +165,17 @@ MouseArea {
     }
 
     onWheel: function(event) {
+        const distance = Math.abs(event.angleDelta.y) >= 120
+                         ? -event.angleDelta.y
+                         : event.pixelDelta.y !== 0
+                           ? -event.pixelDelta.y : -event.angleDelta.y
+        // Let an enclosing pane take over when this one has reached its edge.
+        if ((distance < 0 && scroller.contentY <= lowerBound() + 0.5)
+                || (distance > 0 && scroller.contentY >= upperBound() - 0.5)) {
+            stopMomentum()
+            event.accepted = false
+            return
+        }
         // X11/Wayland mouse wheels commonly provide both deltas. The angle
         // delta represents real wheel notches; preferring the tiny synthetic
         // pixel delta was the reason scrolling barely moved on Linux.

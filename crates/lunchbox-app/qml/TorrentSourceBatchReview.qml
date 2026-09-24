@@ -56,7 +56,7 @@ Rectangle {
             }
         }
 
-        ListView {
+        MomentumListView {
             id: batchList
             objectName: "torrentSourceBatchList"
             Layout.fillWidth: true
@@ -76,7 +76,7 @@ Rectangle {
                     batchRevision
                     return root.torrent.batch_valid_at(index)
                 }
-                width: ListView.view.width
+                width: (ListView.view.verticalContentWidth || ListView.view.width)
                 height: 72
                 color: index % 2 === 0 ? "#111923" : "#131c28"
                 border.color: "transparent"

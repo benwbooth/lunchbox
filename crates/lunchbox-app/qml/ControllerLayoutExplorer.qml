@@ -26,7 +26,7 @@ Dialog {
         workflow.startForGame(name, platform, emulator, gameUid)
         open()
     }
-    contentItem: ScrollView {
+    contentItem: MomentumScrollView {
         id: scroll
         objectName: "controllerSetupScroll"
         clip: true

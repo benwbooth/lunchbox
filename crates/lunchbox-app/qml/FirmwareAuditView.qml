@@ -220,8 +220,9 @@ Dialog {
             color: "#0d141e"
             border.color: view.line
 
-            ListView {
+            MomentumListView {
                 id: firmwareList
+                defaultWheelMomentum: false
                 anchors.fill: parent
                 anchors.margins: 1
                 clip: true
@@ -267,7 +268,7 @@ Dialog {
                 delegate: Rectangle {
                     id: auditRow
                     required property int index
-                    width: ListView.view.width
+                    width: (ListView.view.verticalContentWidth || ListView.view.width)
                     height: 104
                     color: rowHover.hovered ? "#182230" : "transparent"
                     border.color: "#202a39"

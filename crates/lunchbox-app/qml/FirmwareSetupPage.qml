@@ -98,7 +98,7 @@ Rectangle {
             }
         }
 
-        ScrollView {
+        MomentumScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true

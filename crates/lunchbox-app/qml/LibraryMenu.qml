@@ -61,7 +61,7 @@ Button {
             items[index].forceActiveFocus()
         }
         background: Rectangle { color: "#141c28"; radius: 12; border.color: "#394559" }
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             id: menuScroll
             clip: true
             contentWidth: availableWidth

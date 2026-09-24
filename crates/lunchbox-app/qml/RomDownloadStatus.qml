@@ -221,7 +221,7 @@ Item {
                 elide: Text.ElideRight
             }
 
-            ListView {
+            MomentumListView {
                 id: jobs
                 objectName: "downloadRows"
                 Layout.fillWidth: true
@@ -241,7 +241,7 @@ Item {
                         queueRevision
                         return status.queue ? status.queue.job_state_at(index) : ""
                     }
-                    width: jobs.width - (jobs.ScrollBar.vertical.visible ? 10 : 0)
+                    width: jobs.verticalContentWidth
                     height: 104
                     radius: 10
                     color: status.panelRaised

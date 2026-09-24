@@ -269,7 +269,7 @@ Dialog {
         height: runtime.height - 40
         modal: true
         standardButtons: Dialog.Close
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             id: nativePreviewScroll
             clip: true
             contentWidth: availableWidth
@@ -312,7 +312,7 @@ Dialog {
             }
         }
     }
-    contentItem: ScrollView {
+    contentItem: MomentumScrollView {
         clip: true
         contentWidth: availableWidth
         ColumnLayout {

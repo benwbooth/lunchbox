@@ -119,7 +119,7 @@ Dialog {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
         }
-        ListView {
+        MomentumListView {
             visible: tabs.currentIndex === 0
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -132,7 +132,7 @@ Dialog {
                 required property var modelData
                 property bool expandedLocations: false
                 property string locationText: ""
-                width: ListView.view.width - 20
+                width: (ListView.view.verticalContentWidth || ListView.view.width) - 20
                 spacing: 4
                 Label {
                     width: parent.width
@@ -241,7 +241,7 @@ Dialog {
             textRole: "name"
             Accessible.name: "Source layout for capability coverage"
         }
-        ListView {
+        MomentumListView {
             visible: tabs.currentIndex === 1
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -253,7 +253,7 @@ Dialog {
                 required property var modelData
                 readonly property var capability: modelData.layouts[sourceLayout.currentIndex]
                 property bool showMapping: false
-                width: ListView.view.width - 20
+                width: (ListView.view.verticalContentWidth || ListView.view.width) - 20
                 spacing: 4
                 Label { width: parent.width; text: modelData.name; font.bold: true; wrapMode: Text.WordWrap }
                 Label {

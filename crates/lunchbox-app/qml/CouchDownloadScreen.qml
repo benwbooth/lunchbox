@@ -339,7 +339,7 @@ FocusScope {
                 wrapMode: Text.WordWrap
             }
 
-            ListView {
+            MomentumListView {
                 id: candidateList
                 width: parent.width
                 height: parent.height - y
@@ -358,7 +358,7 @@ FocusScope {
                 delegate: Rectangle {
                     id: candidateRow
                     required property int index
-                    width: candidateList.width - 16
+                    width: candidateList.verticalContentWidth - 16
                     height: 92
                     radius: Math.max(9, screen.cardRadius - 6)
                     color: candidateRow.index === screen.selectedCandidate

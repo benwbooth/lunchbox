@@ -188,7 +188,7 @@ Dialog {
                     }
                 }
 
-                ListView {
+                MomentumListView {
                     id: fileList
                     objectName: "identityFileList"
                     Layout.fillWidth: true
@@ -339,8 +339,9 @@ Dialog {
             color: "#0d141e"
             border.color: dialog.line
 
-            ListView {
+            MomentumListView {
                 id: candidateList
+                defaultWheelMomentum: false
                 objectName: "identityCandidateList"
                 anchors.fill: parent
                 anchors.margins: 1
@@ -356,7 +357,7 @@ Dialog {
                     id: candidateRow
                     required property int index
                     objectName: "identityCandidateRow-" + index
-                    width: candidateList.width
+                    width: candidateList.verticalContentWidth
                     height: 64
                     onClicked: {
                         dialog.batchConfirmArmed = false
@@ -535,7 +536,7 @@ Dialog {
             }
         }
 
-        ListView {
+        MomentumListView {
             id: historyList
             objectName: "identityHistoryList"
             Layout.fillWidth: true
@@ -551,7 +552,7 @@ Dialog {
             delegate: Rectangle {
                 id: historyRow
                 required property int index
-                width: historyList.width
+                width: historyList.verticalContentWidth
                 height: 58
                 radius: 7
                 color: "#151e2a"

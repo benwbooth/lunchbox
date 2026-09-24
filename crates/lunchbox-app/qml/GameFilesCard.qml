@@ -82,7 +82,7 @@ Rectangle {
             }
         }
 
-        ListView {
+        MomentumListView {
             id: versions
             objectName: "gameVersionList"
             property bool expanded: false
@@ -105,7 +105,7 @@ Rectangle {
                 readonly property bool selected: card.detailsModel.selected_local_file === index
 
                 objectName: "gameVersionRow" + index
-                width: ListView.view.width
+                width: (ListView.view.verticalContentWidth || ListView.view.width)
                 height: 62
                 radius: 8
                 color: selected ? "#233345" : "#121923"

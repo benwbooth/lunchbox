@@ -85,7 +85,7 @@ Dialog {
                 + ". Normal aim only: no offscreen/reload signal is inferred. Emulator routing is not enabled."
         } catch (error) { status.text = error.message }
     }
-    contentItem: ScrollView {
+    contentItem: MomentumScrollView {
         id: scroll
         clip: true
         ColumnLayout {
@@ -182,7 +182,7 @@ Dialog {
                 wrapMode: Text.WordWrap
                 text: "JSON array entries require event_path, input_identity, x_axis and y_axis ({code, minimum, maximum}), and calibration ({left, right, top, bottom, swap_xy}). Edges are measured after swapping axes; reversed edges invert that direction. Use [] to remove all records."
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 210
                 TextArea {

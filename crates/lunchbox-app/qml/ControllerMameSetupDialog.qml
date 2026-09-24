@@ -414,7 +414,7 @@ Dialog {
                 } catch (error) { dialog.statusText = "Cannot edit analog assignments: " + error }
             }
         }
-        ScrollView {
+        MomentumScrollView {
             id: setupSummary
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -459,7 +459,7 @@ Dialog {
             checked: false
             Accessible.description: "Show or hide the raw setup editor without changing the draft or its assignments."
         }
-        ScrollView {
+        MomentumScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: showSetupJson.checked
@@ -857,7 +857,7 @@ Dialog {
                 wrapMode: Text.WordWrap
                 text: "This comparison is stale because the draft or controller settings changed. Close and compare again."
             }
-            ScrollView {
+            MomentumScrollView {
                 id: comparisonScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1252,7 +1252,7 @@ Dialog {
         modal: true
         standardButtons: Dialog.Close
         contentItem: ColumnLayout {
-            ScrollView {
+            MomentumScrollView {
                 id: switchFormScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1397,7 +1397,7 @@ Dialog {
                             wrapMode: Text.WordWrap
                         }
                     }
-                    ScrollView {
+                    MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 140
                         visible: switchEditor.channelPreview.length > 0
@@ -1713,7 +1713,7 @@ Dialog {
         height: dialog.height - 40
         modal: true
         standardButtons: Dialog.Close
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             id: relativeEditorScroll
             clip: true
             ColumnLayout {
@@ -2045,7 +2045,7 @@ Dialog {
         height: dialog.height - 40
         modal: true
         standardButtons: Dialog.Close
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             id: reviewScroll
             clip: true
             ColumnLayout {
@@ -2407,7 +2407,7 @@ Dialog {
                 open()
             } catch (error) { dialog.statusText = "Cannot edit player controllers: " + error }
         }
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             ColumnLayout {
                 width: parent.width
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Add player ports, replace controllers or choose each player's destination preset. Inherit uses the shared per-game preset. Adding a port does not prove game support. Removing a port removes its layout override; explicit button/axis assignments must be handled before removal. Review the new mapping before staging." }
@@ -2540,7 +2540,7 @@ Dialog {
                 throw new Error(name + " must be a normalized absolute path, without a trailing slash.")
             return path
         }
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             ColumnLayout {
                 width: parent.width
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Create a draft for an exact ZIP/7z arcade set. Use your configured emulator identity and select saved controller calibrations for each player. Inspection is still required; merged sets need advanced editing." }
@@ -2675,7 +2675,7 @@ Dialog {
                 wrapMode: Text.WordWrap
                 text: "Mouse evidence enables the native class for inspection only, not physical capture or launch routing. The request JSON is authoritative, including pasted requests. Changing the option requires regeneration and renewed trust confirmation."
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 66
                 TextArea {
@@ -2686,7 +2686,7 @@ Dialog {
                     onTextChanged: { trustRuntime.checked = false; inspectionRequest.text = "" }
                 }
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 TextArea { id: inspectionRequest; placeholderText: "Paste complete inspection request JSON"; selectByMouse: true; readOnly: dialog.settingsModel.mame_inspection_busy; font.family: "monospace"; onTextChanged: trustRuntime.checked = false }
@@ -2699,7 +2699,7 @@ Dialog {
                 visible: inspection.draftRequestStale
                 text: "The setup draft changed after this request was generated. Generate a fresh request and confirm trust again before running inspection."
             }
-            ScrollView {
+            MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 TextArea { text: dialog.settingsModel.mame_inspection_result; readOnly: true; selectByMouse: true; font.family: "monospace" }

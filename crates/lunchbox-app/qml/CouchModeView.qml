@@ -2215,7 +2215,7 @@ Item {
                 }
             }
 
-            ListView {
+            MomentumListView {
                 id: platformWheel
                 anchors.left: parent.left
                 anchors.leftMargin: 34
@@ -2468,7 +2468,7 @@ Item {
                 }
             }
 
-            ListView {
+            MomentumListView {
                 id: collectionWheel
                 anchors.left: parent.left
                 anchors.leftMargin: 34
@@ -2784,7 +2784,7 @@ Item {
                 }
             }
 
-            ListView {
+            MomentumListView {
                 id: variantWheel
                 anchors.left: parent.left
                 anchors.leftMargin: 34
@@ -3263,7 +3263,7 @@ Item {
                     anchors.bottom: overlayHelp.top
                     anchors.bottomMargin: 18
 
-                    Flickable {
+                    MomentumFlickable {
                         id: detailsScroller
                         anchors.fill: parent
                         visible: view.overlayMode === "details"

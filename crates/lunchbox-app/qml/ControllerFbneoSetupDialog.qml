@@ -264,7 +264,7 @@ Dialog {
             enabled: editor.text.trim().length > 0
             onClicked: relativeSelection.loadAndOpen()
         }
-        ScrollView {
+        MomentumScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             TextArea {
@@ -419,7 +419,7 @@ Dialog {
                 close()
             } catch (error) { errorText = String(error) }
         }
-        ScrollView {
+        MomentumScrollView {
             id: relativeSelectionScroll
             anchors.fill: parent
             ColumnLayout {
@@ -698,7 +698,7 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 currentIndex: importTabs.currentIndex
-                ScrollView {
+                MomentumScrollView {
                     TextArea {
                         id: importRequest
                         textFormat: TextEdit.PlainText
@@ -710,7 +710,7 @@ Dialog {
                         onTextChanged: reportImport.inputsEdited = true
                     }
                 }
-                ScrollView {
+                MomentumScrollView {
                     TextArea {
                         id: importReport
                         textFormat: TextEdit.PlainText
@@ -756,7 +756,7 @@ Dialog {
                         text: "Choices are saved Linux calibrations, not detected connections. Controller-setting changes refresh this list and clear the picker selection, but preserve assignments already in the context draft. Assign only source-confirmed ports."
                         wrapMode: Text.WordWrap
                     }
-                    ScrollView {
+                    MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         TextArea {
@@ -778,7 +778,7 @@ Dialog {
                         wrapMode: Text.WordWrap
                     }
                     Label { text: "Content dependencies" }
-                    ScrollView {
+                    MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         TextArea {
@@ -791,7 +791,7 @@ Dialog {
                         }
                     }
                     Label { text: "System files" }
-                    ScrollView {
+                    MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         TextArea {
@@ -842,7 +842,7 @@ Dialog {
                         text: "Context changed. Reload choices before selecting a device."
                         wrapMode: Text.WordWrap
                     }
-                    ListView {
+                    MomentumListView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
@@ -852,7 +852,7 @@ Dialog {
                         delegate: RowLayout {
                             id: deviceRow
                             required property var modelData
-                            width: ListView.view.width
+                            width: (ListView.view.verticalContentWidth || ListView.view.width)
                             Label { text: "Port " + deviceRow.modelData.port }
                             ComboBox {
                                 Layout.fillWidth: true
@@ -1197,7 +1197,7 @@ Dialog {
                 wrapMode: Text.WordWrap
                 text: "Showing " + targetList.count + " / " + dialog.assignmentRows.length + " native inputs. Filters do not change mappings or establish launch readiness."
             }
-            ListView {
+            MomentumListView {
                 id: targetList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1212,7 +1212,7 @@ Dialog {
                 delegate: ColumnLayout {
                     id: targetRow
                     required property var modelData
-                    width: targetList.width
+                    width: targetList.verticalContentWidth
                     Label {
                         Layout.fillWidth: true
                         text: "Player " + (targetRow.modelData.target.address.port + 1) + " · "
@@ -1403,7 +1403,7 @@ Dialog {
         modal: true
         standardButtons: Dialog.Close
         height: Math.min(dialog.height - 30, 640)
-        contentItem: ScrollView {
+        contentItem: MomentumScrollView {
             id: mouseMappingScroll
             ColumnLayout {
                 width: mouseMappingScroll.availableWidth

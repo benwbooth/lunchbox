@@ -558,7 +558,7 @@ Rectangle {
                 }
                 delegate: ItemDelegate {
                     required property int index
-                    width: ListView.view ? ListView.view.width : emulatorPicker.width
+                    width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : emulatorPicker.width
                     height: 34
                     text: emulatorPicker.model[index].label
                     font.pixelSize: 10
@@ -569,7 +569,7 @@ Rectangle {
                     width: emulatorPicker.width
                     height: Math.min(contentItem.implicitHeight + 2, 480)
                     padding: 1
-                    contentItem: ListView {
+                    contentItem: MomentumListView {
                         clip: true
                         implicitHeight: contentHeight
                         model: emulatorPicker.popup.visible
@@ -589,7 +589,7 @@ Rectangle {
                         }
                         delegate: ItemDelegate {
                             required property int index
-                            width: ListView.view ? ListView.view.width : 0
+                            width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : 0
                             height: 32
                             text: emulatorPicker.model[index].label
                             font.pixelSize: 10
