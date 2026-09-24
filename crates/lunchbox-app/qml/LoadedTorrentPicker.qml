@@ -234,30 +234,19 @@ Rectangle {
             color: root.line
         }
 
-        ToolButton {
+        LbToolButton {
             id: dropdownButton
             objectName: "loadedTorrentDropdownButton"
             Layout.preferredWidth: 42
             Layout.fillHeight: true
             enabled: root.enabled && root.torrent.existing_count > 0
             text: root.resultsRequested && torrentPopup.opened ? "▴" : "▾"
+            font.pixelSize: 14
             Accessible.name: root.resultsRequested && torrentPopup.opened
                              ? "Close loaded torrent results"
                              : "Show loaded torrents"
             onClicked: root.resultsRequested && torrentPopup.opened
                        ? root.closeResults() : root.openResults()
-            background: Rectangle {
-                color: dropdownButton.down ? "#344156"
-                       : dropdownButton.hovered ? "#273346" : "transparent"
-                radius: 7
-            }
-            contentItem: Text {
-                text: dropdownButton.text
-                color: dropdownButton.enabled ? root.ink : "#657287"
-                font.pixelSize: 14
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
         }
 
         BusyIndicator {
@@ -509,7 +498,7 @@ Rectangle {
                         font.weight: Font.Bold
                     }
 
-                    Button {
+                    LbButton {
                         objectName: "loadedTorrentClearSelection"
                         Layout.preferredWidth: 72
                         Layout.preferredHeight: 32
@@ -518,11 +507,12 @@ Rectangle {
                         onClicked: root.torrent.clear_existing_selection()
                     }
 
-                    Button {
+                    LbButton {
                         id: reviewSelectedButton
                         objectName: "loadedTorrentReviewSelected"
                         Layout.preferredWidth: 146
                         Layout.preferredHeight: 32
+                        highlighted: true
                         text: root.torrent.existing_selected_count === 1
                               ? "REVIEW 1 SOURCE"
                               : "REVIEW " + root.torrent.existing_selected_count + " SOURCES"
@@ -537,19 +527,6 @@ Rectangle {
                                 if (!root.torrent.busy)
                                     root.selectionInProgress = false
                             })
-                        }
-                        background: Rectangle {
-                            radius: 7
-                            color: reviewSelectedButton.enabled
-                                   ? (reviewSelectedButton.down ? "#d68d36" : root.accent)
-                                   : "#26313e"
-                        }
-                        contentItem: Text {
-                            text: reviewSelectedButton.text
-                            color: reviewSelectedButton.enabled ? "#1b140c" : root.muted
-                            font: reviewSelectedButton.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }

@@ -4,7 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: dialog
     objectName: "gameFileIdentityDialog"
 
@@ -136,54 +136,32 @@ Dialog {
                         font.pixelSize: 8
                         font.weight: Font.Bold
                     }
-                    Button {
+                    LbButton {
                         objectName: "identitySelectAllFiles"
                         visible: dialog.identityModel.file_count > 1
                         text: "ALL"
                         Accessible.name: "Select all imported ROM associations"
                         implicitWidth: 44
                         implicitHeight: 24
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
                         onClicked: {
                             dialog.batchConfirmArmed = false
                             dialog.identityModel.select_all_files()
                         }
-                        background: Rectangle {
-                            radius: 6
-                            color: parent.down ? "#253244" : "#17202d"
-                            border.color: dialog.line
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: dialog.ink
-                            font.pixelSize: 8
-                            font.weight: Font.Bold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
-                    Button {
+                    LbButton {
                         objectName: "identityClearFiles"
                         visible: dialog.identityModel.file_count > 1
                         text: "NONE"
                         Accessible.name: "Clear imported ROM selection"
                         implicitWidth: 52
                         implicitHeight: 24
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
                         onClicked: {
                             dialog.batchConfirmArmed = false
                             dialog.identityModel.clear_file_selection()
-                        }
-                        background: Rectangle {
-                            radius: 6
-                            color: parent.down ? "#253244" : "#17202d"
-                            border.color: dialog.line
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: dialog.muted
-                            font.pixelSize: 8
-                            font.weight: Font.Bold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }
@@ -205,7 +183,7 @@ Dialog {
                     }
                     HorizontalWheelHandler { scroller: fileList }
 
-                    delegate: Button {
+                    delegate: LbButton {
                         id: fileButton
                         required property int index
                         property bool chosen: dialog.identityModel.selected_file_count >= 0
@@ -353,7 +331,7 @@ Dialog {
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
                 AcceleratedWheelHandler { scroller: candidateList }
 
-                delegate: ItemDelegate {
+                delegate: LbItemDelegate {
                     id: candidateRow
                     required property int index
                     objectName: "identityCandidateRow-" + index
@@ -471,10 +449,13 @@ Dialog {
                         elide: Text.ElideMiddle
                     }
                 }
-                Button {
+                LbButton {
                     objectName: "confirmIdentityRelinkButton"
                     Layout.preferredWidth: 182
                     Layout.preferredHeight: 40
+                    highlighted: true
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
                     text: dialog.batchConfirmArmed
                           ? "CONFIRM " + dialog.identityModel.operation_label
                           : dialog.identityModel.operation_label
@@ -492,44 +473,26 @@ Dialog {
                         dialog.batchConfirmArmed = false
                         dialog.identityModel.relink_selected()
                     }
-                    background: Rectangle {
-                        radius: 8
-                        color: !parent.enabled ? "#202835"
-                               : parent.down ? "#257f71" : "#2da58f"
-                        border.color: parent.enabled ? "#63dbc6" : dialog.line
-                    }
-                        contentItem: Text {
-                            text: parent.text
-                            color: parent.enabled ? "#071713" : dialog.muted
-                            font.pixelSize: 9
-                            elide: Text.ElideRight
-                            font.weight: Font.Bold
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                 }
             }
         }
 
-        Button {
+        LbButton {
             id: historyToggle
             objectName: "identityHistoryToggle"
             Layout.fillWidth: true
             Layout.preferredHeight: 34
             text: (dialog.historyExpanded ? "▾" : "▸") + " IDENTITY HISTORY · "
                   + dialog.identityModel.history_count
+            font.pixelSize: 8
+            font.weight: Font.Bold
+            font.letterSpacing: 0.7
+            flat: true
             onClicked: dialog.historyExpanded = !dialog.historyExpanded
-            background: Rectangle {
-                radius: 8
-                color: historyToggle.down ? "#202b3a" : "#171f2b"
-                border.color: dialog.line
-            }
             contentItem: Text {
                 text: parent.text
-                color: dialog.muted
-                font.pixelSize: 8
-                font.weight: Font.Bold
-                font.letterSpacing: 0.7
+                color: "#f4f7fb"
+                font: parent.font
                 horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: 12
@@ -584,24 +547,13 @@ Dialog {
                             elide: Text.ElideRight
                         }
                     }
-                    Button {
+                    LbButton {
                         objectName: "identityUndoButton-" + historyRow.index
                         visible: dialog.identityModel.history_undoable_at(historyRow.index)
                         text: "UNDO"
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
                         onClicked: dialog.identityModel.undo_at(historyRow.index)
-                        background: Rectangle {
-                            radius: 7
-                            color: parent.down ? "#3a3040" : "#272331"
-                            border.color: "#695374"
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: "#dabee5"
-                            font.pixelSize: 8
-                            font.weight: Font.Bold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
                 }
             }

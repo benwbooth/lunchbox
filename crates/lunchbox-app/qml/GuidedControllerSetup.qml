@@ -246,7 +246,7 @@ ColumnLayout {
     RowLayout {
         Repeater {
             model: ["1  Players & controllers", "2  Target system", "3  Review mapping"]
-            Button {
+            LbButton {
                 required property int index
                 required property string modelData
                 text: modelData; highlighted: setup.stage === index
@@ -314,19 +314,19 @@ ColumnLayout {
                         Label { text: "Player " + (playerCard.index + 1); font.bold: true; font.pixelSize: 18 }
                         Label { visible: playerCard.receivingInput; text: "Button detected"; color: "#8ad4b7" }
                         Item { Layout.fillWidth: true }
-                        ToolButton { text: "Move up"; visible: playerCard.index > 0 && !!playerCard.deviceId; onClicked: setup.movePlayerUp(playerCard.index); Accessible.name: "Move this controller to Player " + playerCard.index }
+                        LbToolButton { text: "Move up"; visible: playerCard.index > 0 && !!playerCard.deviceId; onClicked: setup.movePlayerUp(playerCard.index); Accessible.name: "Move this controller to Player " + playerCard.index }
                         Label { text: playerCard.ready ? "Ready" : playerCard.deviceId ? "Setup needed" : "Choose a controller"; color: playerCard.ready ? "#8ad4b7" : "#ffb454" }
                     }
                     RowLayout {
-                        ComboBox {
+                        LbComboBox {
                             objectName: "playerController" + playerCard.index
                             Layout.fillWidth: true; model: setup.controllerChoices(playerCard.index); textRole: "name"
                             currentIndex: Math.max(0, model.findIndex(item => item.id === playerCard.deviceId))
                             onActivated: setup.assignPlayer(playerCard.index, model[currentIndex].id)
                             Accessible.name: "Controller for Player " + (playerCard.index + 1)
                         }
-                        Button { text: "Use the controller I pressed"; visible: !playerCard.deviceId && !!setup.lastPressedDevice && setup.playerDevices.indexOf(setup.lastPressedDevice) < 0; onClicked: setup.assignPlayer(playerCard.index, setup.lastPressedDevice) }
-                        Button {
+                        LbButton { text: "Use the controller I pressed"; visible: !playerCard.deviceId && !!setup.lastPressedDevice && setup.playerDevices.indexOf(setup.lastPressedDevice) < 0; onClicked: setup.assignPlayer(playerCard.index, setup.lastPressedDevice) }
+                        LbButton {
                             text: "Rename"; visible: !!playerCard.device
                             onClicked: {
                                 setup.renameDevice = playerCard.deviceId
@@ -353,9 +353,9 @@ ColumnLayout {
                     Label { visible: !!setup.setupResults[playerCard.deviceId]; text: setup.setupResults[playerCard.deviceId] || ""; color: "#ffb454"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                     RowLayout {
                         visible: !!playerCard.device
-                        Button { text: playerCard.ready ? "Review / change buttons" : "Record buttons"; highlighted: !playerCard.ready && !!playerCard.physicalModel; onClicked: setup.recordController(playerCard.deviceId) }
-                        Button { text: playerCard.physicalModel ? "Change model" : "Choose controller model"; highlighted: !playerCard.ready && !playerCard.physicalModel; onClicked: setup.chooseModel(playerCard.deviceId) }
-                        ToolButton { id: detailsToggle; text: checked ? "Hide device details" : "Device details"; checkable: true }
+                        LbButton { text: playerCard.ready ? "Review / change buttons" : "Record buttons"; highlighted: !playerCard.ready && !!playerCard.physicalModel; onClicked: setup.recordController(playerCard.deviceId) }
+                        LbButton { text: playerCard.physicalModel ? "Change model" : "Choose controller model"; highlighted: !playerCard.ready && !playerCard.physicalModel; onClicked: setup.chooseModel(playerCard.deviceId) }
+                        LbToolButton { id: detailsToggle; text: checked ? "Hide device details" : "Device details"; checkable: true }
                     }
                     Label {
                         visible: detailsToggle.checked && !!playerCard.device
@@ -369,14 +369,14 @@ ColumnLayout {
             }
         }
         RowLayout {
-            Button { objectName: "addPlayer"; text: "Add player"; enabled: setup.playerDevices.length < setup.playerLimit && setup.playerDevices.every(id => !!id); onClicked: setup.addPlayer() }
-            Button { text: "Remove last player"; visible: setup.playerDevices.length > 1; onClicked: setup.removeLastPlayer() }
+            LbButton { objectName: "addPlayer"; text: "Add player"; enabled: setup.playerDevices.length < setup.playerLimit && setup.playerDevices.every(id => !!id); onClicked: setup.addPlayer() }
+            LbButton { text: "Remove last player"; visible: setup.playerDevices.length > 1; onClicked: setup.removeLastPlayer() }
             Item { Layout.fillWidth: true }
-            Button { text: "Refresh"; enabled: !setup.settingsModel.controller_busy; onClicked: setup.settingsModel.refresh_controllers() }
+            LbButton { text: "Refresh"; enabled: !setup.settingsModel.controller_busy; onClicked: setup.settingsModel.refresh_controllers() }
         }
         CheckBox { id: showVirtual; text: "Include virtual controllers (Steam Input, etc.)" }
         Label { text: "Player assignments and controller setups are saved as you go and reused across games."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-        Button { objectName: "nextTarget"; text: "Next: target system"; highlighted: true; enabled: setup.playersReady; onClicked: setup.stage = 1 }
+        LbButton { objectName: "nextTarget"; text: "Next: target system"; highlighted: true; enabled: setup.playersReady; onClicked: setup.stage = 1 }
     }
     ColumnLayout {
         visible: setup.stage === 1; Layout.fillWidth: true; spacing: 12
@@ -384,7 +384,7 @@ ColumnLayout {
         ColumnLayout {
             visible: !setup.gameTitle; Layout.fillWidth: true
             Label { text: "Emulator or RetroArch core" }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true; model: targetFilter.emulators(setup.catalog.emulator_profiles, setup.catalog.emulator_identities)
                 currentIndex: model.indexOf(setup.gameEmulator)
                 displayText: currentIndex < 0 ? "Choose an emulator or core" : currentText
@@ -396,7 +396,7 @@ ColumnLayout {
                 }
             }
             Label { text: "System" }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true; model: targetFilter.systems(setup.catalog.emulator_profiles, setup.gameEmulator, setup.catalog.emulator_identities, setup.catalog.emulator_aliases)
                 currentIndex: model.indexOf(setup.gamePlatform)
                 displayText: currentIndex < 0 ? "Choose a system" : currentText
@@ -405,7 +405,7 @@ ColumnLayout {
             }
         }
         Label { text: "Target controller"; visible: setup.applicableTargets.length > 0 }
-        ComboBox {
+        LbComboBox {
             Layout.fillWidth: true; visible: setup.applicableTargets.length > 0
             model: setup.applicableTargets; textRole: "name"
             currentIndex: model.findIndex(item => item.id === setup.selectedProfile)
@@ -421,8 +421,8 @@ ColumnLayout {
         Label { visible: !!setup.profile; text: "This target supports up to " + setup.playerLimit + " player" + (setup.playerLimit === 1 ? "." : "s."); Layout.fillWidth: true; wrapMode: Text.WordWrap }
         Label { visible: !!setup.profile && setup.playerDevices.length > setup.playerLimit; text: "You have " + setup.playerDevices.length + " players selected. Go back and remove the extra players for this target."; color: "#ffb454"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         RowLayout {
-            Button { text: "Back: players"; onClicked: setup.stage = 0 }
-            Button {
+            LbButton { text: "Back: players"; onClicked: setup.stage = 0 }
+            LbButton {
                 objectName: "nextReview"; text: "Next: review mapping"; highlighted: true
                 enabled: !!setup.profile && setup.playersReady && setup.playerDevices.length <= setup.playerLimit
                 onClicked: {
@@ -435,7 +435,7 @@ ColumnLayout {
     ColumnLayout {
         visible: setup.stage === 2; Layout.fillWidth: true; spacing: 12
         Label { text: "Apply this button mapping to" }
-        ComboBox {
+        LbComboBox {
             id: mappingLevel
             objectName: "mappingScope"
             Layout.fillWidth: true
@@ -454,7 +454,7 @@ ColumnLayout {
             text: setup.mappingSource ? "Starting choices: " + setup.mappingSource + ". Game overrides system, which overrides emulator/core, then older saved mappings." : ""
             visible: !!text
         }
-        ComboBox {
+        LbComboBox {
             Layout.fillWidth: true
             model: setup.playerDevices.map((id, index) => "Player " + (index + 1) + " · " + (setup.connected(id) ? setup.connected(id).name : "Disconnected"))
             currentIndex: setup.selectedPlayer; enabled: !setup.dirty
@@ -469,7 +469,7 @@ ColumnLayout {
         RowLayout {
             visible: !!mapping.selected
             Label { text: mapping.selected ? mapping.selected.target + " ←" : "" }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 readonly property var controls: setup.sourceLayout ? setup.sourceLayout.controls.filter(control => setup.calibration.bindings[control.id]) : []
                 model: controls; textRole: "label"
@@ -494,10 +494,10 @@ ColumnLayout {
             Layout.fillWidth: true; wrapMode: Text.WordWrap
         }
         RowLayout {
-            Button { text: "Back: target"; enabled: !setup.dirty; onClicked: setup.stage = 1 }
-            Button { text: "Reset to automatic"; onClicked: { setup.choices = ({}); setup.generate(); setup.dirty = true } }
-            Button { text: "Discard changes"; visible: setup.dirty; onClicked: setup.loadMapping() }
-            Button {
+            LbButton { text: "Back: target"; enabled: !setup.dirty; onClicked: setup.stage = 1 }
+            LbButton { text: "Reset to automatic"; onClicked: { setup.choices = ({}); setup.generate(); setup.dirty = true } }
+            LbButton { text: "Discard changes"; visible: setup.dirty; onClicked: setup.loadMapping() }
+            LbButton {
                 objectName: "removeMappingOverride"
                 text: "Remove this override (inherit)"
                 visible: setup.mappingSource === setup.selectedMappingLevel
@@ -510,7 +510,7 @@ ColumnLayout {
                     else { setup.loadMapping(); setup.status = "Removed " + removed + " override; inherited mapping is active." }
                 }
             }
-            Button {
+            LbButton {
                 objectName: "savePlayerMapping"
                 text: "Save Player " + (setup.selectedPlayer + 1) + " for " + setup.selectedMappingLevel; highlighted: true
                 Accessible.description: "Save this controller mapping for " + setup.mappingScope
@@ -534,7 +534,7 @@ ColumnLayout {
     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: setup.status; visible: text.length > 0 }
 
     ControllerCalibrationWizard { id: wizard; settingsModel: setup.settingsModel; gamepad: setup.gamepad; guided: true; onClosed: if (deviceId) setup.selectDevice(deviceId) }
-    Dialog {
+    LbDialog {
         id: modelDialog
         parent: Overlay.overlay; anchors.centerIn: parent
         width: Math.min(660, parent ? parent.width - 40 : 660)
@@ -555,18 +555,19 @@ ColumnLayout {
             spacing: 12
             Label { text: "Look for the model printed on the controller or its packaging. This chooses its shape and, where available, its known buttons."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             TextField { id: modelSearch; Layout.fillWidth: true; placeholderText: "Search, e.g. Brawler64, 8BitDo, Steam"; onTextChanged: modelDialog.refresh() }
-            ComboBox { id: modelChoice; Layout.fillWidth: true; model: modelDialog.models; textRole: "name"; currentIndex: -1; displayText: currentIndex < 0 ? "Select your controller model" : currentText }
+            LbComboBox { id: modelChoice; Layout.fillWidth: true; model: modelDialog.models; textRole: "name"; currentIndex: -1; displayText: currentIndex < 0 ? "Select your controller model" : currentText }
             Label { text: modelDialog.models.length ? "If a model lists USB/Bluetooth or an input mode, match the one you’re using." : "No match found. You can choose a layout and record its buttons instead."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             Label { id: modelError; color: "#ffb454"; visible: !!text; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         }
         footer: DialogButtonBox {
-            Button { text: "Record manually"; onClicked: { modelDialog.close(); setup.recordController(setup.modelDevice) } }
-            Button { text: "Cancel"; onClicked: modelDialog.close() }
-            Button { text: "Use this model"; highlighted: true; enabled: modelChoice.currentIndex >= 0; onClicked: setup.applyModel(modelDialog.models[modelChoice.currentIndex].id) }
+            background: Rectangle { color: "transparent" }
+            LbButton { text: "Record manually"; onClicked: { modelDialog.close(); setup.recordController(setup.modelDevice) } }
+            LbButton { text: "Cancel"; onClicked: modelDialog.close() }
+            LbButton { text: "Use this model"; highlighted: true; enabled: modelChoice.currentIndex >= 0; onClicked: setup.applyModel(modelDialog.models[modelChoice.currentIndex].id) }
         }
         onOpened: modelSearch.forceActiveFocus()
     }
-    Dialog {
+    LbDialog {
         id: renameDialog
         parent: Overlay.overlay; anchors.centerIn: parent
         width: Math.min(460, parent ? parent.width - 40 : 460)
@@ -577,8 +578,9 @@ ColumnLayout {
             Label { id: renameError; Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: !!text }
         }
         footer: DialogButtonBox {
-            Button { text: "Cancel"; onClicked: renameDialog.close() }
-            Button { text: "Save name"; enabled: !setup.settingsModel.busy; onClicked: { renameError.text = setup.settingsModel.save_controller_name(setup.renameDevice, controllerName.text); if (!renameError.text) renameDialog.close() } }
+            background: Rectangle { color: "transparent" }
+            LbButton { text: "Cancel"; onClicked: renameDialog.close() }
+            LbButton { text: "Save name"; enabled: !setup.settingsModel.busy; onClicked: { renameError.text = setup.settingsModel.save_controller_name(setup.renameDevice, controllerName.text); if (!renameError.text) renameDialog.close() } }
         }
         onOpened: controllerName.forceActiveFocus()
     }

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: form
     signal deviceAdded(var device)
     parent: Overlay.overlay
@@ -55,7 +55,7 @@ Dialog {
                     required property string modelData
                     property int outputCode: output.currentIndex === 0 ? -1 : 271 + output.currentIndex
                     Label { Layout.preferredWidth: 110; text: modelData + " (" + (272 + index) + ")" }
-                    ComboBox {
+                    LbComboBox {
                         id: output
                         Layout.fillWidth: true
                         model: ["Not mapped", "Left", "Right", "Middle", "Side", "Extra", "Forward", "Back", "Task"]
@@ -64,7 +64,7 @@ Dialog {
                 }
             }
             Label { id: error; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-            Button {
+            LbButton {
                 text: "Add to draft"
                 onClicked: {
                     if (!eventPath.text.startsWith("/") || !identity.text.startsWith("/")) {

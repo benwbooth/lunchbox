@@ -188,14 +188,14 @@ Item {
         anchors.margins: 8
         spacing: 5
 
-        RoundButton {
+        LbRoundButton {
             width: 30
             height: 30
             text: root.autoRotate ? "Ⅱ" : "▶"
             Accessible.name: root.autoRotate ? "Pause box rotation" : "Resume box rotation"
             onClicked: root.autoRotate = !root.autoRotate
         }
-        RoundButton {
+        LbRoundButton {
             width: 30
             height: 30
             text: "↺"

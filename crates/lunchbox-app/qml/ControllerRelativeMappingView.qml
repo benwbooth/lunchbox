@@ -23,7 +23,7 @@ ColumnLayout {
         text: "Relative input: source → destination"
         wrapMode: Text.WordWrap
     }
-    ComboBox {
+    LbComboBox {
         id: routeChoice
         Layout.fillWidth: true
         model: view.routes.map(route => route.title || "Player " + route.assignment.source_player
@@ -31,7 +31,7 @@ ColumnLayout {
             + " / mask " + route.assignment.field.mask + " / default " + route.assignment.field.defvalue)
         Accessible.name: "Saved relative-axis or mouse-button route to display"
     }
-    Button {
+    LbButton {
         text: "Edit selected route…"
         visible: view.editingEnabled
         enabled: view.editingEnabled && view.selected !== null

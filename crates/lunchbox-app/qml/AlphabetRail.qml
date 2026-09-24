@@ -84,7 +84,7 @@ Item {
             id: buttons
             model: root.labels
 
-            delegate: Button {
+            delegate: LbButton {
                 id: letterButton
                 required property int index
                 required property string modelData

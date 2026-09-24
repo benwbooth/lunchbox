@@ -3576,7 +3576,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: notificationHistoryDialog
         parent: Overlay.overlay
         modal: true
@@ -3601,7 +3601,7 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 13
                 }
-                Button {
+                LbButton {
                     text: "Clear history"
                     enabled: notificationHistory.count > 0
                     onClicked: root.clearNotifications()
@@ -3747,7 +3747,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: saveSyncRemoteDeviceDialog
         parent: Overlay.overlay
         modal: true
@@ -3781,7 +3781,7 @@ ApplicationWindow {
                 spacing: 8
                 model: saveSync.remote_device_count
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                delegate: Button {
+                delegate: LbButton {
                     required property int index
                     property int syncRevision: saveSync.revision
                     property var detail: {
@@ -3804,7 +3804,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                Button {
+                LbButton {
                     text: "Cancel"
                     enabled: !saveSync.busy
                     onClicked: {
@@ -3816,7 +3816,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: saveSyncConflictDialog
         parent: Overlay.overlay
         modal: true
@@ -3881,7 +3881,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             spacing: 9
-                            Button {
+                            LbButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 checkable: true
@@ -3896,7 +3896,7 @@ ApplicationWindow {
                                 }
                                 onClicked: saveSync.choose_conflict(conflictRow.index, "local")
                             }
-                            Button {
+                            LbButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 checkable: true
@@ -3924,7 +3924,7 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 10
                 }
-                Button {
+                LbButton {
                     text: "Cancel"
                     enabled: !saveSync.busy
                     onClicked: {
@@ -3947,7 +3947,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: cloudSyncErrorDialog
         parent: Overlay.overlay
         modal: true
@@ -3982,7 +3982,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                Button {
+                LbButton {
                     text: root.cloudLaunchPending ? "Cancel launch" : "Close"
                     onClicked: {
                         root.cloudLaunchPending = false
@@ -8857,7 +8857,7 @@ ApplicationWindow {
             height: 54
             spacing: 10
 
-            Button {
+            LbButton {
                 Layout.preferredWidth: 54
                 Layout.preferredHeight: 38
                 text: gameVideoPlayer.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
@@ -8882,13 +8882,13 @@ ApplicationWindow {
                 font.features: { "tnum": 1 }
                 horizontalAlignment: Text.AlignHCenter
             }
-            Button {
+            LbButton {
                 Layout.preferredWidth: 72
                 Layout.preferredHeight: 38
                 text: gameVideoAudio.muted ? "UNMUTE" : "MUTE"
                 onClicked: gameVideoPlayer.toggleMuted()
             }
-            Button {
+            LbButton {
                 Layout.preferredWidth: 72
                 Layout.preferredHeight: 38
                 text: "CLOSE"
@@ -8938,7 +8938,7 @@ ApplicationWindow {
                     font.weight: Font.Bold
                     font.letterSpacing: 1
                 }
-                Button {
+                LbButton {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Clear"
@@ -8994,7 +8994,7 @@ ApplicationWindow {
                 font.weight: Font.Bold
                 font.letterSpacing: 1
             }
-            ComboBox {
+            LbComboBox {
                 id: libraryTagFilter
                 width: parent.width
                 height: 40
@@ -9004,7 +9004,7 @@ ApplicationWindow {
                              ? "All tags"
                              : library.tag_name_at(currentIndex - 1)
                                + "  (" + library.tag_game_count_at(currentIndex - 1) + ")"
-                delegate: ItemDelegate {
+                delegate: LbItemDelegate {
                     required property int index
                     width: libraryTagFilter.width
                     text: index === 0 ? "All tags"
@@ -9059,7 +9059,7 @@ ApplicationWindow {
                 maximumLineCount: 3
                 elide: Text.ElideRight
             }
-            Button {
+            LbButton {
                 width: parent.width
                 height: 34
                 visible: library.list_filter_active_count > 0
@@ -9147,7 +9147,7 @@ ApplicationWindow {
             Row {
                 width: parent.width
                 spacing: 8
-                ComboBox {
+                LbComboBox {
                     id: sortCombo
                     width: parent.width - sortDirectionButton.width - 8
                     height: 40
@@ -9214,7 +9214,7 @@ ApplicationWindow {
                 font.weight: Font.Bold
                 font.letterSpacing: 1
             }
-            ComboBox {
+            LbComboBox {
                 id: artworkCombo
                 width: parent.width
                 height: 40
@@ -9247,7 +9247,7 @@ ApplicationWindow {
             Row {
                 width: parent.width
                 spacing: 9
-                Button {
+                LbButton {
                     width: 35
                     height: 35
                     text: "−"
@@ -9274,7 +9274,7 @@ ApplicationWindow {
                                         library.artwork_type, Math.round(value))
                     }
                 }
-                Button {
+                LbButton {
                     width: 35
                     height: 35
                     text: "+"
@@ -9430,7 +9430,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: listColumnsDialog
         parent: Overlay.overlay
         anchors.centerIn: parent
@@ -9573,7 +9573,7 @@ ApplicationWindow {
                                          ? Font.DemiBold : Font.Normal
                             elide: Text.ElideRight
                         }
-                        Button {
+                        LbButton {
                             id: moveUpButton
                             anchors.right: moveDownButton.left
                             anchors.verticalCenter: parent.verticalCenter
@@ -9587,7 +9587,7 @@ ApplicationWindow {
                             ToolTip.visible: hovered
                             ToolTip.text: "Move earlier"
                         }
-                        Button {
+                        LbButton {
                             id: moveDownButton
                             anchors.right: removeColumnButton.left
                             anchors.verticalCenter: parent.verticalCenter
@@ -9601,7 +9601,7 @@ ApplicationWindow {
                             ToolTip.visible: hovered
                             ToolTip.text: "Move later"
                         }
-                        Button {
+                        LbButton {
                             id: removeColumnButton
                             anchors.right: parent.right
                             anchors.rightMargin: 5
@@ -9671,7 +9671,7 @@ ApplicationWindow {
                             font.pixelSize: 12
                             elide: Text.ElideRight
                         }
-                        Button {
+                        LbButton {
                             id: addColumnButton
                             anchors.right: parent.right
                             anchors.rightMargin: 7
@@ -9736,7 +9736,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: listFilterDialog
         parent: Overlay.overlay
         anchors.centerIn: parent
@@ -9829,14 +9829,14 @@ ApplicationWindow {
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 4
-                        Button {
+                        LbButton {
                             text: "All"
                             flat: true
                             onClicked: library.select_all_list_filter_values()
                             ToolTip.visible: hovered
                             ToolTip.text: "Include every value and clear this column filter"
                         }
-                        Button {
+                        LbButton {
                             text: "None"
                             flat: true
                             onClicked: library.select_no_list_filter_values()
@@ -9910,7 +9910,7 @@ ApplicationWindow {
                         model: library.list_filter_value_count
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                        delegate: ItemDelegate {
+                        delegate: LbItemDelegate {
                             id: facetValueDelegate
                             required property int index
                             readonly property string facetValue: {
@@ -10592,7 +10592,7 @@ ApplicationWindow {
                             renderType: Text.NativeRendering
                         }
                     }
-                    RoundButton {
+                    LbRoundButton {
                         id: favoriteButton
                         z: previewPresentation.overlayLayer
                         anchors.left: parent.left
@@ -10605,22 +10605,11 @@ ApplicationWindow {
                         enabled: !tile.favoriteBusy
                         text: tile.favoriteBusy ? "…" : tile.favorite ? "★" : "☆"
                         flat: true
+                        highlighted: tile.favorite
                         font.pixelSize: 17 * card.expansion
                         onClicked: library.set_favorite(tile.gameId, !tile.favorite)
-                        background: Rectangle {
-                            radius: 9 * card.expansion
-                            color: "#d9101620"
-                            border.color: tile.favorite ? root.accent : "#5b687d"
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: tile.favorite ? root.accent : root.ink
-                            font: parent.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
-                    RoundButton {
+                    LbRoundButton {
                         id: cardPlayButton
                         anchors.left: parent.left
                         anchors.bottom: parent.bottom
@@ -10632,19 +10621,12 @@ ApplicationWindow {
                                  || tile.downloadJobState === "IMPORTED"
                         enabled: root.pendingCardLaunchGameId !== tile.gameId
                                  && !gameDetails.launch_busy
+                        highlighted: true
                         font.pixelSize: 17 * card.expansion
                         Accessible.name: "Play " + tile.gameTitle
                         onClicked: root.requestCardLaunch(
                                        tile.gameId, tile.gameDatabaseId,
                                        tile.gameTitle, tile.gamePlatform, true)
-                        background: Rectangle {
-                            radius: parent.width / 2
-                            color: parent.enabled
-                                   ? (parent.down ? "#238153" : "#2cad6d")
-                                   : "#244337"
-                            border.width: 2
-                            border.color: parent.enabled ? "#8de8b5" : root.line
-                        }
                         contentItem: Item {
                             implicitWidth: 26 * card.expansion
                             implicitHeight: 26 * card.expansion
@@ -10655,7 +10637,7 @@ ApplicationWindow {
                                 height: parent.height
                                 name: "play"
                                 filled: true
-                                color: cardPlayButton.enabled ? "white" : root.muted
+                                color: cardPlayButton.enabled ? "#ffcb84" : root.muted
                                 visible: !cardPendingText.visible
                             }
                             Text {
@@ -10663,14 +10645,14 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 visible: root.pendingCardLaunchGameId === tile.gameId
                                 text: "…"
-                                color: cardPlayButton.enabled ? "white" : root.muted
+                                color: cardPlayButton.enabled ? "#ffcb84" : root.muted
                                 font: cardPlayButton.font
                             }
                         }
                         ToolTip.visible: hovered
                         ToolTip.text: "Play " + tile.gameTitle
                     }
-                    RoundButton {
+                    LbRoundButton {
                         z: previewPresentation.overlayLayer
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
@@ -10680,6 +10662,7 @@ ApplicationWindow {
                         visible: tile.previewActive
                         text: root.hoverPreviewAudioMuted ? "M" : "♫"
                         flat: true
+                        highlighted: !root.hoverPreviewAudioMuted
                         font.pixelSize: 16 * card.expansion
                         onClicked: {
                             const unmuting = root.hoverPreviewAudioMuted
@@ -10689,19 +10672,6 @@ ApplicationWindow {
                                 hoverPreviewPlayer.positionApplied = false
                                 hoverPreviewPlayer.reloadPipeline()
                             }
-                        }
-                        background: Rectangle {
-                            radius: 9 * card.expansion
-                            color: "#d9101620"
-                            border.color: root.hoverPreviewAudioMuted
-                                          ? "#5b687d" : root.accentCool
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: root.hoverPreviewAudioMuted ? root.muted : root.accentCool
-                            font: parent.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }
@@ -10913,7 +10883,7 @@ ApplicationWindow {
                     x: list.columnX(index)
                     width: list.columnWidth(modelData) - 8
                     height: parent.height
-                    Button {
+                    LbButton {
                         id: columnSortButton
                         anchors.left: parent.left
                         anchors.right: columnFilterButton.left
@@ -10922,6 +10892,7 @@ ApplicationWindow {
                         text: root.listColumnDefinition(headerColumn.modelData).label.toUpperCase()
                               + root.sortIndicator(headerColumn.modelData)
                         flat: true
+                        highlighted: library.sort_field === headerColumn.modelData
                         onClicked: root.requestLibrarySort(headerColumn.modelData)
                         Accessible.name: "Sort games by "
                                          + root.listColumnDefinition(
@@ -10936,11 +10907,8 @@ ApplicationWindow {
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
-                        background: Rectangle {
-                            color: parent.hovered ? "#222c3a" : "transparent"
-                        }
                     }
-                    Button {
+                    LbButton {
                         id: columnFilterButton
                         anchors.right: parent.right
                         anchors.top: parent.top
@@ -10948,6 +10916,7 @@ ApplicationWindow {
                         width: 32
                         text: headerColumn.columnFiltered ? "●" : "⌄"
                         flat: true
+                        highlighted: headerColumn.columnFiltered
                         onClicked: listFilterDialog.openForColumn(headerColumn.modelData)
                         Accessible.name: "Filter games by "
                                          + root.listColumnDefinition(headerColumn.modelData).label
@@ -10963,12 +10932,6 @@ ApplicationWindow {
                             font.weight: Font.Bold
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                        }
-                        background: Rectangle {
-                            radius: 7
-                            color: parent.hovered ? "#293546"
-                                   : headerColumn.columnFiltered
-                                     ? "#20343a" : "transparent"
                         }
                     }
                     Rectangle {
@@ -11174,7 +11137,7 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
             }
-            RoundButton {
+            LbRoundButton {
                 id: listFavorite
                 anchors.right: parent.right
                 anchors.rightMargin: 8
@@ -11531,7 +11494,7 @@ ApplicationWindow {
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
-                ToolButton {
+                LbToolButton {
                     text: "+"
                     width: 28
                     height: 28
@@ -11540,7 +11503,7 @@ ApplicationWindow {
                     ToolTip.visible: hovered
                     ToolTip.text: "New collection"
                 }
-                ToolButton {
+                LbToolButton {
                     text: "⋯"
                     width: 28
                     height: 28
@@ -12249,7 +12212,7 @@ ApplicationWindow {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.4
             }
-            RoundButton {
+            LbRoundButton {
                 id: detailFavoriteButton
                 anchors.right: detailMetadataButton.left
                 anchors.rightMargin: 4
@@ -12266,7 +12229,7 @@ ApplicationWindow {
                 ToolTip.text: root.selectedFavorite
                               ? "Remove from Favorites" : "Add to Favorites"
             }
-            RoundButton {
+            LbRoundButton {
                 id: detailMetadataButton
                 anchors.right: detailCollectionsButton.left
                 anchors.rightMargin: 4
@@ -12289,7 +12252,7 @@ ApplicationWindow {
                               ? "Edit local metadata override"
                               : "Edit game metadata"
             }
-            RoundButton {
+            LbRoundButton {
                 id: detailCollectionsButton
                 anchors.right: closeDetailsButton.left
                 anchors.rightMargin: 4
@@ -12312,7 +12275,7 @@ ApplicationWindow {
                               ? "Add to collections"
                               : "Create a collection first"
             }
-            RoundButton {
+            LbRoundButton {
                 id: closeDetailsButton
                 anchors.right: parent.right
                 anchors.rightMargin: 12
@@ -12398,7 +12361,7 @@ ApplicationWindow {
                         }
                     }
                 }
-                Button {
+                LbButton {
                     width: parent.width
                     text: "+  New collection"
                     enabled: !library.collection_busy
@@ -12543,20 +12506,16 @@ ApplicationWindow {
                         running: gameDetails.loading
                         visible: running && !root.selectedBox3d
                     }
-                    Button {
+                    LbButton {
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.margins: 11
                         visible: root.selectedBoxFrontUrl.toString().length > 0
                         text: root.selectedBox3d ? "ARTWORK" : "3D BOX"
+                        highlighted: root.selectedBox3d
                         font.pixelSize: 9
                         font.weight: Font.Bold
                         onClicked: root.selectedBox3d = !root.selectedBox3d
-                        background: Rectangle {
-                            radius: 8
-                            color: root.selectedBox3d ? root.accent : "#d5101620"
-                            border.color: root.selectedBox3d ? root.accent : "#627087"
-                        }
                     }
                     Row {
                         anchors.right: parent.right
@@ -12568,7 +12527,7 @@ ApplicationWindow {
                                  && (root.selectedHeroArtworkCount > 1
                                      || library.media_retrieval_enabled)
 
-                        RoundButton {
+                        LbRoundButton {
                             width: 30
                             height: 30
                             visible: root.selectedHeroArtworkCount > 1
@@ -12596,7 +12555,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                             }
                         }
-                        RoundButton {
+                        LbRoundButton {
                             width: 30
                             height: 30
                             visible: root.selectedHeroArtworkCount > 1
@@ -12607,7 +12566,7 @@ ApplicationWindow {
                             ToolTip.visible: hovered
                             ToolTip.text: "Next cached artwork"
                         }
-                        RoundButton {
+                        LbRoundButton {
                             width: 30
                             height: 30
                             visible: library.media_retrieval_enabled
@@ -12617,7 +12576,7 @@ ApplicationWindow {
                             ToolTip.visible: hovered
                             ToolTip.text: "Fetch a fresh LibRetro copy without deleting other artwork"
                         }
-                        RoundButton {
+                        LbRoundButton {
                             width: 30
                             height: 30
                             visible: library.media_retrieval_enabled
@@ -13010,7 +12969,7 @@ ApplicationWindow {
                                     font.letterSpacing: 0.6
                                     verticalAlignment: Text.AlignVCenter
                                 }
-                                ComboBox {
+                                LbComboBox {
                                     id: completionPicker
                                     width: parent.width - 98
                                     height: 34
@@ -13025,10 +12984,13 @@ ApplicationWindow {
                                 }
                             }
 
-                            Button {
+                            LbButton {
                                 id: sessionHistoryButton
                                 width: parent.width
                                 height: 38
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
                                 enabled: gameDetails.session_count > 0
                                 text: gameDetails.session_count > 0
                                       ? "VIEW " + gameDetails.session_count
@@ -13041,23 +13003,6 @@ ApplicationWindow {
                                 onClicked: {
                                     activityHistoryDialog.outcomeFilter = "all"
                                     activityHistoryDialog.open()
-                                }
-                                contentItem: Text {
-                                    text: sessionHistoryButton.text
-                                    color: sessionHistoryButton.enabled
-                                           ? root.accentCool : root.muted
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    font.letterSpacing: 0.8
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: 8
-                                    color: sessionHistoryButton.down
-                                           ? "#233446" : "#101721"
-                                    border.color: sessionHistoryButton.activeFocus
-                                                  ? root.accentCool : root.line
                                 }
                             }
                         }
@@ -13172,29 +13117,19 @@ ApplicationWindow {
                                     height: 42
                                     spacing: 6
 
-                                    Button {
+                                    LbButton {
                                         Layout.preferredWidth: 38
                                         Layout.preferredHeight: 30
                                         text: gameVideoPlayer.playbackState
                                               === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
                                         onClicked: {
                                             if (gameVideoPlayer.playbackState
                                                     === MediaPlayer.PlayingState)
                                                 gameVideoPlayer.pause()
                                             else
                                                 gameVideoPlayer.play()
-                                        }
-                                        background: Rectangle {
-                                            radius: 7
-                                            color: parent.down ? "#3a4556" : "#283343"
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: root.ink
-                                            font.pixelSize: 12
-                                            font.weight: Font.Bold
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
                                         }
                                     }
 
@@ -13217,46 +13152,27 @@ ApplicationWindow {
                                         horizontalAlignment: Text.AlignHCenter
                                     }
 
-                                    Button {
+                                    LbButton {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 30
                                         text: gameVideoAudio.muted ? "MUTE" : "SOUND"
+                                        highlighted: !gameVideoAudio.muted
+                                        font.pixelSize: 6
+                                        font.weight: Font.Bold
                                         onClicked: gameVideoPlayer.toggleMuted()
                                         ToolTip.visible: hovered
                                         ToolTip.text: gameVideoAudio.muted ? "Turn sound on" : "Mute video"
-                                        background: Rectangle {
-                                            radius: 7
-                                            color: parent.down ? "#3a4556" : "#283343"
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: gameVideoAudio.muted ? root.muted : root.accentCool
-                                            font.pixelSize: 6
-                                            font.weight: Font.Bold
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
                                     }
 
-                                    Button {
+                                    LbButton {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 30
                                         text: "FULL"
+                                        font.pixelSize: 6
+                                        font.weight: Font.Bold
                                         onClicked: mediaFullscreen.open()
                                         ToolTip.visible: hovered
                                         ToolTip.text: "View fullscreen"
-                                        background: Rectangle {
-                                            radius: 7
-                                            color: parent.down ? "#3a4556" : "#283343"
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: root.ink
-                                            font.pixelSize: 6
-                                            font.weight: Font.Bold
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
                                     }
                                 }
                             }
@@ -13275,25 +13191,14 @@ ApplicationWindow {
                                     font.weight: Font.Bold
                                     font.letterSpacing: 0.6
                                 }
-                                Button {
+                                LbButton {
                                     text: "START OVER"
                                     enabled: !gameDetails.video_progress_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
                                     onClicked: {
                                         gameVideoPlayer.position = 0
                                         gameDetails.reset_video_progress(gameVideoPlayer.duration)
-                                    }
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.down ? "#303b4b" : "#202a38"
-                                        border.color: root.line
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: root.ink
-                                        font.pixelSize: 8
-                                        font.weight: Font.Bold
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
                                     }
                                 }
                             }
@@ -13345,26 +13250,17 @@ ApplicationWindow {
                                             font.letterSpacing: 0.4
                                         }
                                     }
-                                    Button {
+                                    LbButton {
                                         Layout.preferredWidth: 74
                                         Layout.preferredHeight: 32
                                         text: "OPEN"
+                                        highlighted: true
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
                                         onClicked: {
                                             if (!Qt.openUrlExternally(gameDetails.manual_url))
                                                 root.mediaPlaybackMessage =
                                                         "The operating system could not open this manual."
-                                        }
-                                        background: Rectangle {
-                                            radius: 7
-                                            color: parent.down ? "#d89444" : root.accent
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: "#17110a"
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
                                         }
                                     }
                                 }
@@ -13417,11 +13313,14 @@ ApplicationWindow {
                                             running: gameDetails.manual_action_busy
                                             visible: running
                                         }
-                                        Button {
+                                        LbButton {
                                             Layout.preferredWidth: 74
                                             Layout.preferredHeight: 32
                                             text: gameDetails.manual_transfer_active
                                                   ? "CANCEL" : "FIND"
+                                            highlighted: !gameDetails.manual_transfer_active
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
                                             enabled: !gameDetails.manual_action_busy
                                             onClicked: {
                                                 if (gameDetails.manual_transfer_active)
@@ -13429,30 +13328,15 @@ ApplicationWindow {
                                                 else
                                                     gameDetails.download_manual()
                                             }
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: parent.down ? "#344254"
-                                                                      : gameDetails.manual_transfer_active
-                                                                        ? "#263647" : root.accent
-                                                border.color: gameDetails.manual_transfer_active
-                                                              ? root.accentCool : "transparent"
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: gameDetails.manual_transfer_active
-                                                       ? root.ink : "#17110a"
-                                                font.pixelSize: 8
-                                                font.weight: Font.Bold
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
                                         }
-                                        Button {
+                                        LbButton {
                                             visible: !gameDetails.manual_transfer_active
                                             Layout.preferredWidth: 96
                                             Layout.preferredHeight: 32
                                             text: emuMovies.credentials_saved
                                                   ? "EMUMOVIES" : "SET UP"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
                                             enabled: !emuMovies.busy
                                                      && !gameDetails.manual_action_busy
                                             onClicked: {
@@ -13469,19 +13353,6 @@ ApplicationWindow {
                                             ToolTip.text: emuMovies.credentials_saved
                                                           ? "Download through the legacy EmuMovies FTP matcher"
                                                           : "Configure EmuMovies in Settings"
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: parent.down ? "#344254" : "#263647"
-                                                border.color: root.accentCool
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: root.ink
-                                                font.pixelSize: 8
-                                                font.weight: Font.Bold
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
                                         }
                                     }
 
@@ -13569,7 +13440,7 @@ ApplicationWindow {
                         DetailInfoLabel { visible: gameDetails.release_type.length > 0; text: "TYPE" }
                         DetailInfoValue { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type }
                         DetailInfoLabel { visible: gameDetails.series.length > 0; text: "SERIES" }
-                        Button {
+                        LbButton {
                             visible: gameDetails.series.length > 0
                             Layout.fillWidth: true
                             Layout.preferredHeight: 28
@@ -13584,11 +13455,6 @@ ApplicationWindow {
                                 text: parent.text
                                 color: parent.hovered ? root.accent : root.accentCool
                                 font.weight: Font.DemiBold
-                            }
-                            background: Rectangle {
-                                radius: 6
-                                color: parent.hovered ? "#1c2938" : "transparent"
-                                border.color: parent.activeFocus ? root.accentCool : "transparent"
                             }
                         }
                         DetailInfoLabel { visible: gameDetails.region.length > 0; text: "REGION" }
@@ -14518,7 +14384,7 @@ ApplicationWindow {
                                         elide: Text.ElideMiddle
                                     }
                                 }
-                                Button {
+                                LbButton {
                                     id: refreshEmulators
                                     width: 76
                                     height: 30
@@ -14528,18 +14394,6 @@ ApplicationWindow {
                                     font.pixelSize: 9
                                     font.weight: Font.Bold
                                     onClicked: gameDetails.refresh_emulators()
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.down ? "#28364a" : "#202b3a"
-                                        border.color: root.line
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: root.muted
-                                        font: parent.font
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
                                 }
                             }
                             Text {
@@ -14552,10 +14406,11 @@ ApplicationWindow {
                                 lineHeight: 1.25
                                 wrapMode: Text.WordWrap
                             }
-                            Button {
+                            LbButton {
                                 width: parent.width
                                 height: 42
                                 visible: gameDetails.prepared
+                                highlighted: true
                                 text: gameDetails.launch_busy ? "STARTING…"
                                       : gameDetails.game_running ? "GAME IS RUNNING"
                                       : "PLAY"
@@ -14566,24 +14421,11 @@ ApplicationWindow {
                                 font.pixelSize: 11
                                 font.weight: Font.Bold
                                 onClicked: root.requestGameLaunch()
-                                background: Rectangle {
-                                    radius: 8
-                                    color: parent.enabled
-                                           ? (parent.down ? "#d24e36" : root.accent)
-                                           : "#26313e"
-                                    border.color: parent.enabled ? "#ff8a70" : root.line
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.enabled ? "#ffffff" : root.muted
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
                             }
-                            Button {
+                            LbButton {
                                 width: parent.width
                                 height: 36
+                                highlighted: gameDetails.prepared
                                 text: gameDetails.prepare_busy ? "CANCEL PREPARATION"
                                       : gameDetails.prepared ? "VERIFY & REFRESH INSTALL"
                                       : "PREPARE INSTALL"
@@ -14595,19 +14437,6 @@ ApplicationWindow {
                                         gameDetails.cancel_preparation()
                                     else
                                         gameDetails.prepare_game()
-                                }
-                                background: Rectangle {
-                                    radius: 8
-                                    color: parent.down ? "#28364a"
-                                           : gameDetails.prepared ? "#1d493f" : "#263246"
-                                    border.color: gameDetails.prepared ? root.accentCool : root.accent
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: gameDetails.prepared ? root.accentCool : root.ink
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
                                 }
                             }
                         }
@@ -14644,7 +14473,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: installRemovalDialog
         modal: true
         anchors.centerIn: parent
@@ -14712,7 +14541,7 @@ ApplicationWindow {
         accentCool: root.accentCool
     }
 
-    Dialog {
+    LbDialog {
         id: collectionEditorDialog
         readonly property bool smartMode: collectionType.currentValue === "smart"
         readonly property bool smartRuleConfigured: !smartMode
@@ -14791,7 +14620,7 @@ ApplicationWindow {
                         font.weight: Font.Bold
                         font.letterSpacing: 1.2
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: collectionType
                         Layout.fillWidth: true
                         enabled: root.editingCollectionId.length === 0
@@ -14846,14 +14675,14 @@ ApplicationWindow {
                         columnSpacing: 10
                         rowSpacing: 8
                         Text { text: "Platform"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionPlatformRule
                             Layout.fillWidth: true
                             model: library.platform_count + 1
                             displayText: currentIndex === 0
                                          ? "All platforms"
                                          : library.platform_name_at(currentIndex - 1)
-                            delegate: ItemDelegate {
+                            delegate: LbItemDelegate {
                                 required property int index
                                 width: collectionPlatformRule.width
                                 text: index === 0 ? "All platforms"
@@ -14861,14 +14690,14 @@ ApplicationWindow {
                             }
                         }
                         Text { text: "Tag"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionTagRule
                             Layout.fillWidth: true
                             model: library.tag_count + 1
                             displayText: currentIndex === 0
                                          ? "Any tag"
                                          : library.tag_name_at(currentIndex - 1)
-                            delegate: ItemDelegate {
+                            delegate: LbItemDelegate {
                                 required property int index
                                 width: collectionTagRule.width
                                 text: index === 0 ? "Any tag"
@@ -14878,7 +14707,7 @@ ApplicationWindow {
                             ToolTip.text: "Create tags from a game's metadata editor first"
                         }
                         Text { text: "Availability"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionAvailabilityRule
                             Layout.fillWidth: true
                             model: [
@@ -14891,7 +14720,7 @@ ApplicationWindow {
                             valueRole: "value"
                         }
                         Text { text: "Favorites"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionFavoriteRule
                             Layout.fillWidth: true
                             model: [
@@ -14903,7 +14732,7 @@ ApplicationWindow {
                             valueRole: "value"
                         }
                         Text { text: "Completion"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionCompletionRule
                             Layout.fillWidth: true
                             model: [
@@ -14918,7 +14747,7 @@ ApplicationWindow {
                             valueRole: "value"
                         }
                         Text { text: "Content"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionContentRule
                             Layout.fillWidth: true
                             model: [
@@ -14931,7 +14760,7 @@ ApplicationWindow {
                             valueRole: "value"
                         }
                         Text { text: "Cooperative play"; color: root.muted; font.pixelSize: 10 }
-                        ComboBox {
+                        LbComboBox {
                             id: collectionCooperativeRule
                             Layout.fillWidth: true
                             model: [
@@ -14986,7 +14815,7 @@ ApplicationWindow {
                 anchors.rightMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 9
-                Button {
+                LbButton {
                     text: "Cancel"
                     enabled: !library.collection_busy
                     onClicked: collectionEditorDialog.close()
@@ -15025,7 +14854,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: manageCollectionsDialog
         modal: true
         anchors.centerIn: parent
@@ -15059,7 +14888,7 @@ ApplicationWindow {
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
             }
-            RoundButton {
+            LbRoundButton {
                 anchors.right: parent.right
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
@@ -15383,7 +15212,7 @@ ApplicationWindow {
                                     anchors.rightMargin: 6
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 2
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "✎"
                                         enabled: !library.collection_busy
                                         onClicked: root.openCollectionMemberPresentationDialog(
@@ -15392,7 +15221,7 @@ ApplicationWindow {
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Edit title and notes for this collection"
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "↑"
                                         enabled: memberRow.index > 0 && !library.collection_busy
                                         onClicked: library.move_collection_game(
@@ -15402,7 +15231,7 @@ ApplicationWindow {
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Move earlier"
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "↓"
                                         enabled: memberRow.index + 1 < collectionMemberList.count
                                                  && !library.collection_busy
@@ -15413,7 +15242,7 @@ ApplicationWindow {
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Move later"
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "×"
                                         enabled: !library.collection_busy
                                         onClicked: library.set_collection_membership(
@@ -15501,7 +15330,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: bulkCollectionDialog
         modal: true
         anchors.centerIn: parent
@@ -15535,7 +15364,7 @@ ApplicationWindow {
                          libraryAuditSort.currentValue)
     }
 
-    Dialog {
+    LbDialog {
         id: libraryAuditDialog
         modal: true
         anchors.centerIn: parent
@@ -15713,7 +15542,7 @@ ApplicationWindow {
                     onTextEdited: libraryAuditFilterDelay.restart()
                     onClearRequested: libraryAuditFilterDelay.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: libraryAuditStatus
                     Layout.preferredWidth: 170
                     textRole: "label"
@@ -15731,7 +15560,7 @@ ApplicationWindow {
                     ]
                     onActivated: libraryAuditFilterDelay.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: libraryAuditSort
                     Layout.preferredWidth: 150
                     textRole: "label"
@@ -16043,7 +15872,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: removeMissingAuditRecordsDialog
         modal: true
         anchors.centerIn: parent
@@ -16073,7 +15902,7 @@ ApplicationWindow {
                          mediaAuditSort.currentValue)
     }
 
-    Dialog {
+    LbDialog {
         id: mediaAuditDialog
         modal: true
         anchors.centerIn: parent
@@ -16138,7 +15967,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                ComboBox {
+                LbComboBox {
                     id: mediaAuditScope
                     Layout.preferredWidth: 190
                     textRole: "label"
@@ -16150,7 +15979,7 @@ ApplicationWindow {
                         { label: "Entire Catalog", value: "catalog" }
                     ]
                 }
-                ComboBox {
+                LbComboBox {
                     id: mediaAuditKind
                     Layout.preferredWidth: 190
                     textRole: "label"
@@ -16238,7 +16067,7 @@ ApplicationWindow {
                     onTextEdited: mediaAuditFilterDelay.restart()
                     onClearRequested: mediaAuditFilterDelay.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: mediaAuditStatus
                     Layout.preferredWidth: 176
                     textRole: "label"
@@ -16254,7 +16083,7 @@ ApplicationWindow {
                     ]
                     onActivated: mediaAuditFilterDelay.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: mediaAuditSort
                     Layout.preferredWidth: 150
                     textRole: "label"
@@ -16578,7 +16407,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: mediaAuditRepairConfirmDialog
         modal: true
         anchors.centerIn: parent
@@ -16598,7 +16427,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: externalTorrentDialog
         modal: true
         anchors.centerIn: parent
@@ -16689,7 +16518,7 @@ ApplicationWindow {
                             elide: Text.ElideRight
                         }
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: externalTorrentPlatform
                         visible: externalTorrent.collection_mode
                         Layout.preferredWidth: 250
@@ -16729,7 +16558,7 @@ ApplicationWindow {
                     spacing: 6
                     Repeater {
                         model: ["LOADED IN QBITTORRENT", ".TORRENT FILE", "MAGNET LINK"]
-                        delegate: Button {
+                        delegate: LbButton {
                             required property int index
                             required property string modelData
                             Layout.fillWidth: true
@@ -16762,28 +16591,17 @@ ApplicationWindow {
                     visible: externalTorrentDialog.sourceMode === 1
                     Layout.preferredHeight: visible ? 38 : 0
                     spacing: 10
-                    Button {
+                    LbButton {
                         id: externalTorrentImportButton
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 38
+                        highlighted: true
                         text: externalTorrent.ready ? "IMPORT ANOTHER…"
                                                     : "IMPORT .TORRENT…"
                         enabled: !externalTorrent.busy
                         font.pixelSize: 9
                         font.weight: Font.Bold
                         onClicked: root.chooseExternalTorrentFile()
-                        background: Rectangle {
-                            radius: 8
-                            color: parent.down ? "#d68d36" : root.accent
-                            border.color: "#ffc579"
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: "#1b140c"
-                            font: parent.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -16824,7 +16642,7 @@ ApplicationWindow {
                         accentCool: root.accentCool
                         line: root.line
                     }
-                    Button {
+                    LbButton {
                         id: externalQbittorrentRefreshButton
                         Layout.preferredWidth: 118
                         Layout.preferredHeight: 38
@@ -16867,7 +16685,7 @@ ApplicationWindow {
                                 externalTorrent.inspect_magnet(text)
                         }
                     }
-                    Button {
+                    LbButton {
                         Layout.preferredWidth: 150
                         Layout.preferredHeight: 38
                         text: externalTorrent.busy ? "FETCHING…" : "REVIEW MAGNET"
@@ -17022,16 +16840,17 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 10
                     Item { Layout.fillWidth: true }
-                    Button {
+                    LbButton {
                         Layout.preferredWidth: 104
                         Layout.preferredHeight: 36
                         text: "CANCEL"
                         enabled: !externalTorrent.busy
                         onClicked: externalTorrentDialog.close()
                     }
-                    Button {
+                    LbButton {
                         property bool queuesPayloadSet: externalTorrent.selected_file_count > 1
                         property bool registersBatch: externalTorrent.batch_source_count > 0
+                        highlighted: true
                         Layout.preferredWidth: externalTorrent.batch_valid_count > 0 ? 190
                                                : externalTorrent.importing_existing ? 232
                                                : queuesPayloadSet ? 196 : 176
@@ -17078,27 +16897,13 @@ ApplicationWindow {
                             else
                                 externalTorrent.queue_selected()
                         }
-                        background: Rectangle {
-                            radius: 8
-                            color: parent.enabled
-                                   ? (parent.down ? "#d68d36" : root.accent)
-                                   : "#26313e"
-                            border.color: parent.enabled ? "#ffc579" : root.line
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: parent.enabled ? "#1b140c" : root.muted
-                            font: parent.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
                 }
             }
         }
     }
 
-    Dialog {
+    LbDialog {
         id: profileRestoreConfirmDialog
         modal: true
         anchors.centerIn: parent
@@ -17144,7 +16949,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: removeCouchThemeDialog
         modal: true
         anchors.centerIn: parent
@@ -17169,7 +16974,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: deleteCollectionDialog
         modal: true
         anchors.centerIn: parent
@@ -17195,7 +17000,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: downloadRecoveryConfirmDialog
         modal: true
         anchors.centerIn: parent
@@ -17222,7 +17027,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: downloadRecoveryHistoryDialog
         modal: true
         anchors.centerIn: parent
@@ -17496,7 +17301,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: downloadHistoryDialog
         modal: true
         anchors.centerIn: parent
@@ -17540,7 +17345,7 @@ ApplicationWindow {
 
     Component {
         id: importDialogComponent
-        Dialog {
+        LbDialog {
             id: importDialog
             modal: true
             anchors.centerIn: parent
@@ -17695,7 +17500,7 @@ ApplicationWindow {
                     font.pixelSize: 10
                 }
             }
-            RoundButton {
+            LbRoundButton {
                 anchors.right: parent.right
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
@@ -17745,7 +17550,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                             }
-                            ComboBox {
+                            LbComboBox {
                                 id: importProfile
                                 Layout.fillWidth: true
                                 enabled: !localImport.busy && !localImport.profile_busy
@@ -17780,7 +17585,7 @@ ApplicationWindow {
                             Layout.preferredWidth: 24
                             Layout.preferredHeight: 24
                         }
-                        Button {
+                        LbButton {
                             text: localImport.batch_scanning
                                   ? "Scanning " + (localImport.batch_completed_count + 1)
                                     + "/" + localImport.batch_profile_count
@@ -17791,7 +17596,7 @@ ApplicationWindow {
                             ToolTip.visible: hovered
                             ToolTip.text: "Check every saved collection sequentially and retain a compact scan history"
                         }
-                        Button {
+                        LbButton {
                             text: "History" + (localImport.history_count > 0
                                                ? "  " + localImport.history_count : "")
                             enabled: !localImport.profile_busy
@@ -17799,7 +17604,7 @@ ApplicationWindow {
                             ToolTip.visible: hovered
                             ToolTip.text: "Review recent per-profile scan outcomes"
                         }
-                        Button {
+                        LbButton {
                             text: "Save current…"
                             enabled: !localImport.busy && !localImport.profile_busy
                                      && localImport.directory.length > 0
@@ -17813,7 +17618,7 @@ ApplicationWindow {
                                 importProfileName.selectAll()
                             }
                         }
-                        Button {
+                        LbButton {
                             text: "Remove"
                             visible: importProfile.currentIndex > 0
                             enabled: !localImport.busy && !localImport.profile_busy
@@ -17845,12 +17650,12 @@ ApplicationWindow {
                         readOnly: true
                         placeholderText: "Choose a folder containing ROMs"
                     }
-                    Button {
+                    LbButton {
                         text: "Choose…"
                         enabled: !localImport.busy && !localImport.profile_busy
                         onClicked: localImport.choose_native_directory()
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: importPlatform
                         Layout.preferredWidth: 205
                         model: {
@@ -17896,7 +17701,7 @@ ApplicationWindow {
                                        importExtensions.text,
                                        importChecksums.checked)
                     }
-                    Button {
+                    LbButton {
                         text: "Cancel"
                         visible: localImport.scanning
                         onClicked: localImport.cancel_scan()
@@ -18007,7 +17812,7 @@ ApplicationWindow {
                     placeholderText: "Filter scan results"
                     onTextEdited: importFilterDelay.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: importStatus
                     Layout.preferredWidth: 150
                     textRole: "label"
@@ -18023,7 +17828,7 @@ ApplicationWindow {
                     ]
                     onActivated: importFilterDelay.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: importSort
                     Layout.preferredWidth: 135
                     textRole: "label"
@@ -18037,7 +17842,7 @@ ApplicationWindow {
                     currentIndex: 1
                     onActivated: importFilterDelay.restart()
                 }
-                ToolButton {
+                LbToolButton {
                     id: importSortAscending
                     checkable: true
                     checked: true
@@ -18046,17 +17851,17 @@ ApplicationWindow {
                     ToolTip.visible: hovered
                     ToolTip.text: checked ? "Ascending" : "Descending"
                 }
-                Button {
+                LbButton {
                     text: "Exact"
                     onClicked: localImport.select_visible("exact")
                     ToolTip.visible: hovered
                     ToolTip.text: "Select only proven matches in the current results"
                 }
-                Button {
+                LbButton {
                     text: "All"
                     onClicked: localImport.select_visible("all")
                 }
-                Button {
+                LbButton {
                     text: "None"
                     onClicked: localImport.select_visible("none")
                 }
@@ -18184,7 +17989,7 @@ ApplicationWindow {
                             elide: Text.ElideRight
                         }
                     }
-                    Button {
+                    LbButton {
                         id: manualMatchButton
                         anchors.right: sizeLabel.left
                         anchors.rightMargin: 8
@@ -18225,7 +18030,7 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 11
                 }
-                Button {
+                LbButton {
                     text: "Close"
                     onClicked: importDialog.close()
                 }
@@ -18244,7 +18049,7 @@ ApplicationWindow {
             }
             }
 
-            Dialog {
+            LbDialog {
                 id: romScanHistoryDialog
                 parent: Overlay.overlay
                 modal: true
@@ -18303,7 +18108,7 @@ ApplicationWindow {
                             elide: Text.ElideRight
                         }
                     }
-                    RoundButton {
+                    LbRoundButton {
                         id: scanHistoryClose
                         anchors.right: parent.right
                         anchors.rightMargin: 16
@@ -18451,7 +18256,7 @@ ApplicationWindow {
                                     }
                                 }
 
-                                Button {
+                                LbButton {
                                     id: loadHistoryProfile
                                     anchors.right: parent.right
                                     anchors.rightMargin: 12
@@ -18530,7 +18335,7 @@ ApplicationWindow {
                 }
             }
 
-            Dialog {
+            LbDialog {
                 id: importProfileSaveDialog
                 parent: Overlay.overlay
                 modal: true
@@ -18602,7 +18407,7 @@ ApplicationWindow {
                 }
             }
 
-            Dialog {
+            LbDialog {
                 id: importProfileDeleteDialog
                 parent: Overlay.overlay
                 modal: true
@@ -18628,7 +18433,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: manualMatchDialog
         parent: Overlay.overlay
         modal: true
@@ -18690,7 +18495,7 @@ ApplicationWindow {
                     elide: Text.ElideMiddle
                 }
             }
-            RoundButton {
+            LbRoundButton {
                 id: manualMatchClose
                 anchors.right: parent.right
                 anchors.rightMargin: 14
@@ -18740,7 +18545,7 @@ ApplicationWindow {
                     onClearRequested: manualMatchSearchTimer.restart()
                     onAccepted: manualMatchSearchTimer.restart()
                 }
-                ComboBox {
+                LbComboBox {
                     id: manualMatchPlatform
                     Layout.preferredWidth: 250
                     textRole: "label"
@@ -18893,7 +18698,7 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 10
                 }
-                Button {
+                LbButton {
                     text: "Cancel"
                     onClicked: manualMatchDialog.close()
                 }
@@ -18901,7 +18706,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: steamGridDbDialog
         parent: Overlay.overlay
         modal: true
@@ -18955,7 +18760,7 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
             }
-            RoundButton {
+            LbRoundButton {
                 id: steamGridDbClose
                 anchors.right: parent.right
                 anchors.rightMargin: 14
@@ -19065,14 +18870,14 @@ ApplicationWindow {
                     enabled: !root.artworkProviderModel.busy
                     onAccepted: root.artworkProviderModel.search_games(text)
                 }
-                Button {
+                LbButton {
                     text: "Search games"
                     enabled: !root.artworkProviderModel.busy
                              && steamGridDbSearch.text.length >= 2
                     onClicked: root.artworkProviderModel.search_games(
                                    steamGridDbSearch.text)
                 }
-                ComboBox {
+                LbComboBox {
                     id: steamGridDbKind
                     Layout.preferredWidth: 170
                     textRole: "label"
@@ -19083,7 +18888,7 @@ ApplicationWindow {
                         { label: "Screenshot", value: "screenshot" },
                         { label: "Clear logo", value: "clear-logo" }
                     ]
-                    delegate: ItemDelegate {
+                    delegate: LbItemDelegate {
                         required property var modelData
                         width: steamGridDbKind.width
                         text: modelData.label
@@ -19113,7 +18918,7 @@ ApplicationWindow {
                     enabled: !webArtwork.busy
                     onEditingFinished: webArtwork.search_games(text)
                 }
-                Button {
+                LbButton {
                     text: "Open image search ↗"
                     enabled: !webArtwork.busy && webArtworkSearch.text.length >= 2
                     onClicked: {
@@ -19122,7 +18927,7 @@ ApplicationWindow {
                                              + encodeURIComponent(webArtworkSearch.text))
                     }
                 }
-                ComboBox {
+                LbComboBox {
                     Layout.preferredWidth: 170
                     textRole: "label"
                     valueRole: "value"
@@ -19147,7 +18952,7 @@ ApplicationWindow {
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                 }
-                ComboBox {
+                LbComboBox {
                     Layout.preferredWidth: 190
                     textRole: "label"
                     valueRole: "value"
@@ -19197,14 +19002,14 @@ ApplicationWindow {
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
                     }
-                    Button {
+                    LbButton {
                         visible: root.artworkProviderNeedsSetup(
                                      root.artworkProvider)
                         text: "SET UP IN SETTINGS"
                         enabled: !root.artworkProviderModel.busy
                         onClicked: root.openSettingsFor(root.artworkProvider)
                     }
-                    Button {
+                    LbButton {
                         visible: (root.artworkProvider === "steamgriddb"
                                   || root.artworkProvider === "igdb"
                                   || root.artworkProvider === "screenscraper")
@@ -19497,13 +19302,13 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Button {
+                                LbButton {
                                     text: "Review URL"
                                     enabled: !webArtwork.busy
                                              && webArtworkUrl.text.length > 8
                                     onClicked: webArtwork.review_url(webArtworkUrl.text)
                                 }
-                                Button {
+                                LbButton {
                                     text: "Choose local file…"
                                     enabled: !webArtwork.busy
                                     onClicked: root.chooseWebArtworkFile()
@@ -19527,7 +19332,7 @@ ApplicationWindow {
                                 }
                             }
                             Item { Layout.fillHeight: true }
-                            Button {
+                            LbButton {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 42
                                 text: webArtwork.busy ? "Validating and saving…" : "Use artwork"
@@ -19583,7 +19388,7 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignHCenter
                             elide: Text.ElideRight
                         }
-                        Button {
+                        LbButton {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 42
                             text: emuMovies.busy ? "Searching EmuMovies…"
@@ -19630,7 +19435,7 @@ ApplicationWindow {
                     font.pixelSize: 10
                     elide: Text.ElideRight
                 }
-                Button {
+                LbButton {
                     text: "Close"
                     onClicked: steamGridDbDialog.close()
                 }
@@ -19667,7 +19472,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: settingsDialog
         parent: Overlay.overlay
         modal: true
@@ -19731,7 +19536,7 @@ ApplicationWindow {
                     }
                 }
                 Item { Layout.fillWidth: true }
-                Button {
+                LbButton {
                     text: "SETUP GUIDE"
                     flat: true
                     font.pixelSize: 9
@@ -19749,7 +19554,7 @@ ApplicationWindow {
                     font.letterSpacing: 0.8
                     visible: settingsDialog.visible
                 }
-                RoundButton {
+                LbRoundButton {
                     text: "×"
                     flat: true
                     font.pixelSize: 20
@@ -19950,7 +19755,7 @@ ApplicationWindow {
                             color: root.ink
                             font.pixelSize: 12
                         }
-                        ComboBox {
+                        LbComboBox {
                             id: couchViewStyle
                             Layout.fillWidth: true
                             enabled: library.ready && !library.couch_state_saving
@@ -20188,7 +19993,7 @@ ApplicationWindow {
                             color: root.ink
                             font.pixelSize: 12
                         }
-                        ComboBox {
+                        LbComboBox {
                             id: couchAttractIdleDelay
                             Layout.fillWidth: true
                             enabled: library.ready && !library.couch_state_saving
@@ -20220,7 +20025,7 @@ ApplicationWindow {
                             color: root.ink
                             font.pixelSize: 12
                         }
-                        ComboBox {
+                        LbComboBox {
                             id: couchAttractCycleDelay
                             Layout.fillWidth: true
                             enabled: library.ready && !library.couch_state_saving
@@ -20475,7 +20280,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Text { text: "Install completed files using"; color: root.ink; font.pixelSize: 12 }
-                    ComboBox {
+                    LbComboBox {
                         id: linkMode
                         Layout.fillWidth: true
                         textRole: "label"
@@ -20511,7 +20316,7 @@ ApplicationWindow {
                         color: root.ink
                         font.pixelSize: 12
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: seedingPolicy
                         Layout.fillWidth: true
                         textRole: "label"
@@ -20648,7 +20453,7 @@ ApplicationWindow {
                                         font.weight: regionRow.index === 0
                                                      ? Font.DemiBold : Font.Normal
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "↑"
                                         enabled: regionRow.index > 0 && !appSettings.busy
                                         Accessible.name: "Move region up"
@@ -20656,7 +20461,7 @@ ApplicationWindow {
                                                        regionRow.index,
                                                        regionRow.index - 1)
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "↓"
                                         enabled: regionRow.index + 1
                                                  < appSettings.region_count()
@@ -20682,7 +20487,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 9
                     Text { text: "Release version"; color: root.ink; font.pixelSize: 12 }
-                    ComboBox {
+                    LbComboBox {
                         Layout.fillWidth: true
                         textRole: "label"
                         valueRole: "value"
@@ -20812,7 +20617,7 @@ ApplicationWindow {
                                             elide: Text.ElideRight
                                         }
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "↑"
                                         enabled: mediaProviderRow.index > 0
                                                  && !appSettings.busy
@@ -20821,7 +20626,7 @@ ApplicationWindow {
                                                        mediaProviderRow.index,
                                                        mediaProviderRow.index - 1)
                                     }
-                                    ToolButton {
+                                    LbToolButton {
                                         text: "↓"
                                         enabled: mediaProviderRow.index + 1
                                                  < appSettings.media_provider_count()
@@ -21252,7 +21057,7 @@ ApplicationWindow {
                             color: root.ink
                             font.pixelSize: 12
                         }
-                        ComboBox {
+                        LbComboBox {
                             id: defaultControllerTarget
                             Layout.fillWidth: true
                             enabled: appSettings.controller_enabled
@@ -21262,7 +21067,7 @@ ApplicationWindow {
                                 appSettings.controller_revision
                                 return Math.max(0, appSettings.controller_target_count() - 1)
                             }
-                            delegate: ItemDelegate {
+                            delegate: LbItemDelegate {
                                 required property int index
                                 width: defaultControllerTarget.width
                                 text: appSettings.controller_target_name_at(index + 1)
@@ -21391,7 +21196,7 @@ ApplicationWindow {
                                                 elide: Text.ElideMiddle
                                             }
                                         }
-                                        ToolButton {
+                                        LbToolButton {
                                             text: "↑"
                                             enabled: controllerRow.index > 0
                                                      && !appSettings.controller_busy
@@ -21399,7 +21204,7 @@ ApplicationWindow {
                                                            controllerRow.index, -1)
                                             Accessible.name: "Move controller up in player order"
                                         }
-                                        ToolButton {
+                                        LbToolButton {
                                             text: "↓"
                                             enabled: controllerRow.index + 1
                                                      < appSettings.controller_count()
@@ -21413,7 +21218,7 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 7
-                                        ComboBox {
+                                        LbComboBox {
                                             id: controllerAction
                                             Layout.preferredWidth: 180
                                             textRole: "label"
@@ -21441,14 +21246,14 @@ ApplicationWindow {
                                             Accessible.name: "Controller action for player "
                                                              + (controllerRow.index + 1)
                                         }
-                                        ComboBox {
+                                        LbComboBox {
                                             id: controllerProfile
                                             Layout.fillWidth: true
                                             model: {
                                                 appSettings.controller_revision
                                                 return appSettings.controller_profile_count()
                                             }
-                                            delegate: ItemDelegate {
+                                            delegate: LbItemDelegate {
                                                 required property int index
                                                 width: controllerProfile.width
                                                 text: appSettings.controller_profile_name_at(index)
@@ -21479,14 +21284,14 @@ ApplicationWindow {
                                             Accessible.name: "Controller profile for player "
                                                              + (controllerRow.index + 1)
                                         }
-                                        ComboBox {
+                                        LbComboBox {
                                             id: controllerTarget
                                             Layout.fillWidth: true
                                             model: {
                                                 appSettings.controller_revision
                                                 return appSettings.controller_target_count()
                                             }
-                                            delegate: ItemDelegate {
+                                            delegate: LbItemDelegate {
                                                 required property int index
                                                 width: controllerTarget.width
                                                 text: appSettings.controller_target_name_at(index)
@@ -21766,7 +21571,7 @@ ApplicationWindow {
                                         color: root.muted
                                         font.pixelSize: 9
                                     }
-                                    ComboBox {
+                                    LbComboBox {
                                         Layout.fillWidth: true
                                         textRole: "label"
                                         valueRole: "value"
@@ -21849,7 +21654,7 @@ ApplicationWindow {
 
                                     Repeater {
                                         model: controllerDiagram.buttons
-                                        delegate: RoundButton {
+                                        delegate: LbRoundButton {
                                             required property var modelData
                                             width: 39
                                             height: 39
@@ -21925,22 +21730,22 @@ ApplicationWindow {
                                             color: root.muted
                                             font.pixelSize: 9
                                         }
-                                        ComboBox {
+                                        LbComboBox {
                                             Layout.fillWidth: true
                                             model: appSettings.controller_profile_button_count()
                                             displayText: "Target: " + appSettings.controller_profile_button_label(appSettings.controller_profile_editor_target)
-                                            delegate: ItemDelegate {
+                                            delegate: LbItemDelegate {
                                                 required property int index
                                                 text: appSettings.controller_profile_button_name_at(index)
                                             }
                                             onActivated: appSettings.select_controller_profile_target(appSettings.controller_profile_button_id_at(currentIndex))
                                             Accessible.name: "Virtual target button or C-button direction"
                                         }
-                                        ComboBox {
+                                        LbComboBox {
                                             id: physicalControllerSource
                                             Layout.fillWidth: true
                                             model: appSettings.controller_profile_button_count()
-                                            delegate: ItemDelegate {
+                                            delegate: LbItemDelegate {
                                                 required property int index
                                                 width: physicalControllerSource.width
                                                 text: appSettings.controller_profile_button_name_at(index)
@@ -22323,7 +22128,7 @@ ApplicationWindow {
                                     color: root.ink
                                     font.pixelSize: 11
                                 }
-                                ComboBox {
+                                LbComboBox {
                                     id: translationModelChoice
                                     Layout.fillWidth: true
                                     model: ["translategemma:4b", "translategemma:12b", "translategemma:27b"]
@@ -22604,6 +22409,7 @@ ApplicationWindow {
                         }
                     }
                     ColumnLayout {
+                        Layout.minimumWidth: 180
                         spacing: 7
                         HeaderButton {
                             Layout.fillWidth: true
@@ -22645,7 +22451,7 @@ ApplicationWindow {
                             wrapMode: Text.WordWrap
                         }
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: emulatorUpdatePolicy
                         Layout.preferredWidth: 190
                         textRole: "label"
@@ -22712,7 +22518,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: shaderReplaceDialog
         parent: Overlay.overlay
         modal: true
@@ -22742,7 +22548,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: controllerProfileDeleteDialog
         parent: Overlay.overlay
         modal: true
@@ -22771,7 +22577,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: emulatorManagerDialog
         parent: Overlay.overlay
         modal: true
@@ -22837,7 +22643,7 @@ ApplicationWindow {
                     enabled: !emulatorManager.busy && !emulatorUpdates.busy
                     onClicked: root.openEmulatorUpdates()
                 }
-                RoundButton {
+                LbRoundButton {
                     text: "×"
                     flat: true
                     font.pixelSize: 20
@@ -22870,7 +22676,7 @@ ApplicationWindow {
                         onClearRequested: emulatorManager.apply_filter(
                                               "", emulatorStatusFilter.currentValue)
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: emulatorStatusFilter
                         Layout.preferredWidth: 176
                         textRole: "label"
@@ -22979,7 +22785,7 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                         }
-                        RoundButton {
+                        LbRoundButton {
                             anchors.right: parent.right
                             anchors.top: parent.top
                             width: 24
@@ -23028,7 +22834,7 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                         }
-                        RoundButton {
+                        LbRoundButton {
                             anchors.right: parent.right
                             anchors.top: parent.top
                             width: 24
@@ -23222,7 +23028,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: emulatorUpdateDialog
         parent: Overlay.overlay
         modal: true
@@ -23306,7 +23112,7 @@ ApplicationWindow {
                         font.weight: Font.Bold
                     }
                 }
-                RoundButton {
+                LbRoundButton {
                     text: "×"
                     flat: true
                     enabled: !emulatorUpdates.busy
@@ -23708,7 +23514,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: launchProfileManagerDialog
         parent: Overlay.overlay
         modal: true
@@ -23757,7 +23563,7 @@ ApplicationWindow {
                     enabled: !launchProfileManager.busy
                     onClicked: launchProfileManager.refresh()
                 }
-                RoundButton {
+                LbRoundButton {
                     text: "×"
                     flat: true
                     font.pixelSize: 20
@@ -23805,7 +23611,7 @@ ApplicationWindow {
                                               launchProfileScopeFilter.currentValue,
                                               launchProfileCustomizationFilter.currentValue)
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: launchProfileScopeFilter
                         Layout.preferredWidth: 166
                         textRole: "label"
@@ -23819,7 +23625,7 @@ ApplicationWindow {
                                          launchProfileSearch.text, currentValue,
                                          launchProfileCustomizationFilter.currentValue)
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: launchProfileCustomizationFilter
                         Layout.preferredWidth: 166
                         textRole: "label"
@@ -24160,7 +23966,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 Layout.fillWidth: true
                             }
-                            ComboBox {
+                            LbComboBox {
                                 id: launchProfileDisplayFullscreen
                                 Layout.preferredWidth: 220
                                 model: [
@@ -24185,7 +23991,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 Layout.fillWidth: true
                             }
-                            ComboBox {
+                            LbComboBox {
                                 id: launchProfileDisplayShader
                                 Layout.preferredWidth: 296
                                 property string storedValue: ""
@@ -24225,7 +24031,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 Layout.fillWidth: true
                             }
-                            ComboBox {
+                            LbComboBox {
                                 id: launchProfileDisplayBezel
                                 Layout.preferredWidth: 296
                                 model: [
@@ -24255,7 +24061,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 Layout.fillWidth: true
                             }
-                            ComboBox {
+                            LbComboBox {
                                 id: launchProfileDisplaySaveStates
                                 Layout.preferredWidth: 220
                                 model: [
@@ -24300,22 +24106,11 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            Button {
+                            LbButton {
                                 text: "Clear profile"
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
                                 onClicked: launchProfileManager.clear_editor()
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: root.ink
-                                    font.pixelSize: 10
-                                    font.weight: Font.DemiBold
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: 7
-                                    color: parent.down ? "#3a2029" : "#251a21"
-                                    border.color: "#70404d"
-                                }
                             }
                             Item { Layout.fillWidth: true }
                             HeaderButton {
@@ -24460,7 +24255,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: emulatorUninstallDialog
         parent: Overlay.overlay
         modal: true
@@ -24560,13 +24355,13 @@ ApplicationWindow {
                     anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 5
-                    RoundButton {
+                    LbRoundButton {
                         text: "↻"
                         flat: true
                         enabled: !downloadQueue.busy && !downloadQueue.refreshing
                         onClicked: downloadQueue.refresh()
                     }
-                    RoundButton {
+                    LbRoundButton {
                         text: "⌫"
                         flat: true
                         visible: downloadQueue.finished_count > 0
@@ -24575,7 +24370,7 @@ ApplicationWindow {
                         ToolTip.visible: hovered
                         ToolTip.text: "Clear finished history"
                     }
-                    RoundButton {
+                    LbRoundButton {
                         text: "×"
                         flat: true
                         font.pixelSize: 20
@@ -24706,7 +24501,7 @@ ApplicationWindow {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Item { Layout.fillWidth: true }
-                                    Button {
+                                    LbButton {
                                         text: "Review import"
                                         visible: {
                                             downloadRow.queueRevision
@@ -24721,7 +24516,7 @@ ApplicationWindow {
                                                 downloadQueue.job_platform_at(downloadRow.index))
                                         }
                                     }
-                                    Button {
+                                    LbButton {
                                         text: "History"
                                         enabled: !downloadQueue.history_busy
                                         onClicked: {
@@ -24734,25 +24529,25 @@ ApplicationWindow {
                                             downloadRecoveryHistoryDialog.open()
                                         }
                                     }
-                                    Button {
+                                    LbButton {
                                         text: "Pause"
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_pause(downloadRow.index) }
                                         enabled: !downloadQueue.busy
                                         onClicked: downloadQueue.pause_job(downloadRow.index)
                                     }
-                                    Button {
+                                    LbButton {
                                         text: "Resume"
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_resume(downloadRow.index) }
                                         enabled: !downloadQueue.busy
                                         onClicked: downloadQueue.resume_job(downloadRow.index)
                                     }
-                                    Button {
+                                    LbButton {
                                         text: "Cancel"
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_cancel(downloadRow.index) }
                                         enabled: !downloadQueue.busy
                                         onClicked: downloadQueue.cancel_job(downloadRow.index)
                                     }
-                                    Button {
+                                    LbButton {
                                         text: "Retry"
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_retry(downloadRow.index) }
                                         enabled: !downloadQueue.busy
@@ -24765,7 +24560,7 @@ ApplicationWindow {
                                             downloadRecoveryConfirmDialog.open()
                                         }
                                     }
-                                    Button {
+                                    LbButton {
                                         text: "Remove"
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_remove(downloadRow.index) }
                                         enabled: !downloadQueue.busy
@@ -24855,7 +24650,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: activityHistoryDialog
         parent: Overlay.overlay
         modal: true
@@ -25020,7 +24815,7 @@ ApplicationWindow {
                             { "key": "failed", "label": "Failed" },
                             { "key": "running", "label": "In progress" }
                         ]
-                        delegate: Button {
+                        delegate: LbButton {
                             id: historyFilterButton
                             required property var modelData
                             height: 34
@@ -25186,7 +24981,7 @@ ApplicationWindow {
                         color: "#657186"
                         font.pixelSize: 9
                     }
-                    Button {
+                    LbButton {
                         id: historyCloseButton
                         text: "Close"
                         Accessible.name: "Close play-session history"
@@ -25216,7 +25011,7 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    LbDialog {
         id: metadataDialog
         parent: Overlay.overlay
         x: Math.round((parent.width - width) / 2)
@@ -25282,7 +25077,7 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
             }
-            RoundButton {
+            LbRoundButton {
                 id: closeMetadataDialogButton
                 anchors.right: parent.right
                 anchors.rightMargin: 16
@@ -25372,32 +25167,12 @@ ApplicationWindow {
                         { label: "Custom fields", count: gameDetails.metadata_custom_field_count > 0
                                                         ? gameDetails.metadata_custom_field_count.toString() : "" }
                     ]
-                    TabButton {
+                    LbTabButton {
                         required property var modelData
                         required property int index
                         text: modelData.label + (modelData.count.length > 0
                                                 ? "  " + modelData.count : "")
                         width: Math.max(150, implicitWidth)
-                        contentItem: Text {
-                            text: parent.text
-                            color: parent.checked ? root.ink : root.muted
-                            font.pixelSize: 11
-                            font.weight: parent.checked ? Font.Bold : Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        background: Rectangle {
-                            radius: 8
-                            color: parent.checked ? "#202a39" : parent.hovered ? "#171f2b" : "transparent"
-                            border.color: parent.checked ? "#3e4d63" : "transparent"
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: 2
-                                color: parent.parent.checked ? root.accent : "transparent"
-                            }
-                        }
                     }
                 }
             }
@@ -25666,7 +25441,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                             }
-                            ComboBox {
+                            LbComboBox {
                                 id: metadataCooperativeField
                                 Layout.fillWidth: true
                                 model: [
@@ -25808,7 +25583,7 @@ ApplicationWindow {
                                     wrapMode: Text.WordWrap
                                 }
                             }
-                            Button {
+                            LbButton {
                                 text: "+ Add field"
                                 highlighted: gameDetails.metadata_custom_field_count === 0
                                 enabled: gameDetails.metadata_custom_field_count < 32
@@ -25928,7 +25703,7 @@ ApplicationWindow {
                                             }
                                         }
                                     }
-                                    RoundButton {
+                                    LbRoundButton {
                                         text: "↑"
                                         flat: true
                                         enabled: customFieldEditorRow.index > 0
@@ -25936,7 +25711,7 @@ ApplicationWindow {
                                         onClicked: gameDetails.move_metadata_custom_field(
                                                        customFieldEditorRow.index, -1)
                                     }
-                                    RoundButton {
+                                    LbRoundButton {
                                         text: "↓"
                                         flat: true
                                         enabled: customFieldEditorRow.index + 1
@@ -25945,7 +25720,7 @@ ApplicationWindow {
                                         onClicked: gameDetails.move_metadata_custom_field(
                                                        customFieldEditorRow.index, 1)
                                     }
-                                    RoundButton {
+                                    LbRoundButton {
                                         text: "×"
                                         flat: true
                                         Accessible.name: "Remove custom field"
@@ -25991,7 +25766,7 @@ ApplicationWindow {
                 anchors.leftMargin: 22
                 anchors.rightMargin: 22
                 spacing: 10
-                Button {
+                LbButton {
                     text: "Review online metadata"
                     visible: gameDetails.database_id > 0
                     enabled: !gameDetails.metadata_busy
@@ -26000,7 +25775,7 @@ ApplicationWindow {
                     ToolTip.visible: hovered
                     ToolTip.text: "Compare fields from an exact IGDB or ScreenScraper record"
                 }
-                Button {
+                LbButton {
                     text: "Restore catalog values"
                     visible: gameDetails.metadata_has_override
                     enabled: !gameDetails.metadata_busy
@@ -26010,12 +25785,12 @@ ApplicationWindow {
                     ToolTip.text: "Restore catalog metadata while keeping tags and custom fields"
                 }
                 Item { Layout.fillWidth: true }
-                Button {
+                LbButton {
                     text: "Cancel"
                     enabled: !gameDetails.metadata_busy
                     onClicked: gameDetails.close_metadata_editor()
                 }
-                Button {
+                LbButton {
                     text: gameDetails.metadata_busy ? "Saving…" : "Save changes"
                     highlighted: true
                     enabled: !gameDetails.metadata_busy

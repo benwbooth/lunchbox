@@ -1,13 +1,14 @@
 import QtQuick
 import QtQuick.Controls
 
-Button {
+LbButton {
     id: root
     default property alias entries: menuColumn.data
     readonly property bool menuVisible: menu.visible
     function close() { menu.close() }
     text: "Library"
     implicitHeight: 43
+    highlighted: menu.visible
     Accessible.name: "Library menu"
     Accessible.description: "Browse games and open library tools"
     onClicked: menu.visible ? menu.close() : menu.open()
@@ -23,11 +24,6 @@ Button {
         }
     }
     leftPadding: 15
-    background: Rectangle {
-        radius: 9
-        color: root.hovered || menu.visible ? "#272c34" : "#1b2330"
-        border.color: root.visualFocus ? "#ffb454" : "#303b4b"
-    }
     Popup {
         id: menu
         objectName: "libraryMenuPopup"

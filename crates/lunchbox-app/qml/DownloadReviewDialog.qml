@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: dialog
 
     required property var detailsModel
@@ -304,10 +304,11 @@ Dialog {
                          && !detailsModel.download_busy
                 onClicked: detailsModel.inspect_download(dialog.reviewIndex)
             }
-            Button {
+            LbButton {
                 objectName: "downloadConfirmButton"
                 width: 158
                 height: 40
+                highlighted: true
                 visible: !detailsModel.download_preflight_terminal
                 text: settingsModel.download_entire_torrent && !dialog.selectiveOnly
                       ? "DOWNLOAD ALL" : "DOWNLOAD"
@@ -316,21 +317,9 @@ Dialog {
                          && !detailsModel.download_preflight_busy
                          && !detailsModel.download_busy
                 onClicked: dialog.queueRequested(dialog.reviewIndex)
-                background: Rectangle {
-                    radius: 9
-                    color: parent.enabled
-                           ? (parent.down ? "#d89444" : dialog.accent) : "#39414e"
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.enabled ? "#17110a" : dialog.muted
-                    font.pixelSize: 10
-                    font.weight: Font.Bold
-                    font.letterSpacing: 0.5
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
+                font.pixelSize: 10
+                font.weight: Font.Bold
+                font.letterSpacing: 0.5
             }
         }
     }

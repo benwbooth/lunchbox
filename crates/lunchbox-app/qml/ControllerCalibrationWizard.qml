@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: wizard
     required property var settingsModel
     required property var gamepad
@@ -365,7 +365,7 @@ Dialog {
                     wrapMode: Text.WordWrap; elide: Text.ElideNone
                 }
                 TextField { id: layoutSearch; Layout.fillWidth: true; placeholderText: "Find a layout (Xbox, PlayStation, arcade…)" }
-                ComboBox {
+                LbComboBox {
                     id: physicalLayout
                     objectName: "physicalLayout"
                     Layout.fillWidth: true
@@ -403,13 +403,13 @@ Dialog {
                 ProgressBar { Layout.fillWidth: true; from: 0; to: Math.max(1, wizard.calibrationControls.length); value: wizard.step }
                 Label { text: Object.keys(wizard.bindings).length + " inputs recorded"; visible: !!wizard.layout }
                 RowLayout {
-                    Button {
+                    LbButton {
                         text: "Re-record buttons"
                         visible: wizard.reviewingSaved
                         onClicked: { wizard.reviewingSaved = false; wizard.targetedComplete = false; wizard.status = wizard.controlPrompt(wizard.currentControl) }
                     }
-                    Button { text: "Back"; enabled: !wizard.reviewingSaved && wizard.step > 0 && !wizard.waitingForRelease; onClicked: { wizard.step--; wizard.targetedComplete = false } }
-                    Button { text: "Skip this control"; enabled: !wizard.reviewingSaved && !!wizard.currentControl && !wizard.waitingForRelease; onClicked: wizard.skip() }
+                    LbButton { text: "Back"; enabled: !wizard.reviewingSaved && wizard.step > 0 && !wizard.waitingForRelease; onClicked: { wizard.step--; wizard.targetedComplete = false } }
+                    LbButton { text: "Skip this control"; enabled: !wizard.reviewingSaved && !!wizard.currentControl && !wizard.waitingForRelease; onClicked: wizard.skip() }
                 }
                 PixelAlignedText {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
@@ -422,7 +422,7 @@ Dialog {
             ColumnLayout {
             Layout.fillWidth: true
             visible: !wizard.guided
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 model: wizard.catalog.layouts
                 textRole: "name"
@@ -477,7 +477,7 @@ Dialog {
                         + " Optional controls and pending capture are excluded. This checks each record separately, not cross-control conflicts, complete native measurements, whole-game coverage or live input behavior."
                 }
             }
-            Button {
+            LbButton {
                 text: "Repair next missing or invalid required control"
                 enabled: !!wizard.layout && !wizard.waitingForRelease && wizard.missingRequiredControls.length > 0
                 onClicked: {
@@ -492,7 +492,7 @@ Dialog {
                 text: "Or choose any control to record or repair. Other bindings are kept; recording pauses after the selected control."
                 wrapMode: Text.WordWrap
             }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 enabled: !!wizard.layout && !wizard.waitingForRelease
                 model: wizard.calibrationControls.map(control => ({
@@ -529,7 +529,7 @@ Dialog {
             RowLayout {
                 Layout.fillWidth: true
                 visible: wizard.nonrecordableRecords.length > 0
-                ComboBox {
+                LbComboBox {
                     id: obsoleteRecord
                     Layout.fillWidth: true
                     model: wizard.nonrecordableRecords
@@ -537,13 +537,13 @@ Dialog {
                     displayText: currentIndex < 0 ? "Choose an obsolete or repeat-alias record" : currentText
                     Accessible.name: "Nonrecordable calibration record to repair in the draft"
                 }
-                Button {
+                LbButton {
                     text: "Move to base control"
                     enabled: obsoleteRecord.currentIndex >= 0
                         && !!wizard.repeatRecordOwner(wizard.nonrecordableRecords[obsoleteRecord.currentIndex])
                     onClicked: wizard.moveRepeatRecord(wizard.nonrecordableRecords[obsoleteRecord.currentIndex])
                 }
-                Button {
+                LbButton {
                     text: "Remove selected draft record"
                     enabled: !wizard.waitingForRelease && obsoleteRecord.currentIndex >= 0
                     onClicked: wizard.removeNonrecordableRecord(wizard.nonrecordableRecords[obsoleteRecord.currentIndex])
@@ -556,7 +556,7 @@ Dialog {
                 color: "#bfcddb"
             }
             RowLayout {
-                Button {
+                LbButton {
                     text: "Back"
                     enabled: wizard.step > 0 && !wizard.targetedControlId
                     onClicked: {
@@ -567,8 +567,8 @@ Dialog {
                             : "Press the highlighted control to replace its binding."
                     }
                 }
-                Button { text: "Skip / not present"; enabled: !!wizard.currentControl && !wizard.targetedComplete; onClicked: wizard.skip() }
-                Button {
+                LbButton { text: "Skip / not present"; enabled: !!wizard.currentControl && !wizard.targetedComplete; onClicked: wizard.skip() }
+                LbButton {
                     text: "Record this control again"
                     visible: wizard.targetedComplete
                     enabled: !!wizard.layout && !!wizard.currentControl
@@ -576,7 +576,7 @@ Dialog {
                         wizard.focusSavedControl(wizard.layout.id, wizard.currentControl.id)
                     }
                 }
-                Button { text: "Start over"; enabled: !!wizard.layout; onClicked: wizard.resetLayout(wizard.layoutIndex) }
+                LbButton { text: "Start over"; enabled: !!wizard.layout; onClicked: wizard.resetLayout(wizard.layoutIndex) }
             }
             CheckBox {
                 text: "Preview system / emulator mapping"
@@ -587,7 +587,7 @@ Dialog {
             ColumnLayout {
                 visible: wizard.showPreview
                 Layout.fillWidth: true
-                ComboBox {
+                LbComboBox {
                     Layout.fillWidth: true
                     model: wizard.catalog.emulator_profiles
                     textRole: "name"
@@ -642,8 +642,9 @@ Dialog {
     }
     }
     footer: DialogButtonBox {
-        Button { text: wizard.reviewingSaved ? "Close" : "Cancel"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: wizard.close() }
-        Button {
+        background: Rectangle { color: "transparent" }
+        LbButton { text: wizard.reviewingSaved ? "Close" : "Cancel"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: wizard.close() }
+        LbButton {
             visible: !wizard.reviewingSaved
             text: wizard.guided ? "Save controller" : "Use calibration"
             enabled: !!wizard.layout && Object.keys(wizard.bindings).length > 0 && !wizard.waitingForRelease

@@ -89,10 +89,13 @@ Rectangle {
                 visible: running
             }
 
-            Button {
+            LbButton {
                 id: discoverButton
                 Layout.preferredWidth: 94
                 Layout.preferredHeight: 32
+                highlighted: text === "FIND MUSIC"
+                font.pixelSize: 8
+                font.weight: Font.Bold
                 text: emuMoviesModel && emuMoviesModel.busy
                       && emuMoviesModel.last_media_kind === "soundtrack"
                       ? "CANCEL"
@@ -116,22 +119,6 @@ Rectangle {
                                     card.gameTitle, card.platform)
                     }
                 }
-                background: Rectangle {
-                    radius: 7
-                    color: discoverButton.down ? "#344254"
-                                                : discoverButton.text === "FIND MUSIC"
-                                                  ? card.accent : "#263647"
-                    border.color: discoverButton.text === "FIND MUSIC"
-                                  ? "transparent" : card.accentCool
-                }
-                contentItem: Text {
-                    text: discoverButton.text
-                    color: discoverButton.text === "FIND MUSIC" ? "#17110a" : card.ink
-                    font.pixelSize: 8
-                    font.weight: Font.Bold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
         }
 
@@ -143,7 +130,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Button {
+                LbButton {
                     Layout.preferredWidth: 34
                     Layout.preferredHeight: 30
                     text: "‹"
@@ -154,10 +141,11 @@ Rectangle {
                         detailsModel.select_soundtrack(detailsModel.soundtrack_index - 1)
                     }
                 }
-                Button {
+                LbRoundButton {
                     id: playButton
                     Layout.preferredWidth: 42
                     Layout.preferredHeight: 34
+                    highlighted: true
                     text: mediaPlayer && mediaPlayer.playbackState === MediaPlayer.PlayingState
                           ? "Ⅱ" : "▶"
                     Accessible.name: text === "Ⅱ" ? "Pause game music" : "Play game music"
@@ -167,20 +155,10 @@ Rectangle {
                         else
                             mediaPlayer.play()
                     }
-                    background: Rectangle {
-                        radius: 17
-                        color: playButton.down ? "#d89444" : card.accent
-                    }
-                    contentItem: Text {
-                        text: playButton.text
-                        color: "#17110a"
-                        font.pixelSize: 11
-                        font.weight: Font.Bold
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    font.pixelSize: 11
+                    font.weight: Font.Bold
                 }
-                Button {
+                LbButton {
                     Layout.preferredWidth: 34
                     Layout.preferredHeight: 30
                     text: "›"
@@ -299,7 +277,7 @@ Rectangle {
                             font.pixelSize: 7
                             font.weight: Font.Bold
                         }
-                        Button {
+                        LbButton {
                             Layout.preferredWidth: 78
                             Layout.preferredHeight: 28
                             text: trackRow.trackCached

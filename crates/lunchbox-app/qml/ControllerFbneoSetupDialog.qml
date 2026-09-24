@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: dialog
     required property var settingsModel
     property var setups: []
@@ -221,7 +221,7 @@ Dialog {
         }
         RowLayout {
             Layout.fillWidth: true
-            ComboBox {
+            LbComboBox {
                 id: choices
                 Layout.fillWidth: true
                 enabled: !dialog.draftChanged
@@ -231,12 +231,12 @@ Dialog {
                     dialog.loadSelected()
                 }
             }
-            Button {
+            LbButton {
                 text: "Refresh"
                 enabled: !dialog.draftChanged
                 onClicked: dialog.refresh()
             }
-            Button {
+            LbButton {
                 text: "New / paste"
                 enabled: !dialog.draftChanged
                 onClicked: {
@@ -247,7 +247,7 @@ Dialog {
                     dialog.statusText = "Paste the complete reviewed setup JSON below."
                 }
             }
-            Button {
+            LbButton {
                 text: "Import inspection…"
                 onClicked: reportImport.open()
             }
@@ -259,7 +259,7 @@ Dialog {
             textFormat: Text.PlainText
             wrapMode: Text.WrapAnywhere
         }
-        Button {
+        LbButton {
             text: "Choose relative sources…"
             enabled: editor.text.trim().length > 0
             onClicked: relativeSelection.loadAndOpen()
@@ -289,7 +289,7 @@ Dialog {
             wrapMode: Text.WordWrap
         }
         RowLayout {
-            Button {
+            LbButton {
                 text: "Edit assignments…"
                 enabled: editor.text.trim().length > 0
                 onClicked: {
@@ -297,12 +297,12 @@ Dialog {
                     assignmentEditor.open()
                 }
             }
-            Button {
+            LbButton {
                 text: "Replace controller…"
                 enabled: editor.text.trim().length > 0
                 onClicked: replaceController.loadAndOpen()
             }
-            Button {
+            LbButton {
                 text: "Stage setup"
                 enabled: editor.text.trim().length > 0
                 onClicked: {
@@ -318,12 +318,12 @@ Dialog {
                     dialog.statusText = "Setup staged. Save settings to keep it. No core was started."
                 }
             }
-            Button {
+            LbButton {
                 text: "Discard text edits"
                 enabled: dialog.draftChanged
                 onClicked: editor.text = dialog.loadedText
             }
-            Button {
+            LbButton {
                 text: "Remove setup…"
                 enabled: dialog.selectedKey.length > 0 && !dialog.draftChanged
                 onClicked: {
@@ -332,13 +332,13 @@ Dialog {
                 }
             }
             Item { Layout.fillWidth: true }
-            Button {
+            LbButton {
                 text: dialog.draftChanged ? "Close (keep text draft)" : "Close"
                 onClicked: dialog.close()
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: relativeSelection
         property string baseText: ""
         property int baseRevision: -1
@@ -425,7 +425,7 @@ Dialog {
             ColumnLayout {
                 width: relativeSelectionScroll.availableWidth
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Choose an exact saved device for the entire inspected mouse portion of one port. Candidates contain only required controls. This changes the text draft; it does not open devices or enable launch." }
-                ComboBox {
+                LbComboBox {
                     id: relativePortChoice
                     Layout.fillWidth: true
                     model: relativeSelection.ports.map(port => "Player " + (port.port + 1) + " · native port " + port.port)
@@ -443,7 +443,7 @@ Dialog {
                             + "\n" + port.required.length + " inspected mouse targets; " + port.unsupported.length + " unsupported conversions."
                     }
                 }
-                ComboBox {
+                LbComboBox {
                     id: relativeDeviceChoice
                     Layout.fillWidth: true
                     model: relativeSelection.candidates.map(device => device.event_path + " · " + device.input_identity)
@@ -456,18 +456,18 @@ Dialog {
                     textFormat: Text.PlainText
                     text: relativeDeviceChoice.currentIndex >= 0 ? JSON.stringify(relativeSelection.candidates[relativeDeviceChoice.currentIndex], null, 2) : ""
                 }
-                Button {
+                LbButton {
                     text: "Use source in draft"
                     enabled: !relativeSelection.stale && relativeDeviceChoice.currentIndex >= 0
                     onClicked: relativeSelection.applySelection(false)
                 }
-                Button {
+                LbButton {
                     text: "Remove this port's source"
                     enabled: !relativeSelection.stale && relativeSelection.selectedPort !== null
                         && relativeSelection.selectedSources.some(source => source.port === relativeSelection.selectedPort.port)
                     onClicked: relativeSelection.applySelection(true)
                 }
-                Button {
+                LbButton {
                     text: "Use this port without a gamepad"
                     enabled: relativeSelection.canOmitGamepad
                     onClicked: relativeSelection.omitGamepad()
@@ -484,7 +484,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: replaceController
         property string baseText: ""
         property string errorText: ""
@@ -512,14 +512,14 @@ Dialog {
         }
         contentItem: ColumnLayout {
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Native port/device choices and control assignments are retained. A replacement with a different layout may need assignment repairs. Saved calibration is not a live connection check." }
-            ComboBox {
+            LbComboBox {
                 id: replacementPort
                 Layout.fillWidth: true
                 model: replaceController.players.map(player => "Player " + (player.port + 1) + " — " + player.controller_id)
                 displayText: currentIndex < 0 ? "Choose player to replace…" : currentText
                 Accessible.name: "FBNeo player to replace"
             }
-            ComboBox {
+            LbComboBox {
                 id: replacementSource
                 Layout.fillWidth: true
                 model: replaceController.sources.map(source => source.id + " — " + source.layout)
@@ -527,7 +527,7 @@ Dialog {
                 Accessible.name: "Replacement saved controller"
             }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: replaceController.errorText }
-            Button {
+            LbButton {
                 text: "Apply to draft and review"
                 enabled: replacementPort.currentIndex >= 0 && replacementSource.currentIndex >= 0
                 onClicked: {
@@ -548,7 +548,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: reportImport
         property bool inputsEdited: true
         property bool startedHere: false
@@ -688,11 +688,11 @@ Dialog {
             TabBar {
                 id: importTabs
                 Layout.fillWidth: true
-                TabButton { text: "Request JSON" }
-                TabButton { text: "Report JSON" }
-                TabButton { text: "Application context" }
-                TabButton { text: "Dependency files" }
-                TabButton { text: "Devices" }
+                LbTabButton { text: "Request JSON" }
+                LbTabButton { text: "Report JSON" }
+                LbTabButton { text: "Application context" }
+                LbTabButton { text: "Dependency files" }
+                LbTabButton { text: "Devices" }
             }
             StackLayout {
                 Layout.fillWidth: true
@@ -737,14 +737,14 @@ Dialog {
                             to: 5
                             enabled: !dialog.settingsModel.fbneo_import_busy
                         }
-                        ComboBox {
+                        LbComboBox {
                             id: contextController
                             Layout.fillWidth: true
                             displayText: currentIndex < 0 ? "Choose saved controller…" : currentText
                             model: reportImport.sourceControllers.map(item => item.id + " · " + item.layout)
                             enabled: !dialog.settingsModel.fbneo_import_busy
                         }
-                        Button {
+                        LbButton {
                             text: "Assign controller"
                             enabled: !dialog.settingsModel.fbneo_import_busy
                                 && contextController.currentIndex >= 0 && importContext.text.trim().length > 0
@@ -804,12 +804,12 @@ Dialog {
                         }
                     }
                     RowLayout {
-                        Button {
+                        LbButton {
                             text: "Load / reset lists from request"
                             enabled: !dialog.settingsModel.fbneo_import_busy
                             onClicked: reportImport.loadDependencies()
                         }
-                        Button {
+                        LbButton {
                             text: "Apply dependency lists"
                             enabled: reportImport.dependenciesLoaded && !dialog.settingsModel.fbneo_import_busy
                                 && importRequest.text === reportImport.dependencyRequestSnapshot
@@ -830,7 +830,7 @@ Dialog {
                         text: "Load choices after supplying source-confirmed hardware/player counts in Application context. Selection changes Request JSON only. Keyboard, mouse and coordinate devices can still require unfinished external adapters."
                         wrapMode: Text.WordWrap
                     }
-                    Button {
+                    LbButton {
                         text: "Load device choices from context"
                         enabled: !dialog.settingsModel.fbneo_import_busy
                         onClicked: reportImport.loadDeviceChoices()
@@ -854,7 +854,7 @@ Dialog {
                             required property var modelData
                             width: (ListView.view.verticalContentWidth || ListView.view.width)
                             Label { text: "Port " + deviceRow.modelData.port }
-                            ComboBox {
+                            LbComboBox {
                                 Layout.fillWidth: true
                                 model: deviceRow.modelData.devices.map(item => item.label + " · ID " + item.id)
                                 currentIndex: reportImport.selectedDeviceIndex(deviceRow.modelData.port, deviceRow.modelData.devices)
@@ -888,7 +888,7 @@ Dialog {
             }
             RowLayout {
                 BusyIndicator { running: dialog.settingsModel.fbneo_import_busy; visible: running }
-                Button {
+                LbButton {
                     text: "Run trusted-core inspection…"
                     enabled: !dialog.settingsModel.fbneo_import_busy && importRequest.text.trim().length > 0
                         && importContext.text.trim().length > 0
@@ -905,12 +905,12 @@ Dialog {
                         } catch (error) { reportImport.errorText = "Invalid inspection JSON: " + error }
                     }
                 }
-                Button {
+                LbButton {
                     text: "Cancel inspection"
                     visible: dialog.settingsModel.fbneo_inspection_active
                     onClicked: dialog.settingsModel.cancel_fbneo_inspection()
                 }
-                Button {
+                LbButton {
                     text: "Validate and import report"
                     enabled: !dialog.settingsModel.fbneo_import_busy && importRequest.text.trim().length > 0
                         && importReport.text.trim().length > 0 && importContext.text.trim().length > 0
@@ -924,7 +924,7 @@ Dialog {
                         }
                     }
                 }
-                Button {
+                LbButton {
                     text: "Use imported draft"
                     enabled: reportImport.startedHere && !reportImport.inputsEdited && !dialog.draftChanged
                         && !dialog.settingsModel.fbneo_import_busy && dialog.settingsModel.fbneo_import_draft.length > 0
@@ -940,7 +940,7 @@ Dialog {
                 }
             }
         }
-        Dialog {
+        LbDialog {
             id: nativeConsent
             property string requestText: ""
             property string contextText: ""
@@ -963,7 +963,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: absoluteSelection
         property var ports: []
         property var devices: []
@@ -1007,16 +1007,16 @@ Dialog {
                 wrapMode: Text.WordWrap
                 text: "Assign saved rectangular calibration to an already-inspected Arcade Gun port. Applying replaces this port's gamepad aim assignments in the draft; buttons stay unchanged. Move both axes during launch preparation. Leaving the calibrated rectangle stops the input bridge: physical offscreen/reload protocols are not supplied. No live devices are opened by this editor."
             }
-            ComboBox { id: absolutePort; Layout.fillWidth: true; model: absoluteSelection.ports.map(port => "Native port " + (port + 1)) }
-            ComboBox { id: absoluteDevice; Layout.fillWidth: true; model: absoluteSelection.devices.map(device => device.event_path + " · " + device.input_identity) }
+            LbComboBox { id: absolutePort; Layout.fillWidth: true; model: absoluteSelection.ports.map(port => "Native port " + (port + 1)) }
+            LbComboBox { id: absoluteDevice; Layout.fillWidth: true; model: absoluteSelection.devices.map(device => device.event_path + " · " + device.input_identity) }
             RowLayout {
-                Button { text: "Apply to draft"; enabled: absoluteDevice.currentIndex >= 0 && absolutePort.currentIndex >= 0; onClicked: absoluteSelection.assign(false) }
-                Button { text: "Remove from draft"; enabled: absolutePort.currentIndex >= 0; onClicked: absoluteSelection.assign(true) }
+                LbButton { text: "Apply to draft"; enabled: absoluteDevice.currentIndex >= 0 && absolutePort.currentIndex >= 0; onClicked: absoluteSelection.assign(false) }
+                LbButton { text: "Remove from draft"; enabled: absolutePort.currentIndex >= 0; onClicked: absoluteSelection.assign(true) }
             }
             Label { id: absoluteStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText }
         }
     }
-    Dialog {
+    LbDialog {
         id: keyboardConsent
         title: "Use the frontend keyboard?"
         modal: true
@@ -1028,7 +1028,7 @@ Dialog {
         }
         onAccepted: dialog.setKeyboardPassthrough(true)
     }
-    Dialog {
+    LbDialog {
         id: mappingPreview
         property var address: null
         property string partName: ""
@@ -1043,7 +1043,7 @@ Dialog {
         contentItem: ColumnLayout {
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: mappingPreview.row ? "Destination: " + mappingPreview.row.target.descriptions.join(" / ") + "\n" + mappingPreview.row.target.id + " · " + mappingPreview.partName + " · " + mappingPreview.row.target.encoding : "Target is no longer in the current review." }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: "Source: " + (mappingPreview.layout ? mappingPreview.layout.name : "No controller layout") }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 visible: !!mappingPreview.row && (mappingPreview.row.axis_pairs || []).length > 0
                 model: ["Assign both halves of a measured axis…"].concat(mappingPreview.row ? (mappingPreview.row.axis_pairs || []).map(pair => pair.label) : [])
@@ -1103,7 +1103,7 @@ Dialog {
                     }
                 }
             }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 model: [mappingPreview.part && mappingPreview.part.inherited_from ? "Use alias assignment: " + mappingPreview.part.effective_source : "Unassigned"].concat(mappingPreview.part ? mappingPreview.part.choices.map(choice => choice.label + " [" + choice.id + "]") : [])
                 currentIndex: mappingPreview.part && mappingPreview.part.source ? mappingPreview.part.choices.findIndex(choice => choice.id === mappingPreview.part.source) + 1 : 0
@@ -1120,7 +1120,7 @@ Dialog {
                 visible: !!mappingPreview.part && (mappingPreview.part.alias_assignment_count || 0) > 1
                 text: "The shared-channel owner has duplicate assignments. The displayed source is only its first assignment; repair the owner before staging."
             }
-            Button {
+            LbButton {
                 text: "View shared-channel owner…"
                 visible: !!mappingPreview.part && !!mappingPreview.part.alias_target
                 onClicked: {
@@ -1133,7 +1133,7 @@ Dialog {
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText; visible: !!mappingPreview.part && !!mappingPreview.part.source_error; text: mappingPreview.part ? "Selected source: " + (mappingPreview.part.source_error || "") : "" }
         }
     }
-    Dialog {
+    LbDialog {
         id: assignmentEditor
         onOpened: { attentionOnly.checked = false; assignmentSearch.text = "" }
         onClosed: { mappingPreview.close(); mouseDestination.close() }
@@ -1148,8 +1148,8 @@ Dialog {
                 text: "Choose saved calibrated controls for each target part. These are draft edits, not live validation. Both halves of a full axis must use opposite gestures on the same measured axis."
                 wrapMode: Text.WordWrap
             }
-            Button { text: "Select calibrated absolute aim…"; onClicked: absoluteSelection.open() }
-            Button {
+            LbButton { text: "Select calibrated absolute aim…"; onClicked: absoluteSelection.open() }
+            LbButton {
                 text: dialog.keyboardPassthroughActive ? "Disable frontend keyboard passthrough" : "Use frontend keyboard…"
                 visible: dialog.keyboardPassthroughActive || dialog.assignmentRows.some(row => row.target.address.device === 3)
                 onClicked: {
@@ -1177,7 +1177,7 @@ Dialog {
             RowLayout {
                 Layout.fillWidth: true
                 visible: dialog.staleAssignments.length > 0
-                ComboBox {
+                LbComboBox {
                     id: staleChoice
                     Layout.fillWidth: true
                     model: dialog.staleAssignments.map(entry => "Player " + (entry.player_port + 1)
@@ -1186,7 +1186,7 @@ Dialog {
                     displayText: currentIndex < 0 ? "Choose stale assignment to remove…" : currentText
                     Accessible.name: "Stale FBNeo assignment"
                 }
-                Button {
+                LbButton {
                     text: "Remove selected stale assignment"
                     enabled: staleChoice.currentIndex >= 0
                     onClicked: dialog.removeStaleAssignment(dialog.staleAssignments[staleChoice.currentIndex])
@@ -1235,7 +1235,7 @@ Dialog {
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
                     }
-                    ComboBox {
+                    LbComboBox {
                         Layout.fillWidth: true
                         visible: targetRow.modelData.target.address.device === 3 && !targetRow.modelData.keyboard_passthrough
                         model: ["Choose internal keyboard channel…"].concat(dialog.keyboardChannels)
@@ -1299,7 +1299,7 @@ Dialog {
                         text: "This pressure binding also supplies its same-ID digital fallback. Do not duplicate the same axis assignment on both addresses."
                         wrapMode: Text.WordWrap
                     }
-                    Button {
+                    LbButton {
                         visible: !!targetRow.modelData.mouse_destination_control
                         text: "Show mouse destination"
                         onClicked: {
@@ -1330,7 +1330,7 @@ Dialog {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label { text: partRow.modelData.part }
-                                Button {
+                                LbButton {
                                     text: "Visual map…"
                                     onClicked: {
                                         mappingPreview.address = targetRow.modelData.target.address
@@ -1338,7 +1338,7 @@ Dialog {
                                         mappingPreview.open()
                                     }
                                 }
-                                ComboBox {
+                                LbComboBox {
                                     Layout.fillWidth: true
                                     model: [partRow.modelData.inherited_from ? "Use alias assignment: " + partRow.modelData.effective_source : "Unassigned"].concat(partRow.modelData.choices.map(choice => choice.label + " [" + choice.id + "]"))
                                     currentIndex: partRow.modelData.source
@@ -1374,7 +1374,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: mouseDestination
         property var mappingRow: null
         readonly property var sourceRoute: {
@@ -1436,7 +1436,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: removal
         property string keyToRemove: ""
         title: "Remove FBNeo setup?"

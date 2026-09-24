@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: control
 
     property color ink: "#f4f7fb"
@@ -71,7 +71,7 @@ Dialog {
                 elide: Text.ElideRight
             }
         }
-        RoundButton {
+        LbRoundButton {
             anchors.right: parent.right
             anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
@@ -191,7 +191,7 @@ Dialog {
             anchors.leftMargin: 18
             anchors.verticalCenter: parent.verticalCenter
             spacing: 9
-            Button {
+            LbButton {
                 text: "Restore library presentation"
                 visible: titleField.text.trim().length > 0
                          || notesField.text.trim().length > 0
@@ -204,7 +204,7 @@ Dialog {
             anchors.rightMargin: 18
             anchors.verticalCenter: parent.verticalCenter
             spacing: 9
-            Button {
+            LbButton {
                 text: "Cancel"
                 enabled: !control.busy
                 onClicked: control.close()

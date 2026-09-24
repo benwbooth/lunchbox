@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-Button {
+LbButton {
     id: control
     property bool active: false
     highlighted: active

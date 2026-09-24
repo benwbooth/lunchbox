@@ -96,7 +96,7 @@ Item {
             }
         }
 
-        RoundButton {
+        LbRoundButton {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: 14
@@ -107,21 +107,9 @@ Item {
             font.pixelSize: 15
             Accessible.name: "Close fullscreen media"
             onClicked: viewer.close()
-            background: Rectangle {
-                radius: 19
-                color: parent.down ? "#2a3547" : "#1a2331"
-                border.color: "#3b4a61"
-            }
-            contentItem: Text {
-                text: parent.text
-                color: "#f4f7fb"
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
         }
 
-        RoundButton {
+        LbRoundButton {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             anchors.leftMargin: 10
@@ -133,21 +121,9 @@ Item {
             font.pixelSize: 24
             Accessible.name: "Previous media item"
             onClicked: viewer.previousRequested()
-            background: Rectangle {
-                radius: 22
-                color: parent.down ? "#2a3547" : "#1a2331"
-                border.color: "#3b4a61"
-            }
-            contentItem: Text {
-                text: parent.text
-                color: "#f4f7fb"
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
         }
 
-        RoundButton {
+        LbRoundButton {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: 10
@@ -159,18 +135,6 @@ Item {
             font.pixelSize: 24
             Accessible.name: "Next media item"
             onClicked: viewer.nextRequested()
-            background: Rectangle {
-                radius: 22
-                color: parent.down ? "#2a3547" : "#1a2331"
-                border.color: "#3b4a61"
-            }
-            contentItem: Text {
-                text: parent.text
-                color: "#f4f7fb"
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
         }
     }
 }

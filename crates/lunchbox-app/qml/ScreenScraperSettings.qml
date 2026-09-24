@@ -101,7 +101,7 @@ ColumnLayout {
 
         Item { Layout.fillWidth: true }
 
-        Button {
+        LbButton {
             text: "Test connection"
             enabled: !root.providerModel.busy
                      && (root.providerModel.credentials_saved
@@ -112,7 +112,7 @@ ColumnLayout {
                            memberId.text, memberPassword.text)
         }
 
-        Button {
+        LbButton {
             text: root.providerModel.busy ? "Testing…" : "Save & test credentials"
             enabled: !root.providerModel.busy
                      && developerId.text.length > 0
@@ -126,7 +126,7 @@ ColumnLayout {
                            memberId.text, memberPassword.text)
         }
 
-        Button {
+        LbButton {
             visible: root.providerModel.credentials_saved
             text: "Clear saved"
             enabled: !root.providerModel.busy
@@ -159,7 +159,7 @@ ColumnLayout {
             wrapMode: Text.WordWrap
         }
 
-        Button {
+        LbButton {
             text: "API documentation ↗"
             flat: true
             onClicked: Qt.openUrlExternally("https://www.screenscraper.fr/webapi2.php")

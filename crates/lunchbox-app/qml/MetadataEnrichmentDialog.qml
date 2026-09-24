@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: dialog
 
     property var igdbModel
@@ -209,7 +209,7 @@ Dialog {
                 elide: Text.ElideRight
             }
         }
-        RoundButton {
+        LbRoundButton {
             id: closeButton
             anchors.right: parent.right
             anchors.rightMargin: 16
@@ -232,7 +232,7 @@ Dialog {
             Layout.rightMargin: 20
             Layout.topMargin: 18
             spacing: 10
-            ComboBox {
+            LbComboBox {
                 id: providerBox
                 Layout.preferredWidth: 170
                 model: ["IGDB", "ScreenScraper"]
@@ -263,7 +263,7 @@ Dialog {
                     border.color: parent.activeFocus ? dialog.accent : dialog.line
                 }
             }
-            Button {
+            LbButton {
                 text: dialog.activeModel && dialog.activeModel.busy ? "Searching…" : "Search"
                 enabled: dialog.activeModel && !dialog.activeModel.busy
                          && searchField.text.trim().length >= 2
@@ -300,7 +300,7 @@ Dialog {
                     font.pixelSize: 10
                     wrapMode: Text.WordWrap
                 }
-                Button {
+                LbButton {
                     visible: dialog.activeModel && dialog.activeModel.initialized
                              && !dialog.activeModel.credentials_saved
                     text: "Set up account"
@@ -326,7 +326,7 @@ Dialog {
             model: dialog.activeModel ? dialog.activeModel.game_count : 0
             spacing: 7
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            delegate: Button {
+            delegate: LbButton {
                 required property int index
                 width: candidateList.verticalContentWidth
                 height: 62
@@ -382,19 +382,19 @@ Dialog {
                     font.pixelSize: 10
                     wrapMode: Text.WordWrap
                 }
-                Button {
+                LbButton {
                     text: "Missing only"
                     enabled: fieldModel.count > 0
                     flat: true
                     onClicked: dialog.selectChanges(false)
                 }
-                Button {
+                LbButton {
                     text: "All changes"
                     enabled: fieldModel.count > 0
                     flat: true
                     onClicked: dialog.selectChanges(true)
                 }
-                Button {
+                LbButton {
                     text: "Change record"
                     flat: true
                     onClicked: dialog.activeModel.search_games(searchField.text)
@@ -521,11 +521,11 @@ Dialog {
                 font.pixelSize: 10
                 elide: Text.ElideRight
             }
-            Button {
+            LbButton {
                 text: "Cancel"
                 onClicked: dialog.close()
             }
-            Button {
+            LbButton {
                 text: "Apply to editor"
                 highlighted: true
                 enabled: dialog.selectedFieldCount > 0

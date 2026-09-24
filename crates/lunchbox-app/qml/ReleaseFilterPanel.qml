@@ -30,7 +30,7 @@ Column {
             font.weight: Font.Bold
             font.letterSpacing: 1
         }
-        Button {
+        LbButton {
             id: clearRegions
             objectName: "clearReleaseRegions"
             width: 50
@@ -142,7 +142,7 @@ Column {
             font.pixelSize: 11
             font.weight: Font.DemiBold
         }
-        ComboBox {
+        LbComboBox {
             id: adultMode
             objectName: "adultReleaseMode"
             width: 116
@@ -176,7 +176,7 @@ Column {
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
-        ComboBox {
+        LbComboBox {
             id: nonRetailMode
             objectName: "nonRetailReleaseMode"
             width: 116

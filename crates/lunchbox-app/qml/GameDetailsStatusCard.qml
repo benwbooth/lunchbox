@@ -63,10 +63,11 @@ Rectangle {
             }
         }
 
-        Button {
+        LbButton {
             objectName: "importTorrentForGameButton"
             width: parent.width
             height: 42
+            highlighted: true
             visible: card.importTorrentAvailable
             enabled: visible && !card.busy
             text: "IMPORT TORRENT FOR THIS GAME"
@@ -74,21 +75,6 @@ Rectangle {
             font.weight: Font.Bold
             Accessible.name: "Import a torrent for this game"
             onClicked: card.importTorrentRequested()
-            background: Rectangle {
-                radius: 8
-                color: parent.enabled
-                       ? (parent.down ? "#d68d36" : card.accent)
-                       : "#26313e"
-                border.color: parent.enabled ? "#ffc579" : card.line
-            }
-            contentItem: Text {
-                text: parent.text
-                color: parent.enabled ? "#1b140c" : card.muted
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                elide: Text.ElideRight
-            }
         }
     }
 }

@@ -478,7 +478,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: "#e57474"
     }
-    Button {
+    LbButton {
         visible: view.diagramGaps.length > 0
         text: "Next undrawn connection (" + view.diagramGaps.length + ")"
         onClicked: {

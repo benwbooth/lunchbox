@@ -115,7 +115,7 @@ Column {
         wrapMode: Text.WordWrap
     }
 
-    Button {
+    LbButton {
         id: expandSourcesButton
         objectName: "expandTorrentSourcesButton"
         width: parent.width
@@ -124,21 +124,10 @@ Column {
         text: root.sourcesExpanded
               ? "SHOW TOP " + root.collapsedSourceLimit + " SOURCES"
               : "SHOW ALL SOURCES AND MATCHES"
+        flat: true
         font.pixelSize: 9
         font.weight: Font.Bold
         onClicked: root.sourcesExpanded = !root.sourcesExpanded
-        background: Rectangle {
-            radius: 8
-            color: parent.down ? "#233144" : "transparent"
-            border.color: root.line
-        }
-        contentItem: Text {
-            text: parent.text
-            color: root.accentCool
-            font: parent.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
     }
 
     Repeater {
@@ -347,7 +336,7 @@ Column {
         }
     }
 
-    Button {
+    LbButton {
         id: addSourceButton
         objectName: "addTorrentSourceButton"
         width: parent.width
@@ -358,18 +347,6 @@ Column {
         font.pixelSize: 9
         font.weight: Font.Bold
         onClicked: root.addSourceRequested()
-        background: Rectangle {
-            radius: 8
-            color: parent.down ? "#28364a" : "#1b2532"
-            border.color: root.line
-        }
-        contentItem: Text {
-            text: parent.text
-            color: root.ink
-            font: parent.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
         ToolTip.visible: hovered
         ToolTip.text: "Review one or more torrents and index them for "
                       + root.detailsModel.platform + "."

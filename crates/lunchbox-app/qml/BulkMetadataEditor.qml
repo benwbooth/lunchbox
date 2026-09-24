@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: root
     objectName: "bulkLibraryEditor"
 
@@ -160,7 +160,7 @@ Dialog {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.1
             }
-            ComboBox {
+            LbComboBox {
                 id: modeCombo
                 objectName: "bulkEditType"
                 Layout.fillWidth: true
@@ -183,7 +183,7 @@ Dialog {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.1
             }
-            ComboBox {
+            LbComboBox {
                 id: fieldCombo
                 objectName: "bulkMetadataField"
                 visible: !root.tagMode
@@ -202,7 +202,7 @@ Dialog {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.1
             }
-            ComboBox {
+            LbComboBox {
                 id: actionCombo
                 objectName: "bulkEditAction"
                 Layout.fillWidth: true

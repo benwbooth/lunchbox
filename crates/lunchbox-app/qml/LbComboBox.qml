@@ -1,0 +1,94 @@
+import QtQuick
+import QtQuick.Templates as T
+
+T.ComboBox {
+    id: control
+
+    leftPadding: 11
+    rightPadding: 30
+    topPadding: 6
+    bottomPadding: 6
+    implicitWidth: Math.max(82, implicitContentWidth + leftPadding + rightPadding)
+    implicitHeight: Math.max(34, implicitContentHeight + topPadding + bottomPadding)
+    font.pixelSize: 12
+
+    background: LbControlBackground {
+        pressed: control.down
+        hovered: control.hovered
+        focused: control.visualFocus
+        selected: control.popup.visible
+        enabled: control.enabled
+    }
+
+    contentItem: Text {
+        leftPadding: 0
+        rightPadding: 0
+        text: control.displayText
+        font: control.font
+        color: control.enabled ? "#f4f7fb" : "#8d99aa"
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideRight
+    }
+
+    indicator: Canvas {
+        x: control.width - width - 11
+        y: (control.height - height) / 2
+        width: 12
+        height: 8
+        opacity: control.enabled ? 1 : 0.5
+        onPaint: {
+            const context = getContext("2d")
+            context.clearRect(0, 0, width, height)
+            context.strokeStyle = "#c0c8d4"
+            context.lineWidth = 1.7
+            context.lineCap = "round"
+            context.lineJoin = "round"
+            context.beginPath()
+            context.moveTo(1, 2)
+            context.lineTo(width / 2, height - 2)
+            context.lineTo(width - 1, 2)
+            context.stroke()
+        }
+    }
+
+    delegate: LbItemDelegate {
+        required property int index
+        width: control.popup.width - control.popup.leftPadding - control.popup.rightPadding
+        text: control.textAt(index)
+        highlighted: control.highlightedIndex === index
+    }
+
+    popup: T.Popup {
+        y: control.height + 2
+        width: control.width
+        implicitHeight: Math.min(360, contentItem.implicitHeight + topPadding + bottomPadding)
+        padding: 4
+        background: Rectangle {
+            radius: 8
+            color: "#151d29"
+            border.color: "#53647c"
+        }
+        contentItem: ListView {
+            id: popupList
+            clip: true
+            implicitHeight: contentHeight
+            model: control.popup.visible ? control.delegateModel : null
+            currentIndex: control.highlightedIndex
+            MouseArea {
+                anchors.fill: parent
+                z: 10
+                preventStealing: false
+                onWheel: function(wheel) { wheel.accepted = false }
+                onClicked: function(mouse) {
+                    const index = popupList.indexAt(mouse.x,
+                                                    mouse.y + popupList.contentY)
+                    if (index < 0)
+                        return
+                    control.currentIndex = index
+                    control.activated(index)
+                    control.popup.close()
+                }
+            }
+        }
+    }
+}

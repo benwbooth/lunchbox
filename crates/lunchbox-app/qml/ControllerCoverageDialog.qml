@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: coverage
     required property var settingsModel
     readonly property var recordSlugs: report.record_slugs || []
@@ -94,8 +94,8 @@ Dialog {
         TabBar {
             id: tabs
             Layout.fillWidth: true
-            TabButton { text: "All cores / emulators" }
-            TabButton { text: "Core input profiles / layout capabilities" }
+            LbTabButton { text: "All cores / emulators" }
+            LbTabButton { text: "Core input profiles / layout capabilities" }
         }
         RowLayout {
             visible: tabs.currentIndex === 0
@@ -106,12 +106,12 @@ Dialog {
                 placeholderText: "Find a core, emulator or platform…"
                 Accessible.name: "Search controller coverage"
             }
-            ComboBox {
+            LbComboBox {
                 id: filter
                 model: ["All coverage", "Incomplete / preview", "Some launch support", "RetroArch", "Standalone"]
                 Accessible.name: "Controller coverage filter"
             }
-            Button { text: "Refresh"; onClicked: coverage.reload() }
+            LbButton { text: "Refresh"; onClicked: coverage.reload() }
         }
         Label {
             visible: tabs.currentIndex === 0
@@ -159,7 +159,7 @@ Dialog {
                     text: modelData.remaining ? "Remaining:\n• " + modelData.remaining.join("\n• ") : ""
                     wrapMode: Text.WordWrap
                 }
-                Button {
+                LbButton {
                     visible: coverage.recordSlugs.indexOf(modelData.name.toLowerCase()) >= 0
                               || coverage.recordSlugs.indexOf(modelData.name.toLowerCase().replace(/\s+/g, "-")) >= 0
                     text: expandedLocations ? "Hide captured locations" : "Show captured locations"
@@ -190,12 +190,12 @@ Dialog {
                     wrapMode: Text.WordWrap
                     font.family: "monospace"
                 }
-                Button {
+                LbButton {
                     visible: modelData.native_setup === true && Qt.platform.os === "linux"
                     text: "Configure native runtime and players…"
                     onClicked: { coverage.close(); coverage.nativeRuntimeRequested() }
                 }
-                Button {
+                LbButton {
                     visible: !!modelData.per_game_setup && Qt.platform.os === "linux"
                     text: "Open " + modelData.name + " per-game setup…"
                     onClicked: { coverage.close(); coverage.perGameSetupRequested(modelData.per_game_setup) }
@@ -212,7 +212,7 @@ Dialog {
                     text: "Default target mode for this core/platform (not a physical-controller mapping):"
                     wrapMode: Text.WordWrap
                 }
-                ComboBox {
+                LbComboBox {
                     visible: modelData.choices.length > 1
                     width: parent.width
                     model: modelData.choices
@@ -233,7 +233,7 @@ Dialog {
             text: "One source layout → shared capability rules → target layout → core input profile. Below assumes every declared source control is calibrated; your saved calibration may contain fewer. Missing hardware is not a missing emulator adapter. No controller/core pair-specific backend is needed."
             wrapMode: Text.WordWrap
         }
-        ComboBox {
+        LbComboBox {
             id: sourceLayout
             visible: tabs.currentIndex === 1
             Layout.fillWidth: true
@@ -286,7 +286,7 @@ Dialog {
                     text: "Conditions: " + modelData.conditions.join(" · ")
                     wrapMode: Text.WordWrap
                 }
-                Button {
+                LbButton {
                     text: parent.showMapping ? "Hide composed mapping" : "Show composed mapping"
                     onClicked: parent.showMapping = !parent.showMapping
                 }

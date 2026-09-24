@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: dialog
     required property var settingsModel
     signal calibrationRequested(string controllerId, string sourceLayout, string physicalControl)
@@ -291,7 +291,7 @@ Dialog {
         RowLayout {
             Layout.fillWidth: true
             Label { text: "Shared per-game button layout" }
-            ComboBox {
+            LbComboBox {
                 id: digitalPreset
                 Layout.fillWidth: true
                 model: dialog.presetLabels
@@ -316,7 +316,7 @@ Dialog {
                 }
             }
         }
-        Button {
+        LbButton {
             text: "Compare shared presets…"
             enabled: editor.text.trim().length > 0
             onClicked: presetComparison.loadAndOpen()
@@ -328,14 +328,14 @@ Dialog {
         }
         RowLayout {
             Layout.fillWidth: true
-            Button { text: "New setup…"; enabled: !dialog.draftChanged; onClicked: { newSetup.errorText = ""; newSetup.open() } }
-            Button { text: "Inspect native fields…"; onClicked: inspection.open() }
-            ComboBox {
+            LbButton { text: "New setup…"; enabled: !dialog.draftChanged; onClicked: { newSetup.errorText = ""; newSetup.open() } }
+            LbButton { text: "Inspect native fields…"; onClicked: inspection.open() }
+            LbComboBox {
                 id: choices
                 Layout.fillWidth: true
                 model: dialog.setups.map(item => item.machine + " — " + item.content + (item.needs_reinspection ? " [needs reinspection]" : ""))
             }
-            Button {
+            LbButton {
                 text: "Load"
                 enabled: !dialog.draftChanged && choices.currentIndex >= 0
                 onClicked: {
@@ -349,7 +349,7 @@ Dialog {
                         : "Loaded staged setup; not a runtime verification."
                 }
             }
-            Button {
+            LbButton {
                 text: "Remove…"
                 enabled: choices.currentIndex >= 0
                 onClicked: {
@@ -358,7 +358,7 @@ Dialog {
                 }
             }
         }
-        Button {
+        LbButton {
             text: "Change player controllers…"
             enabled: editor.text.trim().length > 0
             onClicked: playerControllers.loadAndOpen()
@@ -374,7 +374,7 @@ Dialog {
             visible: advancedControls.checked
             text: "These tools are for unusual game inputs. Hiding them does not remove saved assignments or bypass unresolved-input checks. Analog assignments use saved calibration; this editor does not calibrate devices."
         }
-        Button {
+        LbButton {
             text: advancedControls.checked ? "Edit button / incremental-axis assignments…" : "Edit game buttons…"
             enabled: editor.text.trim().length > 0
             onClicked: {
@@ -394,7 +394,7 @@ Dialog {
                 } catch (error) { dialog.statusText = "Cannot edit digital assignments: " + error }
             }
         }
-        Button {
+        LbButton {
             text: "Edit analog channel assignments…"
             visible: advancedControls.checked
             enabled: editor.text.trim().length > 0
@@ -477,7 +477,7 @@ Dialog {
             text: dialog.statusText
         }
         RowLayout {
-            Button {
+            LbButton {
                 text: "Review assignments"
                 enabled: editor.text.trim().length > 0
                 onClicked: {
@@ -615,12 +615,12 @@ Dialog {
                     } catch (error) { dialog.statusText = "Cannot review assignments: " + error }
                 }
             }
-            Button {
+            LbButton {
                 text: "Use completed inspection"
                 enabled: !dialog.settingsModel.mame_inspection_busy && dialog.settingsModel.mame_inspection_result.length > 0
                 onClicked: dialog.applyCompletedInspection()
             }
-            Button {
+            LbButton {
                 text: "Stage setup"
                 enabled: editor.text.trim().length > 0 && dialog.reviewedText === editor.text && !dialog.reviewHasUnhandled
                 onClicked: {
@@ -631,16 +631,16 @@ Dialog {
                     dialog.statusText = "Setup staged. Save settings to persist it. No runtime was started."
                 }
             }
-            Button {
+            LbButton {
                 text: "Revert editor"
                 enabled: dialog.draftChanged
                 onClicked: { editor.text = dialog.loadedText; dialog.statusText = "Editor reverted to its last loaded or staged text." }
             }
             Item { Layout.fillWidth: true }
-            Button { text: "Close (keep draft)"; onClicked: dialog.close() }
+            LbButton { text: "Close (keep draft)"; onClicked: dialog.close() }
         }
     }
-    Dialog {
+    LbDialog {
         id: presetComparison
         property string baseText: ""
         property int baseRevision: -1
@@ -822,7 +822,7 @@ Dialog {
         contentItem: ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
-                ComboBox {
+                LbComboBox {
                     id: comparedPreset
                     Layout.fillWidth: true
                     model: presetComparison.generatedChoices.map(index => presetComparison.choiceLabels[index]
@@ -833,7 +833,7 @@ Dialog {
                         && presetComparison.completedChoices === presetComparison.choiceIds.length
                     Accessible.name: "Generated " + presetComparison.comparisonScope + " to apply to the MAME draft"
                 }
-                Button {
+                LbButton {
                     text: "Use in draft"
                     enabled: presetComparison.selectedPresetUsable
                     onClicked: presetComparison.applySelection()
@@ -864,7 +864,7 @@ Dialog {
                 clip: true
                 ColumnLayout {
                     width: comparisonScroll.availableWidth
-                    ComboBox {
+                    LbComboBox {
                         id: comparedPlayer
                         Layout.fillWidth: true
                         visible: presetComparison.previewPlayers.length > 0
@@ -889,11 +889,11 @@ Dialog {
                         visible: presetComparison.previewPlayer !== null
                         enabled: !presetComparison.stale && !presetComparison.comparing
                             && presetComparison.completedChoices === presetComparison.choiceIds.length
-                        Button {
+                        LbButton {
                             text: "Calibrate previewed controller…"
                             onClicked: presetComparison.calibratePreview(false)
                         }
-                        Button {
+                        LbButton {
                             text: "Calibrate highlighted source…"
                             enabled: presetComparison.previewPlayer !== null && !!presetComparison.previewPlayer.source_layout
                                 && (!!comparedMapping.focusedSourceControl || (comparedMapping.selected !== null && !!comparedMapping.selected.physical_id))
@@ -928,7 +928,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: switchEditor
         readonly property bool analogFieldSelected: !!fields[switchField.currentIndex] && fields[switchField.currentIndex].analog
         readonly property string selectedSequence: analogFieldSelected ? (["increment", "decrement"][switchSequence.currentIndex] || "") : "standard"
@@ -1261,20 +1261,20 @@ Dialog {
                 ColumnLayout {
                     width: switchFormScroll.availableWidth
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: switchEditor.analogFieldSelected ? "Choose a source button for one direction of this game axis. This changes the draft only." : "Choose the game action, source player and button channel. Preview its effects, then apply the override and review the mapping." }
-                    ComboBox { id: switchField; Layout.fillWidth: true; model: switchEditor.fields.map(field => dialog.fieldLabel(field, switchEditor.labels)); onActivated: { switchSequence.currentIndex = 0; switchEditor.loadSelection() } Accessible.name: "Inspected button-controlled field" }
-                    ComboBox { id: switchSequence; Layout.fillWidth: true; visible: switchEditor.analogFieldSelected; model: ["Increment", "Decrement"]; onActivated: switchEditor.loadSelection(); Accessible.name: "Button-driven analog direction" }
+                    LbComboBox { id: switchField; Layout.fillWidth: true; model: switchEditor.fields.map(field => dialog.fieldLabel(field, switchEditor.labels)); onActivated: { switchSequence.currentIndex = 0; switchEditor.loadSelection() } Accessible.name: "Inspected button-controlled field" }
+                    LbComboBox { id: switchSequence; Layout.fillWidth: true; visible: switchEditor.analogFieldSelected; model: ["Increment", "Decrement"]; onActivated: switchEditor.loadSelection(); Accessible.name: "Button-driven analog direction" }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: switchEditor.analogFieldSelected; text: "Native keydelta, centering, wrapping and sensitivity determine motion. This is incremental button control, not measured analog travel or physical mouse/gun capture. Each direction is edited separately; unassigned directions and the standard axis sequence are disabled while any button direction remains assigned." }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: !!switchEditor.fields[switchField.currentIndex] && switchEditor.fields[switchField.currentIndex].class === "keyboard"; text: "Keyboard keys require fresh owner/enable-state evidence and emulated keyboard mode. This maps individual keys, not text entry." }
                     CheckBox { id: switchTechnical; text: "Show native channel details"; checked: false }
-                    ComboBox { id: switchPort; Layout.fillWidth: true; model: switchEditor.ports.map(port => "Source player " + port); Accessible.name: "Digital source player" }
-                    ComboBox {
+                    LbComboBox { id: switchPort; Layout.fillWidth: true; model: switchEditor.ports.map(port => "Source player " + port); Accessible.name: "Digital source player" }
+                    LbComboBox {
                         id: switchChannel
                         Layout.fillWidth: true
                         model: switchEditor.channels
                         textRole: "output"
                         displayText: switchEditor.channelChoiceLabel(switchEditor.channels[currentIndex])
                         Accessible.name: "Digital source channel and current physical connection"
-                        delegate: ItemDelegate {
+                        delegate: LbItemDelegate {
                             required property var modelData
                             required property int index
                             width: switchChannel.width
@@ -1329,14 +1329,14 @@ Dialog {
                         visible: text.length > 0
                     }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Channels can also drive existing default mappings or other explicit fields. Review shared actions before use, especially service, reset or coin controls. This is not physical calibration or runtime verification." }
-                    Button {
+                    LbButton {
                         text: "Preview channel effects"
                         enabled: editor.text === switchEditor.baseText && switchField.currentIndex >= 0
                             && switchPort.currentIndex >= 0 && switchChannel.currentIndex >= 0
                             && switchEditor.selectedSequence.length > 0
                         onClicked: switchEditor.previewChannelEffects()
                     }
-                    Button {
+                    LbButton {
                         text: "Preview override removal"
                         enabled: editor.text === switchEditor.baseText && switchEditor.hasSelectedOverride
                         onClicked: switchEditor.previewOverrideRemoval()
@@ -1348,7 +1348,7 @@ Dialog {
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: switchPreviewPlayer
                         Layout.fillWidth: true
                         visible: switchEditor.candidatePlayers.length > 0
@@ -1413,13 +1413,13 @@ Dialog {
                 }
             }
             RowLayout {
-                Button { text: "Add / replace override"; onClicked: switchEditor.updateAssignment(false) }
-                Button { text: "Remove override"; enabled: editor.text === switchEditor.baseText && switchEditor.hasSelectedOverride; onClicked: switchEditor.updateAssignment(true) }
+                LbButton { text: "Add / replace override"; onClicked: switchEditor.updateAssignment(false) }
+                LbButton { text: "Remove override"; enabled: editor.text === switchEditor.baseText && switchEditor.hasSelectedOverride; onClicked: switchEditor.updateAssignment(true) }
             }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: switchEditor.status }
         }
     }
-    Dialog {
+    LbDialog {
         id: relativePreview
         property string baseText: ""
         property int baseRevision: -1
@@ -1631,7 +1631,7 @@ Dialog {
             dialog.statusText = "Applied the previewed relative axis/button batch and sources to the draft. Other mappings were preserved. Review again; button-bearing drafts still cannot be staged or launched. No device was opened."
             close()
         }
-        Dialog {
+        LbDialog {
             id: relativeTuning
             property var sourceRow: null
             property string batchText: ""
@@ -1679,7 +1679,7 @@ Dialog {
                 }
                 CheckBox { id: relativeSwap; text: "Swap physical X/Y before scaling" }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: relativeTuning.errorText }
-                Button {
+                LbButton {
                     text: "Apply tuning to queued source"
                     onClicked: {
                         try {
@@ -1725,7 +1725,7 @@ Dialog {
                 wrapMode: Text.WordWrap
                 text: relativePreview.retainedButtons.length + " mouse-button assignments are in this batch. Use the controls below to change an existing output or explicitly remove a mapping. Staging requires 64-bit Linux and the opt-in core mode; launch also checks private UI bindings and live routing. Runtime behavior is unverified."
             }
-            ComboBox {
+            LbComboBox {
                 id: existingMouseButton
                 Layout.fillWidth: true
                 visible: relativePreview.retainedButtons.length > 0
@@ -1736,7 +1736,7 @@ Dialog {
                 Accessible.name: "Existing mouse-button mapping in the temporary batch"
                 onCurrentIndexChanged: mouseButtonOutput.currentIndex = -1
             }
-            ComboBox {
+            LbComboBox {
                 id: mouseButtonOutput
                 Layout.fillWidth: true
                 model: ["Button 1 · left", "Button 2 · right", "Button 3 · middle", "Button 4 · side", "Button 5 · extra"]
@@ -1746,7 +1746,7 @@ Dialog {
             }
             RowLayout {
                 visible: relativePreview.retainedButtons.length > 0
-                Button {
+                LbButton {
                     text: "Change queued button output"
                     enabled: !relativePreview.stale && !nativeOnly.checked
                         && existingMouseButton.currentIndex >= 0 && mouseButtonOutput.currentIndex >= 0
@@ -1760,7 +1760,7 @@ Dialog {
                         relativePreview.report = "Changed the queued output. Preview the complete batch to validate the saved device's button remap before applying."
                     }
                 }
-                Button {
+                LbButton {
                     text: "Remove queued button mapping"
                     enabled: !relativePreview.stale && !nativeOnly.checked && existingMouseButton.currentIndex >= 0
                     onClicked: {
@@ -1771,12 +1771,12 @@ Dialog {
                     }
                 }
             }
-            ComboBox { id: relativeField; Layout.fillWidth: true; model: relativePreview.fields.map(entry => dialog.fieldLabel(entry.field, [])); displayText: currentIndex < 0 ? "Choose a relative field" : currentText; Accessible.name: "Native relative field" }
-            ComboBox { id: relativePort; Layout.fillWidth: true; model: relativePreview.ports.map(port => "Source player " + port); displayText: currentIndex < 0 ? "Choose a source player" : currentText; Accessible.name: "Relative source player" }
-            ComboBox { id: relativeAxis; Layout.fillWidth: true; model: ["Output X", "Output Y"]; displayText: currentIndex < 0 ? "Choose an output axis" : currentText; Accessible.name: "Post-transform relative output axis" }
+            LbComboBox { id: relativeField; Layout.fillWidth: true; model: relativePreview.fields.map(entry => dialog.fieldLabel(entry.field, [])); displayText: currentIndex < 0 ? "Choose a relative field" : currentText; Accessible.name: "Native relative field" }
+            LbComboBox { id: relativePort; Layout.fillWidth: true; model: relativePreview.ports.map(port => "Source player " + port); displayText: currentIndex < 0 ? "Choose a source player" : currentText; Accessible.name: "Relative source player" }
+            LbComboBox { id: relativeAxis; Layout.fillWidth: true; model: ["Output X", "Output Y"]; displayText: currentIndex < 0 ? "Choose an output axis" : currentText; Accessible.name: "Post-transform relative output axis" }
             CheckBox { id: nativeOnly; text: "Native-only preview (skip saved-device validation)" }
-            ComboBox { id: relativeDevice; Layout.fillWidth: true; enabled: !nativeOnly.checked; model: relativePreview.devices.map(device => relativePreview.deviceLabel(device)); displayText: currentIndex < 0 ? "Choose a saved relative device" : currentText; Accessible.name: "Exact saved relative device and tuning" }
-            ComboBox {
+            LbComboBox { id: relativeDevice; Layout.fillWidth: true; enabled: !nativeOnly.checked; model: relativePreview.devices.map(device => relativePreview.deviceLabel(device)); displayText: currentIndex < 0 ? "Choose a saved relative device" : currentText; Accessible.name: "Exact saved relative device and tuning" }
+            LbComboBox {
                 id: newMouseButtonField
                 Layout.fillWidth: true
                 model: relativePreview.buttonFields.map(field => field.input_type + " / " + field.tag
@@ -1784,7 +1784,7 @@ Dialog {
                 displayText: currentIndex < 0 ? "Choose a native switch for a mouse button" : currentText
                 Accessible.name: "Exact inspected field for a new mouse-button assignment"
             }
-            Button {
+            LbButton {
                 text: "Add / replace mouse-button mapping in batch"
                 enabled: !relativePreview.stale && !nativeOnly.checked && newMouseButtonField.currentIndex >= 0
                     && relativePort.currentIndex >= 0 && relativeDevice.currentIndex >= 0 && mouseButtonOutput.currentIndex >= 0
@@ -1797,15 +1797,15 @@ Dialog {
                 text: relativePreview.devices[relativeDevice.currentIndex]
                     ? relativePreview.deviceLabel(relativePreview.devices[relativeDevice.currentIndex]) : ""
             }
-            Button {
+            LbButton {
                 text: "Replace source for all queued player axes"
                 enabled: !relativePreview.stale && !nativeOnly.checked && relativeDevice.currentIndex >= 0
                     && relativePreview.queuedAxes.some(row => row.assignment.source_player === relativePreview.ports[relativePort.currentIndex])
                 Accessible.description: "Adopt the selected device, including its tuning and exclusive-capture setting, for all queued axes of the selected source player. Does not apply or save the draft."
                 onClicked: relativePreview.replacePlayerSource()
             }
-            Button { text: "Add / replace axis in preview batch"; enabled: !relativePreview.stale; onClicked: relativePreview.queueSelection() }
-            ComboBox {
+            LbButton { text: "Add / replace axis in preview batch"; enabled: !relativePreview.stale; onClicked: relativePreview.queueSelection() }
+            LbComboBox {
                 id: queuedRelativeAxis
                 Layout.fillWidth: true
                 model: relativePreview.queuedAxes.map(row => dialog.fieldLabel(row.assignment.field, [])
@@ -1813,7 +1813,7 @@ Dialog {
                     + " · " + (row.device ? row.device.event_path : "native only"))
                 Accessible.name: "Temporary relative-axis preview batch"
             }
-            Button {
+            LbButton {
                 text: "Load selected axis for editing"
                 enabled: !relativePreview.stale && queuedRelativeAxis.currentIndex >= 0
                 onClicked: {
@@ -1821,23 +1821,23 @@ Dialog {
                     catch (error) { relativePreview.report = "Cannot load axis: " + error }
                 }
             }
-            Button {
+            LbButton {
                 text: "Tune selected axis's source…"
                 enabled: !relativePreview.stale && !nativeOnly.checked
                     && !!(relativePreview.queuedAxes[queuedRelativeAxis.currentIndex] || {}).device
                 onClicked: relativeTuning.loadAndOpen()
             }
             RowLayout {
-                Button { text: "Remove selected preview axis"; enabled: !relativePreview.stale && queuedRelativeAxis.currentIndex >= 0; onClicked: relativePreview.queuedAxes = relativePreview.queuedAxes.filter((_, index) => index !== queuedRelativeAxis.currentIndex) }
-                Button { text: "Preview replacement set"; enabled: !relativePreview.stale; onClicked: relativePreview.generate() }
-                Button { text: "Apply replacement to draft"; enabled: !relativePreview.stale && !nativeOnly.checked && relativePreview.draftConfiguration.length > 0; onClicked: relativePreview.applyDraft() }
+                LbButton { text: "Remove selected preview axis"; enabled: !relativePreview.stale && queuedRelativeAxis.currentIndex >= 0; onClicked: relativePreview.queuedAxes = relativePreview.queuedAxes.filter((_, index) => index !== queuedRelativeAxis.currentIndex) }
+                LbButton { text: "Preview replacement set"; enabled: !relativePreview.stale; onClicked: relativePreview.generate() }
+                LbButton { text: "Apply replacement to draft"; enabled: !relativePreview.stale && !nativeOnly.checked && relativePreview.draftConfiguration.length > 0; onClicked: relativePreview.applyDraft() }
             }
             Label { visible: relativePreview.stale; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Draft or controller settings changed. Close and review again; previous preview data was cleared." }
             TextArea { Layout.fillWidth: true; Layout.minimumHeight: 160; text: relativePreview.report; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText }
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: analogEditor
         property var labels: []
         property var fields: []
@@ -1896,10 +1896,10 @@ Dialog {
         standardButtons: Dialog.Close
         contentItem: ColumnLayout {
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Choose a runtime-inspected analog field and its source channel. This edits the draft only; it does not calibrate or start a device. Physical relative devices and lightguns still need separate contracts." }
-            ComboBox { id: analogField; Layout.fillWidth: true; model: analogEditor.fields.map(field => dialog.fieldLabel(field, analogEditor.labels)); onActivated: analogEditor.loadSelection(); Accessible.name: "Inspected analog field" }
-            ComboBox { id: analogPort; Layout.fillWidth: true; model: analogEditor.ports.map(port => "Source player " + port); Accessible.name: "Analog source player" }
-            ComboBox { id: analogChannel; Layout.fillWidth: true; model: ["Left stick X", "Left stick Y", "Right stick X", "Right stick Y", "Left pressure (L2)", "Right pressure (R2)"]; Accessible.name: "Analog source channel" }
-            ComboBox { id: analogRange; Layout.fillWidth: true; enabled: analogChannel.currentIndex >= 0 && analogChannel.currentIndex < 4; model: ["Full stick axis", "Reversed full axis", "Positive half → full native range", "Negative half → full native range"]; Accessible.name: "Native stick range" }
+            LbComboBox { id: analogField; Layout.fillWidth: true; model: analogEditor.fields.map(field => dialog.fieldLabel(field, analogEditor.labels)); onActivated: analogEditor.loadSelection(); Accessible.name: "Inspected analog field" }
+            LbComboBox { id: analogPort; Layout.fillWidth: true; model: analogEditor.ports.map(port => "Source player " + port); Accessible.name: "Analog source player" }
+            LbComboBox { id: analogChannel; Layout.fillWidth: true; model: ["Left stick X", "Left stick Y", "Right stick X", "Right stick Y", "Left pressure (L2)", "Right pressure (R2)"]; Accessible.name: "Analog source channel" }
+            LbComboBox { id: analogRange; Layout.fillWidth: true; enabled: analogChannel.currentIndex >= 0 && analogChannel.currentIndex < 4; model: ["Full stick axis", "Reversed full axis", "Positive half → full native range", "Negative half → full native range"]; Accessible.name: "Native stick range" }
             CheckBox { id: velocityOptIn; text: "Use centered stick displacement as native relative velocity"; visible: analogField.currentIndex >= 0 && /^P[1-8]_(DIAL|DIAL_V|TRACKBALL_[XY]|MOUSE_[XY])$/.test(analogEditor.fields[analogField.currentIndex].input_type) }
             CheckBox { id: aimOptIn; text: "Use calibrated stick position for native absolute aim"; visible: analogField.currentIndex >= 0 && /^P[1-8]_LIGHTGUN_[XY]$/.test(analogEditor.fields[analogField.currentIndex].input_type) }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: aimOptIn.visible; text: "This uses controller axes, not a physical gun or screen calibration. Trigger and auxiliary inputs still need mappings. Off-screen/reload behavior must be established for the specific game; this does not add it automatically." }
@@ -1907,13 +1907,13 @@ Dialog {
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Half-axis choices map stick center to the native minimum and one direction to the maximum, useful for pedals. Full axes keep center at midrange. Pressure channels always use their source-defined released-to-pressed range." }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: analogField.currentIndex >= 0 && /^P[1-8]_POSITIONAL/.test(analogEditor.fields[analogField.currentIndex].input_type); text: "MAME converts absolute travel into this field's native positions. This is absolute position selection, not relative encoder motion; the driver's position count and wrapping behavior remain native." }
             RowLayout {
-                Button { text: "Add / replace assignment"; onClicked: analogEditor.updateAssignment(false) }
-                Button { text: "Remove assignment"; onClicked: analogEditor.updateAssignment(true) }
+                LbButton { text: "Add / replace assignment"; onClicked: analogEditor.updateAssignment(false) }
+                LbButton { text: "Remove assignment"; onClicked: analogEditor.updateAssignment(true) }
             }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: analogEditor.status }
         }
     }
-    Dialog {
+    LbDialog {
         id: review
         readonly property var catalog: JSON.parse(dialog.settingsModel.controller_catalog_json())
         readonly property var player: dialog.reviewPlayers[reviewPlayer.currentIndex] || null
@@ -2094,7 +2094,7 @@ Dialog {
                         && entry.field.class !== "controller")
                     checked: false
                 }
-                Button {
+                LbButton {
                     text: "Edit relative axes / mouse-button drafts…"
                     visible: relativePreview.mouseInspected || relativePreview.savedCount > 0 || dialog.reviewExceptions.some(entry => !!entry.relative_input)
                     enabled: dialog.reviewedText === editor.text
@@ -2103,7 +2103,7 @@ Dialog {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: review.unresolvedSwitches.length > 0
-                    ComboBox {
+                    LbComboBox {
                         id: unresolvedButton
                         Layout.fillWidth: true
                         model: review.unresolvedSwitches.map(entry => dialog.fieldLabel(entry.field,
@@ -2111,7 +2111,7 @@ Dialog {
                         displayText: currentIndex < 0 ? "Choose an unresolved switch input" : currentText
                         Accessible.name: "Unresolved MAME switch input to assign"
                     }
-                    Button {
+                    LbButton {
                         text: "Assign button…"
                         enabled: unresolvedButton.currentIndex >= 0 && dialog.reviewedText === editor.text
                         onClicked: dialog.editUnresolvedSwitch(review.unresolvedSwitches[unresolvedButton.currentIndex])
@@ -2124,7 +2124,7 @@ Dialog {
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                 }
-                ComboBox {
+                LbComboBox {
                     id: reviewPlayer
                     Layout.fillWidth: true
                     model: dialog.reviewPlayers.map(player => "Player " + player.port + " · " + player.controller
@@ -2133,7 +2133,7 @@ Dialog {
                         ? dialog.reviewPlayers[currentIndex].port : 0
                     Accessible.name: "MAME player mapping to visualize"
                 }
-                Button {
+                LbButton {
                     text: "Next player with a layout / physical gap (" + review.playerGapIndices.length + ")"
                     visible: review.playerGapIndices.length > 0
                     enabled: dialog.reviewedText === editor.text
@@ -2148,7 +2148,7 @@ Dialog {
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                 }
-                Button {
+                LbButton {
                     text: "Compare this player's presets…"
                     enabled: review.player !== null && dialog.reviewedText === editor.text
                     onClicked: {
@@ -2157,19 +2157,19 @@ Dialog {
                         presetComparison.loadAndOpen(port)
                     }
                 }
-                Button {
+                LbButton {
                     text: "Calibrate this player's controller…"
                     enabled: review.player !== null && dialog.reviewedText === editor.text
                     onClicked: dialog.calibrateReviewedPlayer(false)
                 }
-                Button {
+                LbButton {
                     text: "Calibrate highlighted source control…"
                     visible: review.player !== null && !!review.player.source_layout
                         && (!!mappingView.focusedSourceControl || (mappingView.selected !== null && !!mappingView.selected.physical_id))
                     enabled: dialog.reviewedText === editor.text
                     onClicked: dialog.calibrateReviewedPlayer(true)
                 }
-                Button {
+                LbButton {
                     text: "Next control needing setup (" + mappingView.setupGapIndices.length + ")"
                     visible: review.player !== null && mappingView.setupGapIndices.length > 0
                     enabled: dialog.reviewedText === editor.text
@@ -2179,7 +2179,7 @@ Dialog {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: review.ordinaryActions.length > 0
-                    ComboBox {
+                    LbComboBox {
                         id: ordinaryAction
                         Layout.fillWidth: true
                         model: review.ordinaryActions.map(route => (route.label || route.assignment.field.input_type)
@@ -2189,19 +2189,19 @@ Dialog {
                         displayText: currentIndex < 0 ? "Choose any mapped controller action" : currentText
                         Accessible.name: "MAME controller action to edit without selecting a diagram connection"
                     }
-                    Button {
+                    LbButton {
                         text: "Show connection"
                         enabled: dialog.reviewedText === editor.text
                             && review.diagramRoute(review.ordinaryActions[ordinaryAction.currentIndex]) !== null
                         Accessible.description: "Highlight this exact game action's source and destination connection when a unique drawable route is available."
                         onClicked: review.showActionConnection(review.ordinaryActions[ordinaryAction.currentIndex])
                     }
-                    Button {
+                    LbButton {
                         text: "Edit action…"
                         enabled: ordinaryAction.currentIndex >= 0 && dialog.reviewedText === editor.text
                         onClicked: dialog.editReviewedSwitch(review.ordinaryActions[ordinaryAction.currentIndex])
                     }
-                    Button {
+                    LbButton {
                         text: "Swap this action…"
                         enabled: dialog.reviewedText === editor.text
                             && dialog.swappableAction(review.ordinaryActions[ordinaryAction.currentIndex], review.swapRoutes)
@@ -2269,7 +2269,7 @@ Dialog {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: review.selectedSwitches.length > 0
-                    ComboBox {
+                    LbComboBox {
                         id: reviewedAction
                         Layout.fillWidth: true
                         model: review.selectedSwitches.map(route => (route.label || route.assignment.field.input_type)
@@ -2280,7 +2280,7 @@ Dialog {
                         displayText: currentIndex < 0 ? "Choose the shared game action to edit" : currentText
                         Accessible.name: "Game action to change on the highlighted connection"
                     }
-                    Button {
+                    LbButton {
                         text: "Change button channel…"
                         enabled: reviewedAction.currentIndex >= 0 && dialog.reviewedText === editor.text
                         onClicked: dialog.editReviewedSwitch(review.selectedSwitches[reviewedAction.currentIndex])
@@ -2289,7 +2289,7 @@ Dialog {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: review.swapChoices.length > 0
-                    Button {
+                    LbButton {
                         text: review.diagramSwapFirst ? "Cancel diagram selection" : "Choose swap in diagram"
                         enabled: dialog.reviewedText === editor.text
                         onClicked: {
@@ -2297,7 +2297,7 @@ Dialog {
                             else review.beginDiagramSwap()
                         }
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: swapAction
                         Layout.fillWidth: true
                         model: review.swapChoices.map(route => (route.label || route.assignment.field.input_type)
@@ -2305,7 +2305,7 @@ Dialog {
                         displayText: currentIndex < 0 ? "Choose another button action to swap with" : currentText
                         Accessible.name: "Other arcade action for a channel swap"
                     }
-                    Button {
+                    LbButton {
                         text: "Swap buttons"
                         enabled: swapAction.currentIndex >= 0 && dialog.reviewedText === editor.text
                         onClicked: dialog.swapReviewedActions(review.swapFirst, review.swapChoices[swapAction.currentIndex])
@@ -2325,13 +2325,13 @@ Dialog {
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                 }
-                Button {
+                LbButton {
                     text: "Restore selected button to preset"
                     visible: dialog.hasButtonOverride(review.selectedAction)
                     enabled: dialog.reviewedText === editor.text
                     onClicked: dialog.restoreReviewedButton(review.selectedAction)
                 }
-                Button {
+                LbButton {
                     readonly property int overrideCount: review.player ? dialog.numberedOverrideCount(review.player.port) : 0
                     text: "Restore all numbered buttons to preset (" + overrideCount + " overrides)"
                     visible: overrideCount > 0
@@ -2351,7 +2351,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: playerControllers
         property string baseText: ""
         property string errorText: ""
@@ -2421,13 +2421,13 @@ Dialog {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: playerControllers.unusedPorts.length > 0
-                    ComboBox {
+                    LbComboBox {
                         id: additionalPort
                         Layout.fillWidth: true
                         model: playerControllers.unusedPorts.map(port => "Player " + port)
                         Accessible.name: "Unused MAME player port"
                     }
-                    Button {
+                    LbButton {
                         text: "Add player port"
                         enabled: additionalPort.currentIndex >= 0
                         onClicked: playerControllers.addPlayer(playerControllers.unusedPorts[additionalPort.currentIndex])
@@ -2441,7 +2441,7 @@ Dialog {
                         required property var modelData
                         Layout.fillWidth: true
                         Label { text: "Player " + replacementRow.modelData.port }
-                        ComboBox {
+                        LbComboBox {
                             Layout.fillWidth: true
                             model: newSetup.controllerChoices.map(entry => entry.id + " — " + entry.layout)
                             currentIndex: newSetup.controllerChoices.findIndex(entry => entry.id === replacementRow.modelData.controller)
@@ -2453,7 +2453,7 @@ Dialog {
                                 playerControllers.players = players
                             }
                         }
-                        ComboBox {
+                        LbComboBox {
                             Layout.fillWidth: true
                             model: ["Inherit shared per-game preset"].concat(dialog.presetLabels)
                             currentIndex: replacementRow.modelData.layout ? dialog.presetIds.indexOf(replacementRow.modelData.layout) + 1 : 0
@@ -2466,7 +2466,7 @@ Dialog {
                                 playerControllers.players = players
                             }
                         }
-                        Button {
+                        LbButton {
                             text: "Remove gamepad"
                             enabled: playerControllers.players.length > 1 || playerControllers.relativePorts.length > 0
                             Accessible.name: "Remove MAME gamepad for player " + replacementRow.modelData.port
@@ -2475,7 +2475,7 @@ Dialog {
                     }
                 }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: playerControllers.errorText }
-                Button {
+                LbButton {
                     text: "Apply to draft"
                     onClicked: {
                         try {
@@ -2519,7 +2519,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: newSetup
         property string errorText: ""
         property var selectedControllers: []
@@ -2560,7 +2560,7 @@ Dialog {
                         required property int index
                         Layout.fillWidth: true
                         Label { text: "Player " + (index + 1) }
-                        ComboBox {
+                        LbComboBox {
                             Layout.fillWidth: true
                             model: newSetup.controllerChoices.map(entry => entry.id + " — " + entry.layout)
                             currentIndex: newSetup.controllerChoices.findIndex(entry => entry.id === newSetup.selectedControllers[index])
@@ -2578,7 +2578,7 @@ Dialog {
                 TextField { id: newStorage; Layout.fillWidth: true; placeholderText: "Absolute dedicated per-game storage directory"; Accessible.name: placeholderText }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Storage uses nvram, diff, states, snapshots, recordings, frontend-save and frontend-state subdirectories. No directories are created by this form. Existing game state elsewhere is not imported. The draft starts with Automatic arcade layout." }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: newSetup.errorText }
-                Button {
+                LbButton {
                     text: "Create draft"
                     enabled: !dialog.draftChanged
                     onClicked: {
@@ -2618,7 +2618,7 @@ Dialog {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: inspection
         property string errorText: ""
         property string generatedDraft: ""
@@ -2634,7 +2634,7 @@ Dialog {
             RowLayout {
                 Layout.fillWidth: true
                 TextField { id: nativeRuntimePath; Layout.fillWidth: true; placeholderText: "Absolute path to trusted native RetroArch"; enabled: !dialog.settingsModel.mame_inspection_busy; onTextChanged: { trustRuntime.checked = false; inspectionRequest.text = "" } }
-                Button {
+                LbButton {
                     text: "Generate from setup draft"
                     enabled: !dialog.settingsModel.mame_inspection_busy && nativeRuntimePath.text.trim().length > 0
                     onClicked: {
@@ -2706,7 +2706,7 @@ Dialog {
             }
             CheckBox { id: trustRuntime; text: "I trust this executable/core and want to run this inspection"; enabled: !dialog.settingsModel.mame_inspection_busy }
             RowLayout {
-                Button {
+                LbButton {
                     text: "Run inspection"
                     enabled: trustRuntime.checked && !inspection.draftRequestStale && !dialog.settingsModel.mame_inspection_busy && inspectionRequest.text.trim().length > 0
                     onClicked: {
@@ -2716,7 +2716,7 @@ Dialog {
                         if (error) inspection.errorText = error
                     }
                 }
-                Button {
+                LbButton {
                     text: "Apply result to draft"
                     enabled: !dialog.settingsModel.mame_inspection_busy && dialog.settingsModel.mame_inspection_result.length > 0
                     onClicked: {
@@ -2724,12 +2724,12 @@ Dialog {
                         else inspection.errorText = dialog.statusText
                     }
                 }
-                Button { text: "Cancel"; enabled: dialog.settingsModel.mame_inspection_busy; onClicked: dialog.settingsModel.cancel_mame_inspection() }
-                Button { text: "Close"; onClicked: { dialog.settingsModel.cancel_mame_inspection(); inspection.close() } }
+                LbButton { text: "Cancel"; enabled: dialog.settingsModel.mame_inspection_busy; onClicked: dialog.settingsModel.cancel_mame_inspection() }
+                LbButton { text: "Close"; onClicked: { dialog.settingsModel.cancel_mame_inspection(); inspection.close() } }
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: removal
         property string keyToRemove: ""
         title: "Remove this MAME setup?"

@@ -174,7 +174,7 @@ Rectangle {
             width: parent.width
             visible: hero.displaySectionAvailable
             spacing: 5
-            Button {
+            LbButton {
                 objectName: "displayAccordionButton"
                 width: parent.width
                 text: (hero.displayExpanded ? "▾  " : "▸  ") + "DISPLAY SETTINGS"
@@ -189,7 +189,7 @@ Rectangle {
                 width: parent.width
                 spacing: 6
                 visible: hero.displayExpanded
-                Button {
+                LbButton {
                     Layout.fillWidth: true
                     text: "THIS GAME"
                     font.pixelSize: 8
@@ -202,7 +202,7 @@ Rectangle {
                     highlighted: hero.displayScope === "game"
                     onClicked: hero.displayScopeSelected("game")
                 }
-                Button {
+                LbButton {
                     Layout.fillWidth: true
                     text: "THIS PLATFORM"
                     font.pixelSize: 8
@@ -227,7 +227,7 @@ Rectangle {
                     font.weight: Font.Bold
                     font.letterSpacing: 0.7
                 }
-                ComboBox {
+                LbComboBox {
                     id: displayFullscreenCombo
                     objectName: "displayFullscreenCombo"
                     width: parent.width
@@ -276,7 +276,7 @@ Rectangle {
                         font.weight: Font.Bold
                         font.letterSpacing: 0.7
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: displayShaderCombo
                         objectName: "displayShaderCombo"
                         width: parent.width
@@ -307,7 +307,7 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayShaderCombo.syncValue() }
                         }
-                        delegate: ItemDelegate {
+                        delegate: LbItemDelegate {
                             required property int index
                             width: displayShaderCombo.width
                             implicitHeight: Math.max(32, shaderChoiceText.implicitHeight + topPadding + bottomPadding)
@@ -315,7 +315,7 @@ Rectangle {
                             contentItem: Text {
                                 id: shaderChoiceText
                                 text: displayShaderCombo.model[index].label
-                                color: parent.palette.text
+                                color: "#f4f7fb"
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                                 verticalAlignment: Text.AlignVCenter
@@ -343,7 +343,7 @@ Rectangle {
                         font.weight: Font.Bold
                         font.letterSpacing: 0.7
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: displayBezelCombo
                         objectName: "displayBezelCombo"
                         width: parent.width
@@ -376,7 +376,7 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayBezelCombo.syncValue() }
                         }
-                        delegate: ItemDelegate {
+                        delegate: LbItemDelegate {
                             required property int index
                             width: displayBezelCombo.width
                             implicitHeight: Math.max(32, bezelChoiceText.implicitHeight + topPadding + bottomPadding)
@@ -384,7 +384,7 @@ Rectangle {
                             contentItem: Text {
                                 id: bezelChoiceText
                                 text: displayBezelCombo.model[index].label
-                                color: parent.palette.text
+                                color: "#f4f7fb"
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                                 verticalAlignment: Text.AlignVCenter
@@ -421,7 +421,7 @@ Rectangle {
                         font.weight: Font.Bold
                         font.letterSpacing: 0.7
                     }
-                    ComboBox {
+                    LbComboBox {
                         id: displaySaveStatesCombo
                         objectName: "displaySaveStatesCombo"
                         width: parent.width
@@ -446,7 +446,7 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displaySaveStatesCombo.syncValue() }
                         }
-                        delegate: ItemDelegate {
+                        delegate: LbItemDelegate {
                             required property int index
                             width: displaySaveStatesCombo.width
                             text: displaySaveStatesCombo.model[index].label
@@ -510,7 +510,7 @@ Rectangle {
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
             }
-            ComboBox {
+            LbComboBox {
                 id: emulatorPicker
                 objectName: "emulatorPicker"
                 width: parent.width
@@ -556,7 +556,7 @@ Rectangle {
                     target: hero
                     function onSelectedEmulatorOptionChanged() { emulatorPicker.syncSelection() }
                 }
-                delegate: ItemDelegate {
+                delegate: LbItemDelegate {
                     required property int index
                     width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : emulatorPicker.width
                     height: 34
@@ -582,12 +582,12 @@ Rectangle {
                             topPadding: 6
                             leftPadding: 10
                             bottomPadding: 2
-                            color: "#83e3ad"
+                            color: "#ffb454"
                             font.pixelSize: 8
                             font.weight: Font.Bold
                             font.letterSpacing: 0.8
                         }
-                        delegate: ItemDelegate {
+                        delegate: LbItemDelegate {
                             required property int index
                             width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : 0
                             height: 32
@@ -603,8 +603,8 @@ Rectangle {
                         }
                     }
                     background: Rectangle {
-                        color: emulatorPicker.palette.base
-                        border.color: emulatorPicker.palette.mid
+                        color: "#151d29"
+                        border.color: "#53647c"
                         radius: 8
                     }
                 }
@@ -639,7 +639,7 @@ Rectangle {
             Row {
                 width: parent.width
                 spacing: 6
-                Button {
+                LbButton {
                     width: (parent.width - 12) / 3
                     height: 32
                     text: "THIS GAME"
@@ -648,7 +648,7 @@ Rectangle {
                     highlighted: hero.preferenceScope === "game"
                     onClicked: hero.saveGameDefaultRequested()
                 }
-                Button {
+                LbButton {
                     width: (parent.width - 12) / 3
                     height: 32
                     text: "THIS PLATFORM"
@@ -657,7 +657,7 @@ Rectangle {
                     highlighted: hero.preferenceScope === "platform"
                     onClicked: hero.savePlatformDefaultRequested()
                 }
-                Button {
+                LbButton {
                     width: (parent.width - 12) / 3
                     height: 32
                     visible: hero.preferenceScope.length > 0
@@ -669,13 +669,13 @@ Rectangle {
             }
         }
 
-        Button {
+        LbButton {
             width: parent.width
             text: "Controller mapping…"
             onClicked: hero.controllerMappingRequested()
         }
 
-        Button {
+        LbButton {
             id: launchAction
             objectName: "launchAction"
             width: parent.width
@@ -706,7 +706,7 @@ Rectangle {
             }
         }
 
-        Button {
+        LbButton {
             width: parent.width
             height: 32
             visible: !hero.gameRunning

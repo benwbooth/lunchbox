@@ -80,7 +80,7 @@ Rectangle {
                 trackColor: status.line
             }
 
-            Button {
+            LbButton {
                 Layout.preferredWidth: 88
                 text: providerModel.cancel_requested ? "Cancelling…" : "Cancel"
                 enabled: !providerModel.cancel_requested

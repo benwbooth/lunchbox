@@ -165,7 +165,7 @@ Rectangle {
             maximumFlickVelocity: 8500
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            delegate: ItemDelegate {
+            delegate: LbItemDelegate {
                 id: payloadRow
                 required property int index
                 property int filterRevision: root.torrent.filtered_revision

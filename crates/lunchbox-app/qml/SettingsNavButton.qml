@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Button {
+LbButton {
     id: control
     property bool active: false
     property color accent: "#ffb454"
@@ -14,15 +14,9 @@ Button {
     leftPadding: 14
     rightPadding: 12
     flat: true
+    highlighted: active
     font.pixelSize: 12
     font.weight: active ? Font.DemiBold : Font.Normal
-
-    background: Rectangle {
-        radius: 8
-        color: control.down ? "#273244"
-                            : control.active ? "#202a39" : "transparent"
-        border.color: control.active ? control.accent : "transparent"
-    }
 
     contentItem: Text {
         width: control.availableWidth

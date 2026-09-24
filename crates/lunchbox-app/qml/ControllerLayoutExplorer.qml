@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: explorer
     required property var settingsModel
     property var gamepad: null
@@ -44,7 +44,8 @@ Dialog {
         }
     }
     footer: DialogButtonBox {
-        Button {
+        background: Rectangle { color: "transparent" }
+        LbButton {
             text: workflow.dirty ? "Discard changes and close" : "Close"
             onClicked: { workflow.loadMapping(); explorer.close() }
         }

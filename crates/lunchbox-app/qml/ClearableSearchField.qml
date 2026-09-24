@@ -36,7 +36,7 @@ TextField {
         z: 20
     }
 
-    ToolButton {
+    LbToolButton {
         objectName: "clearSearchButton"
         anchors.right: parent.right
         anchors.rightMargin: 4

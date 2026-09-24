@@ -90,7 +90,7 @@ Rectangle {
                     }
                 }
 
-                Button {
+                LbButton {
                     objectName: "closeFirmwareSetup"
                     text: "CLOSE"
                     onClicked: page.closeRequested()
@@ -248,7 +248,7 @@ Rectangle {
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
                                     }
-                                    Button {
+                                    LbButton {
                                         id: packageAction
                                         objectName: "firmwarePackageAction-"
                                                     + requirement.modelData.packageName
@@ -402,10 +402,11 @@ Rectangle {
                                 lineHeight: 1.25
                                 wrapMode: Text.WordWrap
                             }
-                            Button {
+                            LbButton {
                                 objectName: "firmwarePrimaryAction"
                                 width: parent.width
                                 height: 48
+                                highlighted: true
                                 text: page.ready ? "▶  PLAY"
                                       : page.detailsModel.firmware_busy ? "WORKING…"
                                       : page.detailsModel.firmware_setup_label
@@ -418,21 +419,6 @@ Rectangle {
                                     else
                                         page.primaryActionRequested()
                                 }
-                                background: Rectangle {
-                                    radius: 9
-                                    color: parent.enabled
-                                           ? (parent.down ? "#d68d36" : page.accent)
-                                           : "#26313e"
-                                    border.color: parent.enabled ? "#ffc579" : page.line
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.enabled ? "#1b140c" : page.muted
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    elide: Text.ElideRight
-                                }
                             }
                         }
                     }
@@ -440,17 +426,17 @@ Rectangle {
                     RowLayout {
                         width: parent.width
                         spacing: 10
-                        Button {
+                        LbButton {
                             text: "RECHECK SETUP"
                             enabled: !page.detailsModel.firmware_busy
                             onClicked: page.refreshRequested()
                         }
-                        Button {
+                        LbButton {
                             text: "OPEN MANAGED FOLDER"
                             enabled: !page.detailsModel.firmware_busy
                             onClicked: page.openFolderRequested()
                         }
-                        Button {
+                        LbButton {
                             text: "MANAGE EMULATOR"
                             enabled: !page.detailsModel.firmware_busy
                             onClicked: page.manageEmulatorsRequested()

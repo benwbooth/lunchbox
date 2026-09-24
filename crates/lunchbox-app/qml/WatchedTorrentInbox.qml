@@ -42,7 +42,7 @@ ColumnLayout {
             }
         }
 
-        Button {
+        LbButton {
             objectName: "watchedTorrentRefresh"
             text: "Refresh"
             enabled: !root.inboxModel.busy
@@ -62,11 +62,11 @@ ColumnLayout {
             ToolTip.visible: hovered && text.length > 0
             ToolTip.text: text
         }
-        Button {
+        LbButton {
             text: "Choose…"
             onClicked: root.settingsModel.choose_native_directory("torrent-watch")
         }
-        Button {
+        LbButton {
             text: "Clear"
             visible: root.settingsModel.watched_torrent_directory.length > 0
             onClicked: root.settingsModel.watched_torrent_directory = ""
@@ -94,14 +94,14 @@ ColumnLayout {
                 ToolTip.visible: hovered && text.length > 0
                 ToolTip.text: text
             }
-            Button {
+            LbButton {
                 objectName: "watchedTorrentArchiveChoose"
                 text: "Choose…"
                 enabled: root.settingsModel.watched_torrent_directory.length > 0
                 onClicked: root.settingsModel.choose_native_directory(
                                "torrent-watch-archive")
             }
-            Button {
+            LbButton {
                 text: "Disable"
                 visible: root.settingsModel.watched_torrent_archive_directory.length > 0
                 onClicked: root.settingsModel.watched_torrent_archive_directory = ""
@@ -252,7 +252,7 @@ ColumnLayout {
                         }
                     }
 
-                    Button {
+                    LbButton {
                         objectName: "watchedTorrentReview-" + inboxRow.index
                         Layout.preferredWidth: 92
                         Layout.preferredHeight: 32

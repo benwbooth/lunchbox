@@ -40,7 +40,7 @@ ColumnLayout {
             }
         }
 
-        Button {
+        LbButton {
             objectName: "localProviderImport"
             Layout.preferredWidth: 156
             text: "Import manifest…"
@@ -173,7 +173,7 @@ ColumnLayout {
                         }
                     }
 
-                    Button {
+                    LbButton {
                         Layout.preferredWidth: 62
                         Layout.preferredHeight: 32
                         text: "Terms"
@@ -182,7 +182,7 @@ ColumnLayout {
                         onClicked: Qt.openUrlExternally(
                                        root.manifestModel.terms_url_at(providerRow.index))
                     }
-                    Button {
+                    LbButton {
                         objectName: "localProviderResync-" + providerRow.index
                         Layout.preferredWidth: 74
                         Layout.preferredHeight: 32
@@ -190,7 +190,7 @@ ColumnLayout {
                         enabled: providerRow.available && !root.manifestModel.busy
                         onClicked: root.manifestModel.resync_at(providerRow.index)
                     }
-                    Button {
+                    LbButton {
                         objectName: "localProviderRemove-" + providerRow.index
                         Layout.preferredWidth: 74
                         Layout.preferredHeight: 32
@@ -247,7 +247,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
-    Dialog {
+    LbDialog {
         id: removeDialog
         objectName: "localProviderRemoveDialog"
         parent: Overlay.overlay

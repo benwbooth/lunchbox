@@ -46,7 +46,7 @@ ColumnLayout {
         spacing: 9
 
         Text { text: "Provider"; color: root.ink; font.pixelSize: 11 }
-        ComboBox {
+        LbComboBox {
             id: provider
             Layout.fillWidth: true
             textRole: "label"
@@ -62,7 +62,7 @@ ColumnLayout {
                           : root.providerModel.provider === "dropbox" ? 2
                           : root.providerModel.provider === "one_drive" ? 3 : 0
         }
-        ComboBox {
+        LbComboBox {
             id: authMode
             Layout.preferredWidth: 190
             visible: provider.currentValue !== "local_folder"
@@ -152,7 +152,7 @@ ColumnLayout {
             enabled: !root.providerModel.busy
             onTextEdited: root.providerModel.local_folder_root = text
         }
-        Button {
+        LbButton {
             text: "Choose…"
             enabled: !root.providerModel.busy
             onClicked: root.providerModel.choose_local_folder()
@@ -180,7 +180,7 @@ ColumnLayout {
             onToggled: root.providerModel.set_automatic(checked)
         }
         Item { Layout.fillWidth: true }
-        Button {
+        LbButton {
             text: "Sync selected emulator now"
             enabled: root.providerModel.credentials_saved
                      && !root.providerModel.busy
@@ -209,13 +209,13 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         spacing: 8
-        Button {
+        LbButton {
             text: "Test saved connection"
             visible: root.providerModel.credentials_saved
             enabled: !root.providerModel.busy
             onClicked: root.providerModel.test_saved_connection()
         }
-        Button {
+        LbButton {
             text: "Remove saved connection"
             visible: root.providerModel.credentials_saved
             enabled: !root.providerModel.busy
@@ -225,7 +225,7 @@ ColumnLayout {
             }
         }
         Item { Layout.fillWidth: true }
-        Button {
+        LbButton {
             text: root.providerModel.busy ? "VERIFYING…"
                   : provider.currentValue === "local_folder"
                     ? "SAVE && VERIFY FOLDER" : "SAVE && VERIFY CONNECTION"
@@ -259,7 +259,7 @@ ColumnLayout {
             font.pixelSize: 9
             wrapMode: Text.WordWrap
         }
-        Button {
+        LbButton {
             text: "OpenDAL ↗"
             flat: true
             onClicked: Qt.openUrlExternally("https://opendal.apache.org/")

@@ -186,7 +186,7 @@ Item {
                             font.features: { "tnum": 1 }
                         }
                     }
-                    RoundButton {
+                    LbRoundButton {
                         text: "↻"
                         flat: true
                         enabled: status.queue && !status.queue.busy
@@ -195,7 +195,7 @@ Item {
                         ToolTip.visible: hovered
                         ToolTip.text: "Refresh downloads"
                     }
-                    RoundButton {
+                    LbRoundButton {
                         objectName: "collapseButton"
                         text: "⌄"
                         flat: true
@@ -304,7 +304,7 @@ Item {
                                 font.pixelSize: 9
                                 elide: Text.ElideRight
                             }
-                            Button {
+                            LbButton {
                                 objectName: "importButton-" + downloadRow.index
                                 readonly property bool importAvailable: {
                                     downloadRow.queueRevision
@@ -318,7 +318,7 @@ Item {
                                     status.queue.job_import_directory_at(downloadRow.index),
                                     status.queue.job_platform_at(downloadRow.index))
                             }
-                            Button {
+                            LbButton {
                                 objectName: "pauseButton-" + downloadRow.index
                                 readonly property bool actionAvailable: {
                                     downloadRow.queueRevision
@@ -330,7 +330,7 @@ Item {
                                 text: "Pause"
                                 onClicked: status.queue.pause_job(downloadRow.index)
                             }
-                            Button {
+                            LbButton {
                                 objectName: "resumeButton-" + downloadRow.index
                                 readonly property bool actionAvailable: {
                                     downloadRow.queueRevision
@@ -367,7 +367,7 @@ Item {
                     anchors.margins: 12
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 4
-                    Button {
+                    LbButton {
                         objectName: "clearFinishedDownloadsButton"
                         Layout.fillWidth: true
                         text: "Clear finished"
@@ -377,7 +377,7 @@ Item {
                         ToolTip.visible: hovered
                         ToolTip.text: "Clear finished entries from this list. Downloaded files are kept."
                     }
-                    Button {
+                    LbButton {
                         Layout.fillWidth: true
                         text: "Open download manager"
                         onClicked: status.manageRequested()

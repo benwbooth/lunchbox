@@ -193,7 +193,7 @@ Rectangle {
             }
         }
 
-        Button {
+        LbButton {
             objectName: "showAllGameVersionsButton"
             width: parent.width
             height: 30
@@ -203,18 +203,6 @@ Rectangle {
             font.pixelSize: 8
             font.weight: Font.Bold
             onClicked: versions.expanded = !versions.expanded
-            background: Rectangle {
-                radius: 7
-                color: parent.down ? "#293748" : "#202b3a"
-                border.color: card.line
-            }
-            contentItem: Text {
-                text: parent.text
-                color: card.muted
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
         }
 
         Text {
@@ -234,7 +222,7 @@ Rectangle {
             visible: card.detailsModel.local_file_count > 1
                      || card.detailsModel.local_file_preference_configured
 
-            Button {
+            LbButton {
                 id: makeDefaultVersionButton
                 objectName: "makeDefaultVersionButton"
                 width: card.detailsModel.local_file_preference_configured
@@ -250,22 +238,9 @@ Rectangle {
                 font.weight: Font.Bold
                 Accessible.name: "Make selected game version the default"
                 onClicked: card.detailsModel.set_selected_local_file_preferred()
-                background: Rectangle {
-                    radius: 7
-                    color: parent.down ? "#24433f" : "#1d3433"
-                    border.color: parent.enabled ? "#3d756b" : card.line
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.enabled ? "#94e2d4" : card.muted
-                    font: parent.font
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
             }
 
-            Button {
+            LbButton {
                 objectName: "automaticVersionButton"
                 width: makeDefaultVersionButton.visible
                        ? (parent.width - 8) / 2 : parent.width
@@ -278,18 +253,6 @@ Rectangle {
                 font.weight: Font.Bold
                 Accessible.name: "Clear the default game version"
                 onClicked: card.detailsModel.clear_local_file_preference()
-                background: Rectangle {
-                    radius: 7
-                    color: parent.down ? "#293748" : "#202b3a"
-                    border.color: parent.enabled ? "#53647a" : card.line
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.enabled ? "#c7d1df" : card.muted
-                    font: parent.font
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
         }
 
@@ -307,7 +270,7 @@ Rectangle {
             width: parent.width
             spacing: 8
 
-            Button {
+            LbButton {
                 width: (parent.width - 8) / 2
                 height: 34
                 text: "OPEN FOLDER"
@@ -316,21 +279,9 @@ Rectangle {
                 font.pixelSize: 9
                 font.weight: Font.Bold
                 onClicked: Qt.openUrlExternally(card.detailsModel.selected_local_directory_url)
-                background: Rectangle {
-                    radius: 7
-                    color: parent.down ? "#293748" : "#202b3a"
-                    border.color: parent.enabled ? "#53647a" : card.line
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.enabled ? "#c7d1df" : card.muted
-                    font: parent.font
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
 
-            Button {
+            LbButton {
                 width: (parent.width - 8) / 2
                 height: 34
                 visible: !card.detailsModel.managed_install_present
@@ -340,21 +291,9 @@ Rectangle {
                 font.pixelSize: 8
                 font.weight: Font.Bold
                 onClicked: card.manageIdentityRequested()
-                background: Rectangle {
-                    radius: 7
-                    color: parent.down ? "#24433f" : "#1d3433"
-                    border.color: parent.enabled ? "#3d756b" : card.line
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.enabled ? "#94e2d4" : card.muted
-                    font: parent.font
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
 
-            Button {
+            LbButton {
                 width: (parent.width - 8) / 2
                 height: 34
                 visible: card.detailsModel.managed_install_present
@@ -367,19 +306,6 @@ Rectangle {
                 font.pixelSize: 8
                 font.weight: Font.Bold
                 onClicked: card.removeInstallationRequested()
-                background: Rectangle {
-                    radius: 7
-                    color: parent.down ? "#55313a" : "#39252d"
-                    border.color: parent.enabled ? "#8b5668" : card.line
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.enabled ? "#f1bdc9" : card.muted
-                    font: parent.font
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
             }
         }
     }

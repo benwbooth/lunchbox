@@ -6,7 +6,7 @@ ColumnLayout {
     id: setup
     required property var settingsModel
     required property var gamepad
-    Dialog {
+    LbDialog {
         id: mameNativeEditor
         property var reviews: []
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
@@ -33,7 +33,7 @@ ColumnLayout {
                 text: "Optional per-player source_controls links targets to saved physical layout IDs, e.g. {\"button1\":\"b\",\"coin\":\"select\"}. Review shows these declared links on both diagrams; native correspondence remains unverified."
             }
             RowLayout {
-                Button {
+                LbButton {
                     text: "Review declarations"
                     onClicked: {
                         const result = JSON.parse(setup.settingsModel.review_mame_native_setups(mameNativeText.text))
@@ -41,7 +41,7 @@ ColumnLayout {
                         mameNativeEditor.reviews = result.error ? [] : result.setups.reduce((players, item) => players.concat(item.players), [])
                     }
                 }
-                Button {
+                LbButton {
                     text: "Stage setups"
                     onClicked: {
                         const error = setup.settingsModel.stage_mame_native_setups(mameNativeText.text)
@@ -87,7 +87,7 @@ ColumnLayout {
             }
         }
     }
-    Button {
+    LbButton {
         text: "Standalone MAME panels…"
         onClicked: {
             mameNativeText.text = setup.settingsModel.mame_native_setups_json()
@@ -130,7 +130,7 @@ ColumnLayout {
         id: nativeRuntime
         settingsModel: setup.settingsModel
     }
-    Button {
+    LbButton {
         text: "jgenesis Genesis setups…"
         onClicked: {
             duckstationSetups.adapter = "jgenesis-native"
@@ -140,7 +140,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "b2 BBC Micro setups…"
         onClicked: {
             duckstationSetups.adapter = "b2-native"
@@ -150,7 +150,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Hypseus Singe setups…"
         onClicked: {
             duckstationSetups.adapter = "hypseus-native"
@@ -160,7 +160,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Gopher64 N64 setups…"
         onClicked: {
             duckstationSetups.adapter = "gopher64-native"
@@ -170,7 +170,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Gearsystem / Gearcoleco SDL3 setups…"
         onClicked: {
             duckstationSetups.adapter = "gear-native"
@@ -180,7 +180,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "XRoar SDL3 setups…"
         onClicked: {
             duckstationSetups.adapter = "xroar-native"
@@ -190,7 +190,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "ZEsarUX Kempston setups…"
         onClicked: {
             duckstationSetups.adapter = "zesarux-native"
@@ -200,7 +200,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Oricutron joystick setups…"
         onClicked: {
             duckstationSetups.adapter = "oricutron-native"
@@ -210,7 +210,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Yaba Sanshiro 2 Saturn setups…"
         onClicked: {
             duckstationSetups.adapter = "yaba-sanshiro-native"
@@ -220,7 +220,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Kronos Saturn setups…"
         onClicked: {
             duckstationSetups.adapter = "kronos-native"
@@ -230,7 +230,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Atari++ AnalogJoystick setups…"
         onClicked: {
             duckstationSetups.adapter = "atari-plus-plus-native"
@@ -240,7 +240,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "ARAnyM IKBD joystick setups…"
         onClicked: {
             duckstationSetups.adapter = "aranym-native"
@@ -250,7 +250,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Atari800 digital joystick setups…"
         onClicked: {
             duckstationSetups.adapter = "atari800-native"
@@ -260,7 +260,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "NanoBoyAdvance GBA controller setups…"
         onClicked: {
             duckstationSetups.adapter = "nanoboyadvance-native"
@@ -270,7 +270,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "VBA-M GBA controller setups…"
         onClicked: {
             duckstationSetups.adapter = "vba-m-native"
@@ -280,7 +280,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "86Box PC gameport setups…"
         onClicked: {
             duckstationSetups.adapter = "86box-native"
@@ -290,7 +290,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "A7800 Pro-Line setups…"
         onClicked: {
             duckstationSetups.adapter = "a7800-native"
@@ -300,7 +300,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Gambatte Game Boy setups…"
         onClicked: {
             duckstationSetups.adapter = "gambatte-native"
@@ -310,7 +310,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Caprice32 CPC setups…"
         onClicked: {
             duckstationSetups.adapter = "caprice32-native"
@@ -320,7 +320,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Vita3K Vita setups…"
         onClicked: {
             duckstationSetups.adapter = "vita3k-native"
@@ -330,7 +330,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Play! PS2 setups…"
         onClicked: {
             duckstationSetups.adapter = "play-native"
@@ -340,7 +340,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "ep128emu joystick setups…"
         onClicked: {
             duckstationSetups.adapter = "ep128emu-native"
@@ -350,7 +350,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "ADAMEm Coleco setups…"
         onClicked: {
             duckstationSetups.adapter = "adamem-native"
@@ -360,7 +360,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "vector06sdl stick setups…"
         onClicked: {
             duckstationSetups.adapter = "vector06sdl-native"
@@ -370,7 +370,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "SimCoupe SAM setups…"
         onClicked: {
             duckstationSetups.adapter = "simcoupe-native"
@@ -380,7 +380,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "PCem gameport setups…"
         onClicked: {
             duckstationSetups.adapter = "pcem-native"
@@ -390,7 +390,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Tsugaru FM Towns setups…"
         onClicked: {
             duckstationSetups.adapter = "tsugaru-native"
@@ -400,7 +400,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "touchHLE touch setups…"
         onClicked: {
             duckstationSetups.adapter = "touchhle-native"
@@ -410,7 +410,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "OpenBOR brawler setups…"
         onClicked: {
             duckstationSetups.adapter = "openbor-native"
@@ -420,7 +420,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Supermodel arcade setups…"
         onClicked: {
             duckstationSetups.adapter = "supermodel-native"
@@ -430,7 +430,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Panda3DS 3DS setups…"
         onClicked: {
             duckstationSetups.adapter = "panda3ds-native"
@@ -440,7 +440,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "DreamPotato VMU setups…"
         onClicked: {
             duckstationSetups.adapter = "dreampotato-native"
@@ -450,7 +450,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Ymir Saturn setups…"
         onClicked: {
             duckstationSetups.adapter = "ymir-native"
@@ -460,7 +460,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "shadPS4 setups…"
         onClicked: {
             duckstationSetups.adapter = "shadps4-native"
@@ -470,7 +470,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Azahar 3DS setups…"
         onClicked: {
             duckstationSetups.adapter = "azahar-native"
@@ -480,7 +480,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Uzem setups…"
         onClicked: {
             duckstationSetups.adapter = "uzem-native"
@@ -490,7 +490,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "EKA2L1 phone setups…"
         onClicked: {
             duckstationSetups.adapter = "eka2l1-native"
@@ -500,7 +500,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Cemu Wii U setups…"
         onClicked: {
             duckstationSetups.adapter = "cemu-native"
@@ -510,7 +510,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "PokeMini setups…"
         onClicked: {
             duckstationSetups.adapter = "pokemini-native"
@@ -520,7 +520,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "GBE+ GBA setups…"
         onClicked: {
             duckstationSetups.adapter = "gbe-plus-native"
@@ -530,7 +530,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Amiberry Amiga setups…"
         onClicked: {
             duckstationSetups.adapter = "amiberry-native"
@@ -540,7 +540,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Fuse Spectrum setups…"
         onClicked: {
             duckstationSetups.adapter = "fuse-native"
@@ -550,7 +550,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "LinApple Apple II setups…"
         onClicked: {
             duckstationSetups.adapter = "linapple-native"
@@ -560,7 +560,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "SkyEmu DS setups…"
         onClicked: {
             duckstationSetups.adapter = "skyemu-native"
@@ -570,7 +570,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Nestopia UE native setups…"
         onClicked: {
             duckstationSetups.adapter = "nestopia-ue-native"
@@ -580,7 +580,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "PicoDrive Genesis setups…"
         onClicked: {
             duckstationSetups.adapter = "picodrive-native"
@@ -590,7 +590,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "RMG N64 setups…"
         onClicked: {
             duckstationSetups.adapter = "rmg-native"
@@ -600,7 +600,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "simple64 N64 setups…"
         onClicked: {
             duckstationSetups.adapter = "simple64-native"
@@ -610,7 +610,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "ScummVM setups…"
         onClicked: {
             duckstationSetups.adapter = "scummvm-native"
@@ -620,7 +620,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "openMSX MSX setups…"
         onClicked: {
             duckstationSetups.adapter = "openmsx-native"
@@ -630,7 +630,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "DeSmuME DS setups…"
         onClicked: {
             duckstationSetups.adapter = "desmume-native"
@@ -640,7 +640,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "xemu Xbox setups…"
         onClicked: {
             duckstationSetups.adapter = "xemu-native"
@@ -650,7 +650,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "BlastEm Genesis setups…"
         onClicked: {
             duckstationSetups.adapter = "blastem-native"
@@ -660,7 +660,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Mesen2 NES/PCE setups…"
         onClicked: {
             duckstationSetups.adapter = "mesen2-native"
@@ -670,7 +670,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Hatari joystick setups…"
         onClicked: {
             duckstationSetups.adapter = "hatari-native"
@@ -680,7 +680,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "VICE joystick setups…"
         onClicked: {
             duckstationSetups.adapter = "vice-native"
@@ -690,7 +690,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Stella standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "stella-native"
@@ -700,7 +700,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "bsnes standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "bsnes"
@@ -710,7 +710,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "DuckStation standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "duckstation"
@@ -720,7 +720,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Dialog {
+    LbDialog {
         id: duckstationSetups
         property string adapter: "duckstation"
         readonly property bool ppsspp: adapter === "ppsspp"
@@ -983,7 +983,7 @@ ColumnLayout {
             }
             Label { id: duckstationStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             RowLayout {
-                Button {
+                LbButton {
                     text: "Review mappings"
                     onClicked: {
                         const result = JSON.parse(duckstationSetups.melonds
@@ -1137,7 +1137,7 @@ ColumnLayout {
                         }).join("\n") || "No saved setups to review."
                     }
                 }
-                Button {
+                LbButton {
                     text: "Stage setups"
                     onClicked: {
                         const error = duckstationSetups.melonds
@@ -1428,11 +1428,11 @@ ColumnLayout {
                             : "Staged. Save settings in the main page. Native launch validates the configured runtime and confirms actual startup routing; staging opens no devices.")
                     }
                 }
-                Button { text: "Close"; onClicked: duckstationSetups.close() }
+                LbButton { text: "Close"; onClicked: duckstationSetups.close() }
             }
         }
     }
-    Button {
+    LbButton {
         text: "PPSSPP standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "ppsspp"
@@ -1442,7 +1442,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "mGBA SDL standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "mgba"
@@ -1452,7 +1452,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Dolphin GameCube standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "dolphin"
@@ -1462,7 +1462,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Snes9x GTK standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "snes9x"
@@ -1472,7 +1472,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Nestopia UE Flatpak setups…"
         visible: Qt.platform.os === "linux"
         onClicked: {
@@ -1483,7 +1483,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "puNES Flatpak setups…"
         visible: Qt.platform.os === "linux"
         onClicked: {
@@ -1494,7 +1494,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "FCEUX Qt standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "fceux"
@@ -1504,7 +1504,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "SameBoy SDL standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "sameboy"
@@ -1514,7 +1514,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Mednafen standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "mednafen"
@@ -1524,7 +1524,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "Standalone Flycast panels…"
         onClicked: {
             duckstationSetups.adapter = "flycast-native"
@@ -1534,7 +1534,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "PCSX2 controller setups…"
         onClicked: {
             duckstationSetups.adapter = "pcsx2"
@@ -1544,7 +1544,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "RPCS3 controller setups…"
         onClicked: {
             duckstationSetups.adapter = "rpcs3"
@@ -1554,7 +1554,7 @@ ColumnLayout {
             duckstationSetups.open()
         }
     }
-    Button {
+    LbButton {
         text: "melonDS controller setups…"
         onClicked: {
             duckstationSetups.adapter = "melonds"
@@ -1596,8 +1596,8 @@ ColumnLayout {
         }
     }
     ControllerLayoutExplorer { id: layoutExplorer; settingsModel: setup.settingsModel }
-    Button { text: "Explore source → destination layouts…"; onClicked: layoutExplorer.open() }
-    Button {
+    LbButton { text: "Explore source → destination layouts…"; onClicked: layoutExplorer.open() }
+    LbButton {
         text: "Relative mouse / trackball settings…"
         onClicked: {
             relativeEditor.text = setup.settingsModel.relative_device_settings_json()
@@ -1605,7 +1605,7 @@ ColumnLayout {
             relativeSettings.open()
         }
     }
-    Button {
+    LbButton {
         text: "Absolute calibration records (advanced)…"
         onClicked: absoluteSettings.loadAndOpen()
     }
@@ -1630,7 +1630,7 @@ ColumnLayout {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: relativeSettings
         onClosed: relativeForm.close()
         title: "Saved relative devices"
@@ -1656,25 +1656,25 @@ ColumnLayout {
             }
             Label { id: relativeStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             RowLayout {
-                Button {
+                LbButton {
                     text: "Add device with form…"
                     onClicked: relativeForm.open()
                 }
-                Button {
+                LbButton {
                     text: "Stage settings"
                     onClicked: {
                         const error = setup.settingsModel.stage_relative_device_settings(relativeEditor.text)
                         relativeStatus.text = error || "Staged. Save settings in the main page to persist this list. No device was opened."
                     }
                 }
-                Button { text: "Close"; onClicked: relativeSettings.close() }
+                LbButton { text: "Close"; onClicked: relativeSettings.close() }
             }
         }
     }
     RowLayout {
         Layout.fillWidth: true
         Label { text: "MAME arcade default" }
-        ComboBox {
+        LbComboBox {
             id: mameDefault
             Layout.fillWidth: true
             readonly property var ids: ["automatic", "six_button", "eight_button", "neo_geo", "fixed_channels", "disabled"]
@@ -1685,13 +1685,13 @@ ColumnLayout {
                 mameDefaultStatus.text = error || "Arcade default staged. Save settings to persist it."
             }
         }
-        Button {
+        LbButton {
             text: "Preview layout…"
             enabled: mameDefault.currentIndex >= 0 && mameDefault.ids[mameDefault.currentIndex] !== "disabled"
             onClicked: arcadePreview.open()
         }
     }
-    Dialog {
+    LbDialog {
         id: arcadePreview
         title: "MAME arcade button positions"
         width: Math.min(740, setup.width)
@@ -1747,15 +1747,15 @@ ColumnLayout {
             mameDefaultStatus.text = "Dependency discovery staged. Each required ROM set needs its own archive in that folder; CHDs may use set/parent subfolders. Merged archives need an explicit setup. Save settings to persist this choice."
         }
     }
-    Button {
+    LbButton {
         text: "MAME per-game setups (advanced)…"
         onClicked: mameSetups.loadAndOpen()
     }
-    Button {
+    LbButton {
         text: "FBNeo per-game setups (advanced)…"
         onClicked: fbneoSetups.loadAndOpen()
     }
-    Dialog {
+    LbDialog {
         id: nativeCapture
         property string controllerId: ""
         property string errorText: ""
@@ -1811,7 +1811,7 @@ ColumnLayout {
                     wrapMode: Text.WordWrap
                     text: "Requires a configured trusted native BizHawk runtime. Release all controls and capture the released state. Then hold one control and capture its pressed state. Use the mouse to operate these buttons so controller navigation does not interrupt the gesture."
                 }
-                ComboBox {
+                LbComboBox {
                     id: captureRuntimeChoice
                     Layout.fillWidth: true
                     model: nativeCapture.runtimeChoices
@@ -1825,7 +1825,7 @@ ColumnLayout {
                     Accessible.name: "Native capture runtime and SDL library"
                 }
                 RowLayout {
-                    Button {
+                    LbButton {
                         text: "1. Capture released"
                         enabled: !setup.settingsModel.native_capture_busy
                         onClicked: {
@@ -1837,12 +1837,12 @@ ColumnLayout {
                                 JSON.stringify(nativeCapture.runtimeChoices[captureRuntimeChoice.currentIndex].key))
                         }
                     }
-                    Button {
+                    LbButton {
                         text: "2. Capture pressed"
                         enabled: setup.settingsModel.native_capture_ready && !setup.settingsModel.native_capture_busy
                         onClicked: nativeCapture.errorText = setup.settingsModel.finish_native_controller_capture()
                     }
-                    Button {
+                    LbButton {
                         text: "Cancel capture"
                         onClicked: {
                             setup.settingsModel.cancel_native_controller_capture()
@@ -1882,14 +1882,14 @@ ColumnLayout {
                         : "Choose a layout and save physical calibration first, then reopen this dialog to record logical bindings."
                     color: "#ffb454"
                 }
-                ComboBox {
+                LbComboBox {
                     id: nativeTarget
                     Layout.fillWidth: true
                     model: nativeCapture.targetControls
                     textRole: "label"
                     Accessible.name: "Calibrated control represented by this gesture"
                 }
-                Button {
+                LbButton {
                     text: "Record selected logical binding"
                     enabled: nativeCapture.selectedChange >= 0 && nativeTarget.currentIndex >= 0
                         && !setup.settingsModel.native_capture_busy
@@ -1911,7 +1911,7 @@ ColumnLayout {
                             + " (" + modelData.gesture.released + " → " + modelData.gesture.pressed + ")"
                     }
                 }
-                Button {
+                LbButton {
                     text: "Clear this runtime's recorded bindings…"
                     enabled: nativeCapture.savedBindings.length > 0 && !setup.settingsModel.native_capture_busy
                     onClicked: { clearNativeBindings.controllerId = nativeCapture.controllerId; clearNativeBindings.runtimeKey = nativeCapture.runtimeSelectionKey; clearNativeBindings.open() }
@@ -1919,7 +1919,7 @@ ColumnLayout {
             }
         }
     }
-    Dialog {
+    LbDialog {
         id: clearNativeBindings
         property string controllerId: ""
         property string runtimeKey: ""
@@ -1961,11 +1961,11 @@ ColumnLayout {
         font.pixelSize: 20
         font.bold: true
     }
-    Button {
+    LbButton {
         text: "Controller coverage — implemented / remaining…"
         onClicked: coverage.open()
     }
-    Button {
+    LbButton {
         visible: Qt.platform.os === "linux"
         text: "Native BizHawk runtime and player setup…"
         onClicked: nativeRuntime.loadAndOpen()
@@ -1991,18 +1991,18 @@ ColumnLayout {
     }
     RowLayout {
         visible: Qt.platform.os === "linux"
-        Button {
+        LbButton {
             text: "Enable Linux controller routing…"
             enabled: !setup.settingsModel.controller_busy
             onClicked: { routingConfirmation.enableRouting = true; routingConfirmation.open() }
         }
-        Button {
+        LbButton {
             text: "Use native controller routing…"
             enabled: !setup.settingsModel.controller_busy
             onClicked: { routingConfirmation.enableRouting = false; routingConfirmation.open() }
         }
     }
-    Dialog {
+    LbDialog {
         id: routingConfirmation
         property bool enableRouting: true
         parent: Overlay.overlay
@@ -2082,7 +2082,7 @@ ColumnLayout {
                 onEditingFinished: setup.settingsModel.rename_controller(device.index, text)
                 Accessible.name: "Rename " + setup.settingsModel.controller_name_at(device.index)
             }
-            Button {
+            LbButton {
                 text: "Choose layout and calibrate…"
                 onClicked: calibration.openFor(setup.settingsModel.controller_key_at(device.index),
                     setup.settingsModel.controller_name_at(device.index))
@@ -2090,7 +2090,7 @@ ColumnLayout {
             ColumnLayout {
                 visible: { setup.revision; return setup.settingsModel.controller_key_at(device.index).startsWith("sdl3:") }
                 Layout.fillWidth: true
-                Button {
+                LbButton {
                     text: "Use native SDL3 mapping"
                     enabled: !setup.settingsModel.busy
                     onClicked: {
@@ -2100,13 +2100,13 @@ ColumnLayout {
                 }
                 Label { id: nativeSdlResult; Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: text.length > 0 }
             }
-            Button {
+            LbButton {
                 visible: Qt.platform.os === "linux"
                 text: "Capture native SDL2 gesture…"
                 onClicked: nativeCapture.openFor(setup.settingsModel.controller_key_at(device.index),
                     setup.settingsModel.controller_name_at(device.index))
             }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 model: setup.layouts
                 textRole: "name"
@@ -2143,7 +2143,7 @@ ColumnLayout {
             required property var modelData
             Layout.fillWidth: true
             Label { text: parent.modelData.name; Layout.preferredWidth: 220; wrapMode: Text.WordWrap }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 model: {
                     setup.revision
@@ -2156,7 +2156,7 @@ ColumnLayout {
                 onActivated: setup.settingsModel.choose_preferred_controller(parent.modelData.id, currentIndex)
                 Accessible.name: "Preferred controller for " + parent.modelData.name
             }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 model: setup.profiles
                 textRole: "name"

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: runtime
     required property var settingsModel
     property var players: []
@@ -223,7 +223,7 @@ Dialog {
         savedSetups = JSON.parse(settingsModel.native_controller_runtimes_json())
         savedSetupChoice.currentIndex = -1
     }
-    Dialog {
+    LbDialog {
         id: removeSavedSetup
         property string expected: ""
         property string setupName: ""
@@ -257,7 +257,7 @@ Dialog {
             nativeLayouts.open()
         } catch (error) { errorText = "Cannot preview controller layouts: " + error }
     }
-    Dialog {
+    LbDialog {
         id: nativeLayouts
         property var panels: []
         property var rows: []
@@ -325,7 +325,7 @@ Dialog {
                 color: "#ffb454"
             }
             Label { text: "BizHawk catalog entry" }
-            ComboBox {
+            LbComboBox {
                 id: savedSetupChoice
                 Layout.fillWidth: true
                 model: runtime.savedSetups
@@ -335,7 +335,7 @@ Dialog {
                 Accessible.name: "Saved native controller setup"
             }
             RowLayout {
-                Button {
+                LbButton {
                     text: "Load selected setup — replace draft"
                     enabled: savedSetupChoice.currentIndex >= 0 && savedSetupChoice.currentIndex < runtime.savedSetups.length
                     onClicked: {
@@ -346,12 +346,12 @@ Dialog {
                         runtime.loadSetup(saved.configuration)
                     }
                 }
-                Button {
+                LbButton {
                     text: "New setup — replace draft"
                     onClicked: runtime.loadSetup(null)
                 }
             }
-            Button {
+            LbButton {
                 text: "Remove selected saved setup…"
                 enabled: savedSetupChoice.currentIndex >= 0 && savedSetupChoice.currentIndex < runtime.savedSetups.length
                 onClicked: {
@@ -361,7 +361,7 @@ Dialog {
                     removeSavedSetup.open()
                 }
             }
-            ComboBox {
+            LbComboBox {
                 id: emulatorChoice
                 Layout.fillWidth: true
                 model: runtime.emulatorChoices
@@ -432,7 +432,7 @@ Dialog {
                 placeholderText: "Optional existing source configuration (copied privately for launch)"
                 Accessible.name: "Source BizHawk configuration"
             }
-            ComboBox {
+            LbComboBox {
                 Layout.fillWidth: true
                 model: ["PlayStation — Nymashock", "Super Nintendo — Snes9x", "Nintendo — NesHawk", "Master System — SMSHawk", "Game Gear — SMSHawk", "SG-1000 — SMSHawk", "PC Engine / TurboGrafx — PCEHawk (two-button)", "PC Engine / TurboGrafx — TurboNyma (six-button controls)", "Genesis / Sega CD — GPGX"]
                 currentIndex: runtime.isSnes9x ? 1 : runtime.isNesHawk ? 2 : runtime.isSmsHawk ? (runtime.smshawkSystem === "game_gear" ? 4 : runtime.smshawkSystem === "sg1000" ? 5 : 3) : runtime.isPceHawk ? 6 : runtime.isTurboNyma ? 7 : runtime.isGpgx ? 8 : 0
@@ -500,7 +500,7 @@ Dialog {
                         }
                     }
                 }
-                ComboBox {
+                LbComboBox {
                     model: ["Three-button pads", "Six-button pads"]
                     currentIndex: runtime.isGpgx && runtime.gpgxTopology.pad === "six_button" ? 1 : 0
                     onActivated: runtime.editGpgxTopology({ pad: currentIndex === 1 ? "six_button" : "three_button" })
@@ -588,7 +588,7 @@ Dialog {
                     ColumnLayout {
                         required property int index
                         Label { text: index === 0 ? "SNES left port" : "SNES right port" }
-                        ComboBox {
+                        LbComboBox {
                             model: ["none", "joypad", "multitap"]
                             currentIndex: runtime.isSnes9x ? model.indexOf(runtime.snes9xPorts[parent.index]) : 0
                             onActivated: runtime.editSnesPort(parent.index, currentText)
@@ -611,7 +611,7 @@ Dialog {
                         id: nesPortRow
                         required property int index
                         Label { text: nesPortRow.index === 0 ? "NES left port" : "NES right port" }
-                        ComboBox {
+                        LbComboBox {
                             model: ["none", "joypad", "four_score", "snes_joypad", "power_pad"]
                             currentIndex: runtime.isNesHawk ? model.indexOf(runtime.neshawkPorts[nesPortRow.index]) : 0
                             onActivated: runtime.editNesPort(nesPortRow.index, currentText)
@@ -676,7 +676,7 @@ Dialog {
                                 value: playerRow.modelData.virtual_port + 1
                                 onValueModified: runtime.editPlayer(playerRow.index, "virtual_port", value - 1)
                             }
-                            ComboBox {
+                            LbComboBox {
                                 Layout.fillWidth: true
                                 visible: runtime.isGpgx
                                 model: runtime.gpgxConnectors.map((label, player) => "P" + (player + 1) + " — " + label
@@ -686,12 +686,12 @@ Dialog {
                                 onActivated: runtime.editPlayer(playerRow.index, "virtual_port", currentIndex)
                                 Accessible.name: "GPGX connector and socket for this controller"
                             }
-                            Button {
+                            LbButton {
                                 text: "Remove player"
                                 onClicked: { let copy = runtime.players.slice(); copy.splice(playerRow.index, 1); runtime.players = copy }
                             }
                         }
-                        ComboBox {
+                        LbComboBox {
                             Layout.fillWidth: true
                             model: runtime.controllers
                             textRole: "name"
@@ -710,7 +710,7 @@ Dialog {
                         }
                         RowLayout {
                             visible: !runtime.isDigitalCore
-                            ComboBox {
+                            LbComboBox {
                                 Layout.fillWidth: true
                                 model: ["Digital gamepad", "DualShock", "Dual Analog (SCPH-1180)", "Analog Joystick (SCPH-1110)", "Dance Pad", "Pop'n Music", "neGcon (NPC-101)", "Mouse (controller motion)", "GunCon (controller aim)", "Justifier (controller aim)"]
                                 currentIndex: playerRow.modelData.pointer === "mouse" ? 7 : playerRow.modelData.pointer === "gun_con" ? 8 : playerRow.modelData.pointer === "justifier" ? 9 : playerRow.modelData.negcon ? 6 : playerRow.modelData.rhythm === "dance_pad" ? 4 : playerRow.modelData.rhythm === "popn_music" ? 5 : playerRow.modelData.analog_joystick ? 3 : playerRow.modelData.dualanalog ? 2 : playerRow.modelData.dualshock ? 1 : 0
@@ -731,7 +731,7 @@ Dialog {
                                 onValueModified: runtime.editPlayer(playerRow.index, "deadzone_basis_points", value * 100)
                             }
                         }
-                        Button {
+                        LbButton {
                             text: "Preview source / destination layouts…"
                             onClicked: runtime.previewPlayerLayouts(playerRow.modelData)
                         }
@@ -763,7 +763,7 @@ Dialog {
                             checked: !!playerRow.modelData.desktop_cursor
                             onToggled: runtime.editPlayer(playerRow.index, "desktop_cursor", checked)
                         }
-                        ComboBox {
+                        LbComboBox {
                             Layout.fillWidth: true
                             visible: !runtime.isDigitalCore && playerRow.modelData.dualshock
                             model: playerRow.controls
@@ -775,7 +775,7 @@ Dialog {
                     }
                 }
             }
-            Button {
+            LbButton {
                 text: "Add player"
                 enabled: runtime.unassignedPorts.length > 0 && runtime.controllers.length > 0
                 onClicked: {
@@ -788,7 +788,7 @@ Dialog {
                 }
             }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: runtime.errorText; color: "#ffb454" }
-            Button {
+            LbButton {
                 text: "Record runtime setup"
                 enabled: runtime.players.length > 0 && runtime.gpgxPlayersComplete && runtime.pcePlayersComplete && runtime.turboTopologyValid && (!runtime.isNintendo || (runtime.players.length === runtime.portCapacity && runtime.missingNintendoSlots.length === 0))
                 onClicked: {
@@ -811,7 +811,7 @@ Dialog {
                     if (!runtime.errorText.length) runtime.close()
                 }
             }
-            Button {
+            LbButton {
                 text: "Disable all native controller setups in staged settings"
                 onClicked: {
                     runtime.errorText = runtime.settingsModel.save_native_controller_runtime("null", "null")

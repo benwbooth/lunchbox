@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: dialog
     required property var settingsModel
     property var projection: null
@@ -119,7 +119,7 @@ Dialog {
                     Flow {
                         Layout.fillWidth: true
                         spacing: 8
-                        Button {
+                        LbButton {
                             text: "Start device capture"
                             enabled: !dialog.captureActive && capturePath.text.length > 0 && captureIdentity.text.length > 0 && captureX.value !== captureY.value
                             onClicked: {
@@ -128,10 +128,10 @@ Dialog {
                                 dialog.captureCommand({action: "start", event_path: capturePath.text, input_identity: captureIdentity.text, x_code: captureX.value, y_code: captureY.value, swap_xy: captureSwap.checked})
                             }
                         }
-                        Button { text: "Cancel capture"; enabled: dialog.captureActive; onClicked: dialog.stopCapture() }
+                        LbButton { text: "Cancel capture"; enabled: dialog.captureActive; onClicked: dialog.stopCapture() }
                         Repeater {
                             model: ["left", "right", "top", "bottom"]
-                            Button {
+                            LbButton {
                                 required property string modelData
                                 required property int index
                                 text: "Record " + modelData + (dialog.captureEdges[index] !== null ? " (" + dialog.captureEdges[index] + ")" : "")
@@ -142,7 +142,7 @@ Dialog {
                                 }
                             }
                         }
-                        Button {
+                        LbButton {
                             text: "Finish to draft"
                             enabled: dialog.captureActive && dialog.captureEdges.every(value => value !== null)
                             onClicked: dialog.captureCommand({action: "finish"})
@@ -159,7 +159,7 @@ Dialog {
                         text: dialog.capturedDraft ? JSON.stringify(dialog.capturedDraft, null, 2) : ""
                         Accessible.name: "Captured calibration draft"
                     }
-                    Button {
+                    LbButton {
                         text: "Add captured draft to JSON list"
                         enabled: !dialog.captureActive && dialog.capturedDraft !== null
                         onClicked: {
@@ -220,7 +220,7 @@ Dialog {
                     validator: IntValidator { bottom: -2147483648; top: 2147483647 }
                     onTextChanged: { dialog.projection = null; status.text = "" }
                 }
-                Button { text: "Preview sample"; onClicked: dialog.preview() }
+                LbButton { text: "Preview sample"; onClicked: dialog.preview() }
             }
             Rectangle {
                 Layout.fillWidth: true
@@ -245,14 +245,14 @@ Dialog {
             Flow {
                 Layout.fillWidth: true
                 spacing: 8
-                Button {
+                LbButton {
                     text: "Stage settings"
                     onClicked: {
                         const error = dialog.settingsModel.stage_absolute_device_settings(editor.text)
                         status.text = error || "Staged only. Save on the main settings page to persist. No device was opened."
                     }
                 }
-                Button { text: "Close"; onClicked: dialog.close() }
+                LbButton { text: "Close"; onClicked: dialog.close() }
             }
         }
     }

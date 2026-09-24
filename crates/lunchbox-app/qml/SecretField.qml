@@ -46,7 +46,7 @@ Item {
         }
     }
 
-    ToolButton {
+    LbToolButton {
         id: revealButton
         anchors.top: parent.top
         anchors.right: parent.right
@@ -55,25 +55,12 @@ Item {
         width: 58
         text: control.revealed ? "HIDE" : "SHOW"
         enabled: control.enabled
+        font.pixelSize: 9
+        font.weight: Font.Bold
+        font.letterSpacing: 0.7
         focusPolicy: Qt.TabFocus
         Accessible.name: control.revealed ? "Hide secret" : "Show secret"
         Accessible.description: "Changes only how the value is displayed"
         onClicked: control.revealed = !control.revealed
-        background: Rectangle {
-            radius: 6
-            color: revealButton.down ? "#303b4d"
-                                      : revealButton.hovered ? "#202b39"
-                                                            : "transparent"
-            border.color: revealButton.activeFocus ? control.accent : "transparent"
-        }
-        contentItem: Text {
-            text: revealButton.text
-            color: revealButton.enabled ? control.accent : control.muted
-            font.pixelSize: 9
-            font.weight: Font.Bold
-            font.letterSpacing: 0.7
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
     }
 }

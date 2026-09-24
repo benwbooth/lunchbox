@@ -162,7 +162,7 @@ Rectangle {
             Layout.fillHeight: true
             spacing: 7
 
-            ComboBox {
+            LbComboBox {
                 id: cadencePicker
                 objectName: "romScanCadencePicker"
                 Layout.fillWidth: true
@@ -182,7 +182,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 6
 
-                Button {
+                LbButton {
                     objectName: "romScanRunNowButton"
                     Layout.fillWidth: true
                     text: "RUN NOW"
@@ -201,7 +201,7 @@ Rectangle {
                 }
             }
 
-            Button {
+            LbButton {
                 objectName: "romScanReviewButton"
                 Layout.fillWidth: true
                 visible: card.hasReview

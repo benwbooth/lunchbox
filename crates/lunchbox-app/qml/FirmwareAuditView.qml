@@ -4,7 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+LbDialog {
     id: view
 
     required property var auditModel
@@ -171,7 +171,7 @@ Dialog {
                 onTextEdited: filterDelay.restart()
                 onClearRequested: filterDelay.restart()
             }
-            ComboBox {
+            LbComboBox {
                 id: statusFilter
                 Layout.preferredWidth: 172
                 textRole: "label"
@@ -188,7 +188,7 @@ Dialog {
                 ]
                 onActivated: filterDelay.restart()
             }
-            ComboBox {
+            LbComboBox {
                 id: sortOrder
                 Layout.preferredWidth: 154
                 textRole: "label"
