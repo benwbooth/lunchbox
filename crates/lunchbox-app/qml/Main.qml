@@ -2301,16 +2301,13 @@ ApplicationWindow {
         function toggleMuted() {
             const unmuting = gameVideoAudio.muted
             gameVideoAudio.muted = !gameVideoAudio.muted
-            if (unmuting && source.toString().length > 0
-                    && playbackState !== MediaPlayer.StoppedState) {
+            if (unmuting && source.toString().length > 0) {
                 // The pipeline was built with the audio track detached, and a
                 // late-attached output is not wired into a running decoder.
                 // Tearing the source down and restoring it rebuilds the whole
                 // pipeline with sound, resuming at the same position.
                 unmuteResumePosition = position
-                const url = source
-                source = ""
-                source = url
+                reloadPipeline()
             }
         }
         onSourceChanged: {
@@ -2595,6 +2592,8 @@ ApplicationWindow {
 
     RetryingMediaPlayer {
         id: hoverPreviewPlayer
+        property real unmuteResumePosition: -1
+        property bool positionApplied: false
         source: root.hoverPreviewTile
                 ? root.hoverPreviewTile.previewResolvedVideoUrl : ""
         autoPlay: root.hoverPreviewTile
@@ -2605,15 +2604,20 @@ ApplicationWindow {
                      ? root.hoverPreviewTile.previewVideoOutput : null
         loops: MediaPlayer.Infinite
         onSourceChanged: {
+            unmuteResumePosition = -1
+            positionApplied = false
             root.hoverPreviewPlaying = false
             root.hoverPreviewPlaybackError = ""
             if (source.toString().length === 0)
                 stop()
         }
         onMediaStatusChanged: {
-            if (mediaStatus === MediaPlayer.LoadedMedia
-                    || mediaStatus === MediaPlayer.BufferedMedia) {
-                position = 0
+            if (!positionApplied && (mediaStatus === MediaPlayer.LoadedMedia
+                    || mediaStatus === MediaPlayer.BufferedMedia)) {
+                position = unmuteResumePosition >= 0
+                           ? Math.min(unmuteResumePosition, duration) : 0
+                unmuteResumePosition = -1
+                positionApplied = true
             }
         }
         onPlaybackStateChanged: {
@@ -10677,7 +10681,15 @@ ApplicationWindow {
                         text: root.hoverPreviewAudioMuted ? "M" : "♫"
                         flat: true
                         font.pixelSize: 16 * card.expansion
-                        onClicked: root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
+                        onClicked: {
+                            const unmuting = root.hoverPreviewAudioMuted
+                            root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
+                            if (unmuting && hoverPreviewPlayer.source.toString().length > 0) {
+                                hoverPreviewPlayer.unmuteResumePosition = hoverPreviewPlayer.position
+                                hoverPreviewPlayer.positionApplied = false
+                                hoverPreviewPlayer.reloadPipeline()
+                            }
+                        }
                         background: Rectangle {
                             radius: 9 * card.expansion
                             color: "#d9101620"

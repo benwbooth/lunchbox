@@ -21,6 +21,7 @@ QtObject {
     readonly property alias playbackState: mediaPlayer.playbackState
     readonly property alias seekable: mediaPlayer.seekable
     property bool autoPlay: false
+    property bool pipelineReloadPending: false
 
     signal errorOccurred(int error, string errorString)
     signal autoPlayRequested(url source)
@@ -54,6 +55,17 @@ QtObject {
         player.stop()
     }
 
+    // A decoder opened with its audio track detached may not attach a newly
+    // enabled sink to that running pipeline. Reload the underlying player,
+    // not desiredSource: changing desiredSource would break the caller's QML
+    // binding and falsely signal that the selected video had changed.
+    function reloadPipeline() {
+        if (retryControllerObject.activeSource.toString().length === 0)
+            return
+        pipelineReloadPending = true
+        Qt.callLater(function() { root.pipelineReloadPending = false })
+    }
+
     property MediaRetryController retryController: MediaRetryController {
         id: retryControllerObject
     }
@@ -70,7 +82,7 @@ QtObject {
 
     property MediaPlayer player: MediaPlayer {
         id: mediaPlayer
-        source: retryControllerObject.activeSource
+        source: root.pipelineReloadPending ? "" : retryControllerObject.activeSource
 
         onSourceChanged: {
             if (source.toString().length === 0)

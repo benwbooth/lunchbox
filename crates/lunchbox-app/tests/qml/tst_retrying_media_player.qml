@@ -6,6 +6,11 @@ import "../../qml" as Lunchbox
 TestCase {
     name: "RetryingMediaPlayer"
 
+    QtObject {
+        id: selectedVideo
+        property url current: ""
+    }
+
     Lunchbox.RetryingMediaPlayer {
         id: player
         retryDelay: 20
@@ -24,6 +29,7 @@ TestCase {
     function init() {
         player.autoPlay = false
         player.source = ""
+        selectedVideo.current = ""
         player.videoOutput = null
         player.maximumRetries = 0
         autoPlaySpy.clear()
@@ -62,5 +68,22 @@ TestCase {
         }, 250)
         compare(autoPlaySpy.signalArguments[autoPlaySpy.count - 1][0].toString(),
                 "file:///tmp/lunchbox-retrying-player-probe.mp4")
+    }
+
+    function test_audio_reload_preserves_bound_video_selection() {
+        const first = "file:///tmp/lunchbox-retrying-player-probe.mp4"
+        const second = "file:///tmp/lunchbox-next-player-probe.mp4"
+        player.source = Qt.binding(function() { return selectedVideo.current })
+        selectedVideo.current = first
+        tryVerify(function() { return player.player.source.toString() === first }, 250)
+
+        player.reloadPipeline()
+        compare(player.source.toString(), first)
+        compare(player.player.source.toString(), "")
+        tryVerify(function() { return player.player.source.toString() === first }, 250)
+
+        selectedVideo.current = second
+        tryVerify(function() { return player.source.toString() === second }, 250)
+        tryVerify(function() { return player.player.source.toString() === second }, 250)
     }
 }
