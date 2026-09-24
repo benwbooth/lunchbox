@@ -89,24 +89,14 @@ fn directional_alternates(
     assignments: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
     const DIRECTIONS: [&str; 4] = ["up", "down", "left", "right"];
+    let Some(target_group) = single_left_directional_group(target, requested) else {
+        return BTreeMap::new();
+    };
     let requested_controls = target
         .controls
         .iter()
         .filter(|control| requested.contains(control.id.as_str()))
         .collect::<Vec<_>>();
-    let has_pad = requested_controls.iter().any(|control| {
-        control.group == "dpad"
-            && directional_cluster(target, control).is_some_and(|(right, _)| !right)
-    });
-    let has_stick = requested_controls.iter().any(|control| {
-        control.group == "stick"
-            && directional_cluster(target, control).is_some_and(|(right, _)| !right)
-    });
-    // A target with separate D-pad and stick actions must keep them separate.
-    if has_pad == has_stick {
-        return BTreeMap::new();
-    }
-    let target_group = if has_pad { "dpad" } else { "stick" };
     let mut result = BTreeMap::new();
     let used = assignments
         .values()
@@ -149,6 +139,40 @@ fn directional_alternates(
         result.insert(control.id.clone(), alternate.id.clone());
     }
     result
+}
+
+/// Return the only left-side directional cluster requested by a target.
+/// A system with separate pad and stick actions must never merge the two.
+pub(crate) fn single_left_directional_group(
+    target: &Layout,
+    requested: &BTreeSet<&str>,
+) -> Option<&'static str> {
+    let has_any = |group| {
+        target.controls.iter().any(|control| {
+            requested.contains(control.id.as_str())
+                && control.group == group
+                && directional_cluster(target, control).is_some_and(|(right, _)| !right)
+        })
+    };
+    if has_any("dpad") == has_any("stick") {
+        return None;
+    }
+    let has_group = |group| {
+        ["up", "down", "left", "right"].iter().all(|direction| {
+            target.controls.iter().any(|control| {
+                requested.contains(control.id.as_str())
+                    && control.group == group
+                    && directional_cluster(target, control) == Some((false, direction))
+            })
+        })
+    };
+    if has_group("dpad") {
+        Some("dpad")
+    } else if has_group("stick") {
+        Some("stick")
+    } else {
+        None
+    }
 }
 
 /// Find two unused, independent face buttons for a two-action target. The

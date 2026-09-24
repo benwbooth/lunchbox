@@ -6264,14 +6264,19 @@ impl qobject::GameDetailsModel {
                     let mut steam_route = None;
                     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
                     if calibrated_session.is_none()
-                        && let LaunchInput::Rom { option, .. } = &launch_input
+                        && let LaunchInput::Rom {
+                            option, platform, ..
+                        } = &launch_input
                         && option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
                     {
-                        match crate::controller_sdl3_retroarch::RetroArchControllerSession::start() {
+                        match crate::controller_sdl3_retroarch::RetroArchControllerSession::start(
+                            &option.core_name,
+                            platform,
+                        ) {
                             Ok(Some(route)) => {
                                 let attached = (|| -> anyhow::Result<_> {
                                     let path = crate::display_setup::write_launch_display_config(
-                                        &route.config(),
+                                        &route.config(&option.core_name, platform),
                                     )?;
                                     let mut candidate = plan.clone();
                                     crate::controller_launch::attach_config(

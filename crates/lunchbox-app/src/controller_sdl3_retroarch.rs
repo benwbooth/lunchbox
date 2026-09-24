@@ -44,7 +44,7 @@ pub struct RetroArchControllerSession {
 impl RetroArchControllerSession {
     /// None means no unique SC2 is currently reported by Lunchbox's live SDL3
     /// helper; other controllers and normal RetroArch setup remain untouched.
-    pub fn start() -> Result<Option<Self>> {
+    pub fn start(core: &str, platform: &str) -> Result<Option<Self>> {
         let Some((identity, first_pad)) = crate::controller_sdl3::unique_pad() else {
             return Ok(None);
         };
@@ -52,7 +52,11 @@ impl RetroArchControllerSession {
             lunchbox_controller_probe::live_sdl3::is_sc2(first_pad.vendor, first_pad.product),
             "SDL3 device is not a Steam Controller 2"
         );
-        if let Some(event) = steam_virtual_event()?
+        // Steam's virtual pad supplies a D-pad through RetroArch autoconfig,
+        // but that route cannot safely duplicate a digital direction into a
+        // proportional stick output. Use our numbered bridge for that target.
+        if directional_target(core, platform) != Some("stick")
+            && let Some(event) = steam_virtual_event()?
             && let Some(joypad_index) = udev_joypad_index(&event)?
         {
             return Ok(Some(Self {
@@ -99,19 +103,71 @@ impl RetroArchControllerSession {
         }))
     }
 
-    pub fn config(&self) -> String {
-        if self.steam_virtual_event.is_some() {
-            return format!(
-                "# Lunchbox uses Steam's existing virtual Xbox pad for this session.\n\
+    pub fn config(&self, core: &str, platform: &str) -> String {
+        routing_config(
+            self.joypad_index,
+            self.steam_virtual_event.is_some(),
+            directional_target(core, platform),
+        )
+    }
+}
+
+fn directional_target(core: &str, platform: &str) -> Option<&'static str> {
+    let db = crate::controller_catalog::catalog();
+    let group = |profile: &crate::controller_catalog::EmulatorProfile| {
+        let target = db.layout(&profile.target_layout)?;
+        let requested = profile.bindings.keys().map(String::as_str).collect();
+        crate::controller_layout::single_left_directional_group(target, &requested)
+    };
+    let mut modes = db.launch_modes(core, platform);
+    if modes.is_empty() {
+        // Some library platform labels are shorter than the controller
+        // catalog's aliases. A core-wide fallback is safe only when every
+        // ordinary launch profile agrees on the same directional topology.
+        modes = db
+            .emulator_profiles
+            .iter()
+            .filter(|profile| {
+                !profile.explicit_selection
+                    && profile.retroarch_launch.is_some()
+                    && crate::emulator::canonical_retroarch_core_name(&profile.core)
+                        == crate::emulator::canonical_retroarch_core_name(core)
+            })
+            .collect();
+    }
+    let mut modes = modes.into_iter();
+    let first = group(modes.next()?)?;
+    modes
+        .all(|profile| group(profile) == Some(first))
+        .then_some(first)
+}
+
+fn routing_config(
+    joypad_index: usize,
+    steam_virtual: bool,
+    directional_target: Option<&str>,
+) -> String {
+    if steam_virtual {
+        let mut config = format!(
+            "# Lunchbox uses Steam's existing virtual Xbox pad for this session.\n\
                  input_joypad_driver = \"udev\"\n\
                  input_autodetect_enable = \"true\"\n\
                  input_player1_joypad_index = \"{}\"\n\
                  config_save_on_exit = \"false\"\n",
-                self.joypad_index
-            );
-        }
-        format!(
-            "# Lunchbox session-local Steam Controller 2 bridge.\n\
+            joypad_index
+        );
+        // RetroArch's analog-to-digital input mode reuses the left stick
+        // while preserving the virtual Xbox pad's autoconfigured D-pad.
+        // Do not use it for cores with an independent analog stick.
+        config.push_str(if directional_target == Some("dpad") {
+            "input_player1_analog_dpad_mode = \"1\"\n"
+        } else {
+            "input_player1_analog_dpad_mode = \"0\"\n"
+        });
+        return config;
+    }
+    let mut config = format!(
+        "# Lunchbox session-local Steam Controller 2 bridge.\n\
              input_joypad_driver = \"udev\"\n\
              input_autodetect_enable = \"false\"\n\
              input_player1_joypad_index = \"{}\"\n\
@@ -141,10 +197,34 @@ impl RetroArchControllerSession {
              input_player1_r_y_plus_axis = \"+3\"\n\
              input_player1_r_y_minus_axis = \"-3\"\n\
              config_save_on_exit = \"false\"\n",
-            self.joypad_index
-        )
+        joypad_index
+    );
+    config.push_str("input_player1_analog_dpad_mode = \"0\"\n");
+    // The owned virtual pad has a fixed, verified numbering contract.
+    // RetroArch accepts both a button and an axis for one RetroPad bind.
+    match directional_target {
+        Some("dpad") => config.push_str(
+            "input_player1_up_axis = \"-1\"\n\
+                 input_player1_down_axis = \"+1\"\n\
+                 input_player1_left_axis = \"-0\"\n\
+                 input_player1_right_axis = \"+0\"\n",
+        ),
+        Some("stick") => config.push_str(
+            "input_player1_up_btn = \"nul\"\n\
+                 input_player1_down_btn = \"nul\"\n\
+                 input_player1_left_btn = \"nul\"\n\
+                 input_player1_right_btn = \"nul\"\n\
+                 input_player1_l_y_minus_btn = \"11\"\n\
+                 input_player1_l_y_plus_btn = \"12\"\n\
+                 input_player1_l_x_minus_btn = \"13\"\n\
+                 input_player1_l_x_plus_btn = \"14\"\n",
+        ),
+        _ => {}
     }
+    config
+}
 
+impl RetroArchControllerSession {
     pub fn check_health(&self) -> Result<()> {
         if let Some(event) = &self.steam_virtual_event {
             ensure!(event.exists(), "Steam's virtual Xbox pad disappeared");
@@ -302,6 +382,68 @@ fn parse_udev_joypad_index(database: &str, event_path: &Path) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owned_sc2_pad_routes_both_clusters_for_snes_without_merging_n64() {
+        let session = RetroArchControllerSession {
+            stop: None,
+            worker: None,
+            failure: Arc::new(Mutex::new(None)),
+            steam_virtual_event: None,
+            joypad_index: 3,
+        };
+        let snes = session.config("mesen-s", "SNES");
+        for (direction, button, axis) in [
+            ("up", "11", "-1"),
+            ("down", "12", "+1"),
+            ("left", "13", "-0"),
+            ("right", "14", "+0"),
+        ] {
+            assert!(snes.contains(&format!("input_player1_{direction}_btn = \"{button}\"")));
+            assert!(snes.contains(&format!("input_player1_{direction}_axis = \"{axis}\"")));
+        }
+        let n64 = session.config("mupen64plus_next", "Nintendo 64");
+        assert!(!n64.contains("input_player1_up_axis ="));
+        assert!(n64.contains("input_player1_l_y_minus_axis = \"-1\""));
+        assert!(n64.contains("input_player1_up_btn = \"11\""));
+    }
+
+    #[test]
+    fn owned_sc2_pad_routes_dpad_to_an_analog_only_target() {
+        assert_eq!(directional_target("vecx", "Vectrex"), Some("stick"));
+        let session = RetroArchControllerSession {
+            stop: None,
+            worker: None,
+            failure: Arc::new(Mutex::new(None)),
+            steam_virtual_event: None,
+            joypad_index: 3,
+        };
+        let analog = session.config("vecx", "Vectrex");
+        assert!(analog.contains("input_player1_up_btn = \"nul\""));
+        assert!(analog.contains("input_player1_l_y_minus_btn = \"11\""));
+        assert!(analog.contains("input_player1_l_y_minus_axis = \"-1\""));
+    }
+
+    #[test]
+    fn steam_virtual_pad_enables_analog_to_dpad_only_for_single_dpad_target() {
+        let session = RetroArchControllerSession {
+            stop: None,
+            worker: None,
+            failure: Arc::new(Mutex::new(None)),
+            steam_virtual_event: Some(PathBuf::from("/dev/input/event999")),
+            joypad_index: 3,
+        };
+        assert!(
+            session
+                .config("mesen-s", "SNES")
+                .contains("input_player1_analog_dpad_mode = \"1\"")
+        );
+        assert!(
+            session
+                .config("mupen64plus_next", "Nintendo 64")
+                .contains("input_player1_analog_dpad_mode = \"0\"")
+        );
+    }
 
     #[test]
     fn only_unique_steam_virtual_xbox_pad_is_reused() {
