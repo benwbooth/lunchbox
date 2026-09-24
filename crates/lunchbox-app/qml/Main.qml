@@ -22305,7 +22305,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Requires Ollama running on this computer. Lunchbox sends screenshots only to the local Ollama service and draws English captions over the game. No cloud account is needed."
+                                text: "Requires Ollama running on this computer. GLM-OCR reads screenshots, TranslateGemma translates the text, and Lunchbox draws English over the game. Ollama can use ROCm on supported AMD GPUs; no cloud account is needed."
                                 color: root.muted
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
@@ -22319,7 +22319,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 10
                                 Text {
-                                    text: "Model"
+                                    text: "Translation model"
                                     color: root.ink
                                     font.pixelSize: 11
                                 }
@@ -22404,7 +22404,7 @@ ApplicationWindow {
                                     onClicked: appSettings.cancel_translation_model()
                                 }
                                 HeaderButton {
-                                    text: "Download selected model"
+                                    text: "Download OCR + translation models"
                                     active: true
                                     enabled: !appSettings.translation_busy
                                     onClicked: appSettings.install_translation_model()

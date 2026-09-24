@@ -366,11 +366,14 @@ the launch continues without the ultrawide overlay and reports why.
 Local game translation is opt-in under Settings → Game translation. Install and
 start [Ollama](https://ollama.com/download) natively on Linux, macOS, or
 Windows (or provide it through Nix on NixOS), then use Lunchbox to check the
-local service and explicitly download a TranslateGemma 4B, 12B, or 27B model.
+local service and explicitly download GLM-OCR plus a TranslateGemma 4B, 12B, or
+27B model. Ollama uses ROCm for these models on supported AMD GPUs (verified on
+an RX 7900 XTX); GPU acceleration is optional on other hardware.
 For RetroArch launches, Lunchbox starts a session-only loopback bridge for
 RetroArch's [AI Service](https://docs.libretro.com/guides/ai-service/) and
-returns a transparent English caption overlay. Press F8 once in-game to start
-automatic translation and again to stop; RetroArch's AI Service gamepad hotkey
+returns a local English image overlay over the lower dialogue area. Press F10
+once in-game to start automatic translation and again to stop; F8 remains
+RetroArch's screenshot key. RetroArch's AI Service gamepad hotkey
 can also be bound. Screenshots are not persisted or sent to a cloud endpoint.
 The feature does not patch ROMs or affect standalone emulators, and it leaves
 game launch available when Ollama or the chosen model is missing.

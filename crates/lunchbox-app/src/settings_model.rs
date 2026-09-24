@@ -2008,8 +2008,12 @@ impl qobject::SettingsModel {
                 let _ = qt_thread.queue(move |mut model_object| {
                     model_object.as_mut().set_translation_busy(false);
                     let status = match result {
-                        Ok(true) => format!("{model} is installed in local Ollama and ready."),
-                        Ok(false) => format!("Ollama is running, but {model} is not installed."),
+                        Ok(true) => {
+                            format!("GLM-OCR and {model} are installed in local Ollama and ready.")
+                        }
+                        Ok(false) => {
+                            format!("Ollama is running, but GLM-OCR or {model} is missing.")
+                        }
                         Err(error) => format!("Local Ollama is unavailable: {error}"),
                     };
                     model_object
@@ -2033,8 +2037,9 @@ impl qobject::SettingsModel {
         self.as_mut().rust_mut().translation_cancel = Some(Arc::clone(&cancel));
         self.as_mut().set_translation_busy(true);
         self.as_mut().set_translation_progress(0);
-        self.as_mut()
-            .set_translation_status(qstring(format!("Downloading {model} into Ollama…")));
+        self.as_mut().set_translation_status(qstring(format!(
+            "Downloading GLM-OCR and {model} into Ollama…"
+        )));
         let qt_thread = self.as_ref().qt_thread();
         let progress_thread = qt_thread.clone();
         let spawn = std::thread::Builder::new()
@@ -2062,7 +2067,7 @@ impl qobject::SettingsModel {
                             model_object
                                 .as_mut()
                                 .set_translation_status(qstring(format!(
-                                    "{model} is ready for local game translation."
+                                    "GLM-OCR and {model} are ready for local game translation."
                                 )));
                         }
                         Err(error) => {

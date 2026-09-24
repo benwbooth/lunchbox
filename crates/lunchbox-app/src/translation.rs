@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 use crate::emulator::{EmulatorExecutable, LaunchPlan};
 
 const OLLAMA_URL: &str = "http://127.0.0.1:11434";
+const OCR_MODEL: &str = "glm-ocr:latest";
 // RetroArch uses F8 for screenshots by default. Keep that binding intact.
 const TRANSLATION_HOTKEY: &str = "f10";
 const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
@@ -100,9 +101,11 @@ pub fn model_available(model: &str) -> Result<bool> {
         .read_to_string()
         .context("reading Ollama model list")?;
     let body: Value = serde_json::from_str(&body).context("parsing Ollama model list")?;
-    Ok(body["models"]
-        .as_array()
-        .is_some_and(|models| models.iter().any(|entry| entry["name"] == model)))
+    Ok(body["models"].as_array().is_some_and(|models| {
+        [model, OCR_MODEL]
+            .iter()
+            .all(|required| models.iter().any(|entry| entry["name"] == *required))
+    }))
 }
 
 pub fn pull_model(
@@ -114,39 +117,42 @@ pub fn pull_model(
         supported_model(model),
         "unsupported local translation model"
     );
-    let mut response = http_agent(Duration::from_secs(60 * 60))
-        .post(&format!("{OLLAMA_URL}/api/pull"))
-        .send_json(json!({"model": model, "stream": true}))
-        .context("starting local Ollama model download")?;
-    ensure!(
-        response.status().as_u16() == 200,
-        "Ollama refused the model download"
-    );
-    let mut complete = false;
-    for line in BufReader::new(response.body_mut().as_reader()).lines() {
-        if cancelled.load(Ordering::Relaxed) {
-            bail!("translation model download cancelled");
+    for (index, required) in [OCR_MODEL, model].into_iter().enumerate() {
+        let mut response = http_agent(Duration::from_secs(60 * 60))
+            .post(&format!("{OLLAMA_URL}/api/pull"))
+            .send_json(json!({"model": required, "stream": true}))
+            .context("starting local Ollama model download")?;
+        ensure!(
+            response.status().as_u16() == 200,
+            "Ollama refused the model download"
+        );
+        let mut complete = false;
+        for line in BufReader::new(response.body_mut().as_reader()).lines() {
+            if cancelled.load(Ordering::Relaxed) {
+                bail!("translation model download cancelled");
+            }
+            let event: Value = serde_json::from_str(&line.context("reading download progress")?)
+                .context("parsing Ollama download progress")?;
+            if let Some(error) = event["error"].as_str() {
+                bail!("Ollama model download failed: {error}");
+            }
+            let status = event["status"].as_str().unwrap_or("Downloading model");
+            let fraction = match (event["completed"].as_u64(), event["total"].as_u64()) {
+                (Some(done), Some(total)) if total > 0 => (done * 49 / total).min(49) as u8,
+                _ => 0,
+            };
+            progress(index as u8 * 50 + fraction, format!("{required}: {status}"));
+            if status == "success" {
+                complete = true;
+            }
         }
-        let event: Value = serde_json::from_str(&line.context("reading download progress")?)
-            .context("parsing Ollama download progress")?;
-        if let Some(error) = event["error"].as_str() {
-            bail!("Ollama model download failed: {error}");
-        }
-        let status = event["status"].as_str().unwrap_or("Downloading model");
-        let fraction = match (event["completed"].as_u64(), event["total"].as_u64()) {
-            (Some(done), Some(total)) if total > 0 => (done * 100 / total).min(99) as u8,
-            _ => 0,
-        };
-        progress(fraction, status.to_owned());
-        if status == "success" {
-            complete = true;
-        }
+        ensure!(complete, "Ollama did not finish downloading {required}");
     }
     ensure!(
-        complete && model_available(model)?,
-        "Ollama did not install the model"
+        model_available(model)?,
+        "Ollama did not install both models"
     );
-    progress(100, format!("{model} is ready"));
+    progress(100, format!("{OCR_MODEL} and {model} are ready"));
     Ok(())
 }
 
@@ -166,7 +172,7 @@ impl TranslationSession {
         settings.validate()?;
         ensure!(
             model_available(&settings.model)?,
-            "{} is not installed in local Ollama; download it in Settings",
+            "{OCR_MODEL} and {} are required in local Ollama; download them in Settings",
             settings.model
         );
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
@@ -201,7 +207,7 @@ impl Drop for TranslationSession {
 }
 
 fn serve(listener: TcpListener, secret: &str, settings: &TranslationSettings, stop: &AtomicBool) {
-    let mut cached: Option<([u8; 32], String)> = None;
+    let mut cached: Option<CachedTranslation> = None;
     let mut last_request_at = None;
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
@@ -230,11 +236,18 @@ fn serve(listener: TcpListener, secret: &str, settings: &TranslationSettings, st
     }
 }
 
+struct CachedTranslation {
+    digest: [u8; 32],
+    source_text: String,
+    dimensions: (u32, u32),
+    overlay: String,
+}
+
 fn handle_request(
     stream: &mut TcpStream,
     secret: &str,
     settings: &TranslationSettings,
-    cached: &mut Option<([u8; 32], String)>,
+    cached: &mut Option<CachedTranslation>,
     last_request_at: &mut Option<Instant>,
 ) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
@@ -288,16 +301,21 @@ fn handle_request(
     }
     *last_request_at = Some(Instant::now());
     let digest: [u8; 32] = Sha256::digest(&decoded).into();
-    let overlay = if let Some((old_digest, old_overlay)) = cached.as_ref() {
-        if *old_digest == digest {
-            old_overlay.clone()
+    let (source_text, overlay) = if let Some(old) = cached.as_ref() {
+        if old.digest == digest {
+            (old.source_text.clone(), old.overlay.clone())
         } else {
-            render_translation(settings, &model_image, width, height)?
+            render_translation(settings, &model_image, width, height, cached.as_ref())?
         }
     } else {
-        render_translation(settings, &model_image, width, height)?
+        render_translation(settings, &model_image, width, height, None)?
     };
-    *cached = Some((digest, overlay.clone()));
+    *cached = Some(CachedTranslation {
+        digest,
+        source_text,
+        dimensions: (width, height),
+        overlay: overlay.clone(),
+    });
     write_json(stream, 200, &json!({"image": overlay, "auto": "auto"}))?;
     Ok(())
 }
@@ -387,18 +405,21 @@ fn render_translation(
     image: &str,
     width: u32,
     height: u32,
-) -> Result<String> {
-    let text = translate_image(settings, image)?;
-    let location = if text.is_empty() {
-        None
+    cached: Option<&CachedTranslation>,
+) -> Result<(String, String)> {
+    let source_text = recognize_text_at(image, OLLAMA_URL)?;
+    if let Some(old) = cached {
+        if old.source_text == source_text && old.dimensions == (width, height) {
+            return Ok((source_text, old.overlay.clone()));
+        }
+    }
+    let text = if source_text.is_empty() {
+        String::new()
     } else {
-        locate_text(settings, image).unwrap_or_else(|error| {
-            eprintln!("LUNCHBOX_TRANSLATION_LOCATION_SKIPPED: {error:#}");
-            None
-        })
+        translate_text_at(settings, &source_text, OLLAMA_URL)?
     };
-    let png = render_subtitle_png(width, height, &text, location)?;
-    Ok(BASE64.encode(png))
+    let png = render_subtitle_png(width, height, &text)?;
+    Ok((source_text, BASE64.encode(png)))
 }
 
 fn subtitle_font() -> Option<&'static Font> {
@@ -425,23 +446,30 @@ fn subtitle_font() -> Option<&'static Font> {
     .as_ref()
 }
 
-fn render_subtitle_png(
-    width: u32,
-    height: u32,
-    text: &str,
-    source_box: Option<[f32; 4]>,
-) -> Result<Vec<u8>> {
-    let font_px = (width as f32 / 42.0).clamp(11.0, 23.0);
+fn render_subtitle_png(width: u32, height: u32, text: &str) -> Result<Vec<u8>> {
+    let font_px = (width as f32 / 23.0).clamp(14.0, 32.0);
     let margin = (width / 40).clamp(5, 24);
-    let max_columns = ((width - 2 * margin) as f32 / (font_px * 0.68)) as usize;
-    let lines = wrap_caption(text, max_columns.max(1), 3);
+    let padding = (font_px / 1.5).ceil() as u32;
+    let max_columns =
+        ((width.saturating_sub(2 * (margin + padding))) as f32 / (font_px * 0.58)) as usize;
+    let lines = wrap_caption(text, max_columns.max(1), 4);
     let mut pixels = vec![0u8; width as usize * height as usize * 4];
     if lines.is_empty() {
         return encode_rgba_png(width, height, &pixels);
     }
-    let line_height = (font_px * 1.22).ceil() as u32;
+    let line_height = (font_px * 1.35).ceil() as u32;
     let total_height = line_height * lines.len() as u32;
-    let (center_x, top) = subtitle_position(width, height, total_height, source_box);
+    let center_x = width / 2;
+    let panel_height = (height * 35 / 100)
+        .max(total_height + 2 * padding)
+        .min(height.saturating_sub(2 * margin));
+    let panel_top = height.saturating_sub(panel_height + margin);
+    let top = panel_top + panel_height.saturating_sub(total_height) / 2;
+    for y in panel_top..height.saturating_sub(margin) {
+        for x in margin..width.saturating_sub(margin) {
+            put_pixel(&mut pixels, width, x, y, [9, 14, 22, 255]);
+        }
+    }
     let mut mask = vec![0u8; width as usize * height as usize];
     if let Some(font) = subtitle_font() {
         let ascent = font
@@ -473,8 +501,7 @@ fn render_subtitle_png(
             }
         }
     } else {
-        // Platforms without a discoverable system font still get a legible
-        // outlined subtitle, never the old full-width opaque caption strip.
+        // The built-in bitmap font keeps captions available on minimal systems.
         for (row, line) in lines.iter().enumerate() {
             let start_x = center_x.saturating_sub(line.len() as u32 * 4);
             for (column, ch) in line.chars().enumerate() {
@@ -492,50 +519,18 @@ fn render_subtitle_png(
             }
         }
     }
-    let outline = (font_px / 11.0).ceil() as i32;
-    for y in 0..height as i32 {
-        for x in 0..width as i32 {
-            if mask[(y as u32 * width + x as u32) as usize] == 0 {
-                continue;
-            }
-            for dy in -outline..=outline {
-                for dx in -outline..=outline {
-                    let px = x + dx;
-                    let py = y + dy;
-                    if px >= 0 && py >= 0 && px < width as i32 && py < height as i32 {
-                        put_pixel(&mut pixels, width, px as u32, py as u32, [0, 0, 0, 230]);
-                    }
-                }
-            }
-        }
-    }
     for (index, coverage) in mask.into_iter().enumerate() {
         if coverage > 0 {
-            pixels[index * 4..index * 4 + 4].copy_from_slice(&[255, 255, 255, coverage]);
+            let pixel = &mut pixels[index * 4..index * 4 + 4];
+            for channel in &mut pixel[..3] {
+                *channel = (((u32::from(*channel) * u32::from(255 - coverage))
+                    + 255 * u32::from(coverage))
+                    / 255) as u8;
+            }
+            pixel[3] = pixel[3].max(coverage);
         }
     }
     encode_rgba_png(width, height, &pixels)
-}
-
-fn subtitle_position(
-    width: u32,
-    height: u32,
-    subtitle_height: u32,
-    source_box: Option<[f32; 4]>,
-) -> (u32, u32) {
-    let margin = (height / 32).clamp(4, 28);
-    if let Some([left, top, right, bottom]) = source_box {
-        let center_x = (((left + right) / 2.0) * width as f32).round() as u32;
-        let source_top = (top * height as f32).round() as u32;
-        let source_bottom = (bottom * height as f32).round() as u32;
-        if source_top >= subtitle_height + 2 * margin {
-            return (center_x, source_top - subtitle_height - margin);
-        }
-        if source_bottom + subtitle_height + 2 * margin < height {
-            return (center_x, source_bottom + margin);
-        }
-    }
-    (width / 2, (height * 2 / 3).saturating_sub(subtitle_height))
 }
 
 fn encode_rgba_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
@@ -578,13 +573,34 @@ fn wrap_caption(text: &str, columns: usize, max_lines: usize) -> Vec<String> {
     lines
 }
 
-fn translate_image(settings: &TranslationSettings, image: &str) -> Result<String> {
-    translate_image_at(settings, image, OLLAMA_URL)
+fn recognize_text_at(image: &str, base_url: &str) -> Result<String> {
+    let raw = ollama_chat(
+        OCR_MODEL,
+        "Text Recognition: Read only visible game dialogue, menu labels, and instructions in reading order. Return only the recognized text, without markdown, code fences, or commentary.",
+        Some(image),
+        base_url,
+    )?;
+    Ok(clean_ocr_text(&raw))
 }
 
-fn translate_image_at(
+fn clean_ocr_text(raw: &str) -> String {
+    // GLM-OCR sometimes appends repeated Markdown fences after a correct OCR
+    // result. Never send those hallucinated tokens on to the translator.
+    let before_fence = raw.split("```").next().unwrap_or("");
+    let mut lines = Vec::new();
+    for line in before_fence.lines() {
+        let line = line.trim().trim_matches('"').trim();
+        if line.is_empty() || lines.last().is_some_and(|previous| *previous == line) {
+            continue;
+        }
+        lines.push(line);
+    }
+    lines.join("\n").chars().take(1200).collect()
+}
+
+fn translate_text_at(
     settings: &TranslationSettings,
-    image: &str,
+    source_text: &str,
     base_url: &str,
 ) -> Result<String> {
     let (source_name, source_code) = if settings.source_language == "auto" {
@@ -602,9 +618,9 @@ fn translate_image_at(
         (name.to_owned(), settings.source_language.clone())
     };
     let prompt = format!(
-        "You are a professional {source_name} ({source_code}) to English (en) translator. Your goal is to accurately convey the meaning and nuances of the original {source_name} text while adhering to English grammar, vocabulary, and cultural sensitivities. Produce only the English translation, without any additional explanations or commentary. Please translate the following {source_name} text into English:\n\n"
+        "You are a professional {source_name} ({source_code}) to English (en) translator. Translate the following game dialogue or menu text accurately into natural English. Preserve names and the order of lines. Return only the English translation, without explanations or commentary.\n\n{source_text}"
     );
-    let raw = ollama_image_request(settings, image, &prompt, base_url, false)?;
+    let raw = ollama_chat(&settings.model, &prompt, None, base_url)?;
     Ok(english_only_translation(&raw))
 }
 
@@ -617,48 +633,18 @@ fn english_only_translation(raw: &str) -> String {
     lines.join(" ").chars().take(2000).collect()
 }
 
-fn locate_text(settings: &TranslationSettings, image: &str) -> Result<Option<[f32; 4]>> {
-    let prompt = "Find the visible dialogue or menu text in this game screenshot. Return ONLY JSON: {\"box\":[left,top,right,bottom]}. Use coordinates from 0 to 1000 relative to the whole image, tightly covering the original source-language text. Return {\"box\":null} if no text is visible.";
-    let response = ollama_image_request(settings, image, prompt, OLLAMA_URL, true)?;
-    let value: Value = serde_json::from_str(&response).context("parsing text location")?;
-    let Some(box_values) = value["box"].as_array() else {
-        return Ok(None);
-    };
-    ensure!(box_values.len() == 4, "invalid text location");
-    let mut box_coordinates = [0.0; 4];
-    for (index, value) in box_values.iter().enumerate() {
-        let coordinate = value.as_f64().context("invalid text coordinate")?;
-        ensure!(
-            (0.0..=1000.0).contains(&coordinate),
-            "text coordinate outside screenshot"
-        );
-        box_coordinates[index] = (coordinate / 1000.0) as f32;
+fn ollama_chat(model: &str, prompt: &str, image: Option<&str>, base_url: &str) -> Result<String> {
+    let mut message = json!({"role": "user", "content": prompt});
+    if let Some(image) = image {
+        message["images"] = json!([image]);
     }
-    ensure!(
-        box_coordinates[2] - box_coordinates[0] >= 0.02
-            && box_coordinates[3] - box_coordinates[1] >= 0.01,
-        "invalid text box"
-    );
-    Ok(Some(box_coordinates))
-}
-
-fn ollama_image_request(
-    settings: &TranslationSettings,
-    image: &str,
-    prompt: &str,
-    base_url: &str,
-    structured: bool,
-) -> Result<String> {
-    let mut request = json!({
-        "model": settings.model,
-        "messages": [{"role": "user", "content": prompt, "images": [image]}],
+    let request = json!({
+        "model": model,
+        "messages": [message],
         "stream": false,
         "keep_alive": "10m",
         "options": {"temperature": 0, "num_predict": 256},
     });
-    if structured {
-        request["format"] = json!("json");
-    }
     let mut response = http_agent(Duration::from_secs(60))
         .post(&format!("{base_url}/api/chat"))
         .send_json(request)
@@ -720,10 +706,8 @@ mod tests {
     }
 
     #[test]
-    fn subtitle_preserves_original_text_below_it() {
-        let caption =
-            render_subtitle_png(320, 240, "The door is locked.", Some([0.1, 0.75, 0.9, 0.9]))
-                .unwrap();
+    fn translation_panel_covers_source_dialogue() {
+        let caption = render_subtitle_png(320, 240, "The door is locked.").unwrap();
         if let Ok(path) = std::env::var("LUNCHBOX_TRANSLATION_CAPTION_PROBE") {
             std::fs::write(path, &caption).unwrap();
         }
@@ -735,7 +719,8 @@ mod tests {
         reader.next_frame(&mut pixels).unwrap();
         assert_eq!(pixels[3], 0);
         assert_eq!(pixels[(239 * 320 * 4) + 3], 0);
-        assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] > 0));
+        assert_eq!(pixels[((170 * 320 + 20) * 4) + 3], 255);
+        assert!(pixels.chunks_exact(4).any(|pixel| pixel[0] == 255));
     }
 
     #[test]
@@ -748,13 +733,13 @@ mod tests {
     }
 
     #[test]
-    fn text_location_is_above_original_or_below_when_needed() {
+    fn ocr_strips_repeated_markdown_from_model() {
         assert_eq!(
-            subtitle_position(320, 240, 30, Some([0.2, 0.75, 0.8, 0.9])),
-            (160, 143)
+            clean_ocr_text(
+                "ここはマナの聖地です。\n勇者よ、扉を開けてください。\n```markdown\n```"
+            ),
+            "ここはマナの聖地です。\n勇者よ、扉を開けてください。"
         );
-        let (_, top) = subtitle_position(320, 240, 30, Some([0.2, 0.01, 0.8, 0.1]));
-        assert!(top > 24);
     }
 
     #[test]
@@ -778,10 +763,15 @@ mod tests {
 
     #[test]
     fn retroarch_request_without_format_field_returns_image_and_auto() {
-        let screenshot = render_subtitle_png(64, 64, "", None).unwrap();
-        let overlay = render_subtitle_png(64, 64, "OPEN", None).unwrap();
+        let screenshot = render_subtitle_png(64, 64, "").unwrap();
+        let overlay = render_subtitle_png(64, 64, "OPEN").unwrap();
         let digest: [u8; 32] = Sha256::digest(&screenshot).into();
-        let mut cached = Some((digest, BASE64.encode(overlay)));
+        let mut cached = Some(CachedTranslation {
+            digest,
+            source_text: "OPEN".to_owned(),
+            dimensions: (64, 64),
+            overlay: BASE64.encode(overlay),
+        });
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
         let address = listener.local_addr().unwrap();
         let client = thread::spawn(move || {
@@ -818,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn ollama_chat_receives_image_and_returns_translation() {
+    fn ollama_chat_sends_image_to_ocr_model() {
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
@@ -841,9 +831,57 @@ mod tests {
             let mut body = vec![0; length.unwrap()];
             reader.read_exact(&mut body).unwrap();
             let body: Value = serde_json::from_slice(&body).unwrap();
-            assert_eq!(body["model"], "translategemma:12b");
+            assert_eq!(body["model"], OCR_MODEL);
             assert_eq!(body["stream"], false);
             assert_eq!(body["messages"][0]["images"][0], "image-data");
+            write_json(
+                &mut stream,
+                200,
+                &json!({"message": {"content": "扉が開いている。\n```"}}),
+            )
+            .unwrap();
+        });
+        let recognized = recognize_text_at(
+            "image-data",
+            &format!("http://127.0.0.1:{}", address.port()),
+        )
+        .unwrap();
+        assert_eq!(recognized, "扉が開いている。");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn ollama_chat_sends_text_to_translation_model() {
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert!(line.starts_with("POST /api/chat HTTP/1.1"));
+            let mut length = None;
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = Some(value.trim().parse::<usize>().unwrap());
+                }
+            }
+            let mut body = vec![0; length.unwrap()];
+            reader.read_exact(&mut body).unwrap();
+            let body: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["model"], "translategemma:12b");
+            assert!(body["messages"][0]["images"].is_null());
+            assert!(
+                body["messages"][0]["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("扉が開いている。")
+            );
             write_json(
                 &mut stream,
                 200,
@@ -851,13 +889,30 @@ mod tests {
             )
             .unwrap();
         });
-        let translated = translate_image_at(
+        let translated = translate_text_at(
             &TranslationSettings::default(),
-            "image-data",
+            "扉が開いている。",
             &format!("http://127.0.0.1:{}", address.port()),
         )
         .unwrap();
         assert_eq!(translated, "The door is open.");
         server.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires local Ollama models and explicit image paths"]
+    fn live_ollama_overlay_probe() {
+        let source_path = std::env::var("LUNCHBOX_TRANSLATION_SOURCE_IMAGE").unwrap();
+        let overlay_path = std::env::var("LUNCHBOX_TRANSLATION_OVERLAY_IMAGE").unwrap();
+        let source = std::fs::read(source_path).unwrap();
+        let (width, height) = png_dimensions(&source).unwrap();
+        let image = BASE64.encode(source);
+        let (recognized, overlay) =
+            render_translation(&TranslationSettings::default(), &image, width, height, None)
+                .unwrap();
+        assert!(!recognized.is_empty());
+        let png = BASE64.decode(overlay).unwrap();
+        std::fs::write(overlay_path, png).unwrap();
+        eprintln!("LUNCHBOX_TRANSLATION_RECOGNIZED: {recognized}");
     }
 }
