@@ -221,6 +221,7 @@ pub mod display_setup;
 mod download_plan;
 pub mod download_queue_model;
 mod emulator;
+mod emulator_session;
 mod emulator_manager;
 pub mod emulator_manager_model;
 pub mod emulator_update_model;

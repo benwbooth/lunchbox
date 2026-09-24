@@ -1614,6 +1614,8 @@ ApplicationWindow {
     }
 
     function requestCardLaunch(gameId, databaseId, title, platform, local) {
+        if (gameDetails.launch_busy || gameDetails.game_running)
+            return
         root.pendingCardLaunchGameId = gameId
         root.openGame(gameId, databaseId, title, platform, local, false)
     }
@@ -2214,9 +2216,16 @@ ApplicationWindow {
                                ? Math.floor(root.screen.height * root.screen.devicePixelRatio) : 0
     }
 
+    Timer {
+        interval: 2000
+        repeat: true
+        running: true
+        onTriggered: gameDetails.refresh_emulator_session()
+    }
+
     GamepadInput {
         id: gamepadInput
-        navigation_enabled: (root.active || root.couchGamepadUiProbe) && !gameDetails.game_running
+        navigation_enabled: (root.active || root.couchGamepadUiProbe)
                             && !root.controllerLearnActive
                             && !(settingsDialog.visible && controllerAutomaticSetup.testInput)
                             && !controllerAutomaticSetup.calibrationActive
@@ -2232,7 +2241,7 @@ ApplicationWindow {
         libraryView: gameViewLoader.item
         focusScope: settingsDialog.visible ? settingsDialog.contentItem : null
         overlayItem: Overlay.overlay
-        enabled: !root.couchModeActive && !gameDetails.game_running
+        enabled: !root.couchModeActive
         onOpenGame: item => {
             if (item.gameId !== undefined)
                 root.openGame(item.gameId, item.gameDatabaseId, item.gameTitle,
@@ -10621,7 +10630,8 @@ ApplicationWindow {
                                  || tile.downloadJobState === "IMPORTED"
                         enabled: root.pendingCardLaunchGameId !== tile.gameId
                                  && !gameDetails.launch_busy
-                        highlighted: true
+                                 && !gameDetails.game_running
+                        highlighted: enabled
                         font.pixelSize: 17 * card.expansion
                         Accessible.name: "Play " + tile.gameTitle
                         onClicked: root.requestCardLaunch(
@@ -10650,7 +10660,9 @@ ApplicationWindow {
                             }
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: "Play " + tile.gameTitle
+                        ToolTip.text: gameDetails.game_running
+                                      ? "Stop " + gameDetails.session_title + " in Game Details"
+                                      : "Play " + tile.gameTitle
                     }
                     LbRoundButton {
                         z: previewPresentation.overlayLayer
@@ -12638,6 +12650,8 @@ ApplicationWindow {
                         discoveryBusy: gameDetails.launch_discovery_busy
                         launchBusy: gameDetails.launch_busy
                         gameRunning: gameDetails.game_running
+                        sessionStopping: gameDetails.session_stopping
+                        sessionTitle: gameDetails.session_title
                         preparable: gameDetails.preparable && !gameDetails.prepared
                         prepareBusy: gameDetails.prepare_busy
                         emulatorName: gameDetails.emulator_name
@@ -12703,6 +12717,7 @@ ApplicationWindow {
                         onPlayRequested: root.requestGameLaunch()
                         onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name, gameDetails.game_id)
                         onCancelLaunchRequested: gameDetails.cancel_launch()
+                        onStopEmulatorRequested: gameDetails.stop_emulator()
                         onSetupRequested: {
                             if (gameDetails.emulator_option_count === 0)
                                 root.openEmulatorManagerForPlatform(gameDetails.platform)
@@ -12724,6 +12739,18 @@ ApplicationWindow {
                             else if (gameDetails.emulator_preference_scope === "platform")
                                 gameDetails.clear_platform_emulator_preference()
                         }
+                    }
+
+                    LbButton {
+                        width: parent.width
+                        height: 42
+                        visible: gameDetails.game_running && !detailsHero.visible
+                        text: gameDetails.session_stopping
+                              ? "STOPPING EMULATOR…"
+                              : "■  STOP " + gameDetails.session_title
+                        enabled: !gameDetails.session_stopping
+                        highlighted: false
+                        onClicked: gameDetails.stop_emulator()
                     }
 
                     Item {
@@ -14410,17 +14437,24 @@ ApplicationWindow {
                                 width: parent.width
                                 height: 42
                                 visible: gameDetails.prepared
-                                highlighted: true
-                                text: gameDetails.launch_busy ? "STARTING…"
-                                      : gameDetails.game_running ? "GAME IS RUNNING"
+                                highlighted: !gameDetails.launch_busy && !gameDetails.game_running
+                                text: gameDetails.launch_busy ? "CANCEL PREPARATION"
+                                      : gameDetails.session_stopping ? "STOPPING EMULATOR…"
+                                      : gameDetails.game_running ? "■  STOP EMULATOR"
                                       : "PLAY"
-                                enabled: gameDetails.can_launch
-                                         && !gameDetails.launch_busy
-                                         && !gameDetails.game_running
-                                         && !gameDetails.prepare_busy
+                                enabled: !gameDetails.session_stopping
+                                         && (gameDetails.launch_busy || gameDetails.game_running
+                                             || (gameDetails.can_launch && !gameDetails.prepare_busy))
                                 font.pixelSize: 11
                                 font.weight: Font.Bold
-                                onClicked: root.requestGameLaunch()
+                                onClicked: {
+                                    if (gameDetails.launch_busy)
+                                        gameDetails.cancel_launch()
+                                    else if (gameDetails.game_running)
+                                        gameDetails.stop_emulator()
+                                    else
+                                        root.requestGameLaunch()
+                                }
                             }
                             LbButton {
                                 width: parent.width

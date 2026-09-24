@@ -28,6 +28,8 @@ pub mod qobject {
         #[qproperty(bool, launch_busy)]
         #[qproperty(bool, can_launch)]
         #[qproperty(bool, game_running)]
+        #[qproperty(QString, session_title)]
+        #[qproperty(bool, session_stopping)]
         #[qproperty(QString, game_id)]
         #[qproperty(QString, title)]
         #[qproperty(QString, platform)]
@@ -364,6 +366,12 @@ pub mod qobject {
         fn cancel_launch(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn refresh_emulator_session(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn stop_emulator(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn select_local_file(self: Pin<&mut GameDetailsModel>, index: i32);
 
         #[qinvokable]
@@ -666,6 +674,8 @@ pub struct GameDetailsModelRust {
     launch_busy: bool,
     can_launch: bool,
     game_running: bool,
+    session_title: QString,
+    session_stopping: bool,
     game_id: QString,
     title: QString,
     platform: QString,
@@ -850,11 +860,13 @@ pub struct GameDetailsModelRust {
     download_preflight_generation: u64,
     preparation_generation: u64,
     launch_generation: u64,
+    session_generation: u64,
     discovery_cache: std::collections::HashMap<String, EmulatorDiscoveryResult>,
     details_cache: std::collections::HashMap<String, GameDetails>,
     activity_load_generation: u64,
     preparation_cancel: Option<Arc<AtomicBool>>,
     launch_cancel: Option<Arc<AtomicBool>>,
+    session_stop_requested: Option<Arc<AtomicBool>>,
     database_id: i64,
     local_file_path: PathBuf,
     local_file_paths: Vec<PathBuf>,
@@ -891,6 +903,10 @@ pub struct GameDetailsModelRust {
 
 impl Default for GameDetailsModelRust {
     fn default() -> Self {
+        let session = crate::emulator_session::active()
+            .inspect_err(|error| eprintln!("LUNCHBOX_EMULATOR_SESSION_RECOVERY_FAILED: {error:#}"))
+            .ok()
+            .flatten();
         Self {
             panel_open: false,
             loading: false,
@@ -907,9 +923,11 @@ impl Default for GameDetailsModelRust {
             download_preflight_action: QString::default(),
             prepare_busy: false,
             launch_discovery_busy: false,
-            launch_busy: false,
+            launch_busy: session.as_ref().is_some_and(|session| session.preparing()),
             can_launch: false,
-            game_running: false,
+            game_running: session.as_ref().is_some_and(|session| !session.preparing()),
+            session_title: qstring(session.as_ref().map_or("", |session| &session.title)),
+            session_stopping: false,
             game_id: QString::default(),
             title: QString::default(),
             platform: QString::default(),
@@ -1096,11 +1114,13 @@ impl Default for GameDetailsModelRust {
             download_preflight_generation: 0,
             preparation_generation: 0,
             launch_generation: 0,
+            session_generation: 0,
             discovery_cache: std::collections::HashMap::new(),
             details_cache: std::collections::HashMap::new(),
             activity_load_generation: 0,
             preparation_cancel: None,
             launch_cancel: None,
+            session_stop_requested: None,
             database_id: 0,
             local_file_path: PathBuf::new(),
             local_file_paths: Vec::new(),
@@ -1922,7 +1942,6 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_torrent_loading(false);
         self.as_mut().set_prepare_busy(false);
         self.as_mut().set_launch_discovery_busy(false);
-        self.as_mut().set_launch_busy(false);
         self.as_mut().set_firmware_busy(false);
         self.as_mut().set_metadata_open(false);
         self.as_mut().set_metadata_busy(false);
@@ -2547,7 +2566,6 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().pending_firmware_message = None;
         self.as_mut().clear_firmware_status();
         self.as_mut().set_can_launch(false);
-        self.as_mut().set_game_running(false);
         self.as_mut().rust_mut().database_id = 0;
         self.as_mut().rust_mut().local_file_path = PathBuf::new();
         self.as_mut().rust_mut().local_file_paths.clear();
@@ -6036,6 +6054,7 @@ impl qobject::GameDetailsModel {
     }
 
     pub fn launch_game(mut self: Pin<&mut Self>) {
+        self.as_mut().refresh_emulator_session();
         if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
             return;
         }
@@ -6092,11 +6111,21 @@ impl qobject::GameDetailsModel {
             }
         };
 
-        self.as_mut().rust_mut().launch_generation =
-            self.as_ref().rust().launch_generation.wrapping_add(1);
-        let generation = self.as_ref().rust().launch_generation;
         let game_id = self.as_ref().game_id().to_string();
         let activity_title = self.as_ref().rust().canonical_title.clone();
+        let session = match crate::emulator_session::reserve(&game_id, &activity_title) {
+            Ok(session) => session,
+            Err(error) => {
+                self.as_mut().refresh_emulator_session();
+                self.as_mut()
+                    .set_launch_status(qstring(format!("Could not start another game: {error:#}")));
+                return;
+            }
+        };
+        self.as_mut().rust_mut().session_generation =
+            self.as_ref().rust().session_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().session_generation;
+        let session_token = session.token;
         let activity_platform = self.as_ref().platform().to_string();
         let activity_database_id = self.as_ref().rust().database_id;
         let output_width = *self.as_ref().display_output_width();
@@ -6111,8 +6140,11 @@ impl qobject::GameDetailsModel {
                     .is_some_and(|value| value.eq_ignore_ascii_case("m3u"))
         );
         let launch_cancel = Arc::new(AtomicBool::new(false));
+        let stop_requested = Arc::new(AtomicBool::new(false));
         self.as_mut().rust_mut().launch_cancel = Some(Arc::clone(&launch_cancel));
+        self.as_mut().rust_mut().session_stop_requested = Some(Arc::clone(&stop_requested));
         self.as_mut().set_launch_busy(true);
+        self.as_mut().set_session_title(qstring(&activity_title));
         self.as_mut()
             .set_launch_status(qstring(if preparing_archived_playlist {
                 "Preparing the multi-disc playlist and any compressed disc images…"
@@ -6122,6 +6154,7 @@ impl qobject::GameDetailsModel {
 
         let qt_thread = self.as_ref().qt_thread();
         let started_thread = qt_thread.clone();
+        let worker_session_token = session_token.clone();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-emulator-launch".into())
             // The launch planner's controller preparation carries very large
@@ -6508,6 +6541,13 @@ impl qobject::GameDetailsModel {
                         None => crate::emulator::spawn_launch_plan(&plan)?,
                     };
                     let process_id = child.id();
+                    if let Err(error) = crate::emulator_session::mark_running(
+                        &worker_session_token, process_id, &emulator_name
+                    ) {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(error.context("tracking the emulator session"));
+                    }
                     let startup_started = Instant::now();
                     let startup_deadline = startup_started + Duration::from_millis(700);
                     let controller_deadline = startup_started + Duration::from_secs(3);
@@ -6653,7 +6693,8 @@ impl qobject::GameDetailsModel {
                     drop(calibrated_session);
                     drop(translation_session);
                     let status = status.context("waiting for the emulator process")?;
-                    let outcome = if probe_terminated {
+                    let user_stopped = stop_requested.load(AtomicOrdering::Relaxed);
+                    let outcome = if probe_terminated || user_stopped {
                         "terminated"
                     } else if status.success() {
                         "completed"
@@ -6682,7 +6723,7 @@ impl qobject::GameDetailsModel {
                         tracking_warning =
                             Some(format!("Play duration could not be finalized: {error}"));
                     }
-                    let exit = if status.success() || probe_terminated {
+                    let exit = if status.success() || probe_terminated || user_stopped {
                         Ok(())
                     } else {
                         Err(format!("emulator exited with {status}"))
@@ -6700,6 +6741,9 @@ impl qobject::GameDetailsModel {
                         .unwrap_or("unknown panic");
                     Err(anyhow::anyhow!("emulator launch preparation crashed: {detail}"))
                 });
+                if let Err(error) = crate::emulator_session::clear(&worker_session_token) {
+                    eprintln!("LUNCHBOX_EMULATOR_SESSION_CLEAR_FAILED: {error:#}");
+                }
                 match launch {
                     Ok((exit, tracking_warning, activity_recorded, save_notice)) => {
                         let _ = qt_thread.queue(move |mut model| {
@@ -6724,8 +6768,11 @@ impl qobject::GameDetailsModel {
                 }
             });
         if let Err(error) = spawn_result {
+            let _ = crate::emulator_session::clear(&session_token);
             self.as_mut().rust_mut().launch_cancel = None;
+            self.as_mut().rust_mut().session_stop_requested = None;
             self.as_mut().set_launch_busy(false);
+            self.as_mut().set_session_title(QString::default());
             self.as_mut().set_launch_status(qstring(format!(
                 "Could not start emulator launch worker: {error}"
             )));
@@ -6744,6 +6791,67 @@ impl qobject::GameDetailsModel {
         }
     }
 
+    pub fn refresh_emulator_session(mut self: Pin<&mut Self>) {
+        match crate::emulator_session::active() {
+            Ok(Some(session)) => {
+                self.as_mut().set_launch_busy(session.preparing());
+                self.as_mut().set_game_running(!session.preparing());
+                self.as_mut().set_session_title(qstring(session.title));
+            }
+            Ok(None) => {
+                self.as_mut().set_launch_busy(false);
+                self.as_mut().set_game_running(false);
+                self.as_mut().set_session_stopping(false);
+                self.as_mut().set_session_title(QString::default());
+            }
+            Err(error) => eprintln!("LUNCHBOX_EMULATOR_SESSION_REFRESH_FAILED: {error:#}"),
+        }
+    }
+
+    pub fn stop_emulator(mut self: Pin<&mut Self>) {
+        if *self.as_ref().session_stopping() {
+            return;
+        }
+        let session = match crate::emulator_session::active() {
+            Ok(Some(session)) if session.preparing() => {
+                self.as_mut().cancel_launch();
+                return;
+            }
+            Ok(Some(session)) => session,
+            Ok(None) => {
+                self.as_mut().refresh_emulator_session();
+                return;
+            }
+            Err(error) => {
+                self.as_mut().set_launch_status(qstring(format!(
+                    "Could not inspect emulator session: {error:#}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().set_session_stopping(true);
+        if let Some(stop_requested) = self.as_ref().rust().session_stop_requested.as_ref() {
+            stop_requested.store(true, AtomicOrdering::Relaxed);
+        }
+        self.as_mut().set_launch_status(qstring(format!(
+            "Stopping {} and waiting for saves…",
+            session.title
+        )));
+        let qt_thread = self.as_ref().qt_thread();
+        std::thread::spawn(move || {
+            let result = crate::emulator_session::stop(&session);
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_session_stopping(false);
+                if let Err(error) = result {
+                    model.as_mut().set_launch_status(qstring(format!(
+                        "Could not stop emulator safely: {error:#}"
+                    )));
+                }
+                model.as_mut().refresh_emulator_session();
+            });
+        });
+    }
+
     fn show_save_file_notice(
         mut self: Pin<&mut Self>,
         generation: u64,
@@ -6751,7 +6859,7 @@ impl qobject::GameDetailsModel {
         notice: String,
         success: bool,
     ) {
-        if generation != self.as_ref().rust().launch_generation
+        if generation != self.as_ref().rust().session_generation
             || self.as_ref().game_id().to_string() != game_id
         {
             return;
@@ -6761,14 +6869,15 @@ impl qobject::GameDetailsModel {
     }
 
     fn finish_launch_started(mut self: Pin<&mut Self>, generation: u64, started: LaunchStarted) {
-        if generation != self.as_ref().rust().launch_generation
-            || self.as_ref().game_id().to_string() != started.game_id
-        {
+        if generation != self.as_ref().rust().session_generation {
             return;
         }
         self.as_mut().rust_mut().launch_cancel = None;
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(true);
+        if self.as_ref().game_id().to_string() != started.game_id {
+            return;
+        }
         self.as_mut()
             .set_emulator_name(qstring(&started.emulator_name));
         let mut status = format!(
@@ -6809,14 +6918,18 @@ impl qobject::GameDetailsModel {
         activity_recorded: bool,
         save_notice: Option<(String, bool)>,
     ) {
-        if generation != self.as_ref().rust().launch_generation
-            || self.as_ref().game_id().to_string() != completed_game_id
-        {
+        if generation != self.as_ref().rust().session_generation {
             return;
         }
         self.as_mut().rust_mut().launch_cancel = None;
+        self.as_mut().rust_mut().session_stop_requested = None;
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(false);
+        self.as_mut().set_session_stopping(false);
+        self.as_mut().set_session_title(QString::default());
+        if self.as_ref().game_id().to_string() != completed_game_id {
+            return;
+        }
         let base_status = match exit {
             Ok(()) => {
                 if is_emulator_launch_probe() {
@@ -6853,14 +6966,18 @@ impl qobject::GameDetailsModel {
         completed_game_id: String,
         error: String,
     ) {
-        if generation != self.as_ref().rust().launch_generation
-            || self.as_ref().game_id().to_string() != completed_game_id
-        {
+        if generation != self.as_ref().rust().session_generation {
             return;
         }
         self.as_mut().rust_mut().launch_cancel = None;
+        self.as_mut().rust_mut().session_stop_requested = None;
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(false);
+        self.as_mut().set_session_stopping(false);
+        self.as_mut().set_session_title(QString::default());
+        if self.as_ref().game_id().to_string() != completed_game_id {
+            return;
+        }
         if error.contains(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR) {
             self.as_mut().set_launch_status(qstring(
                 "Launch cancelled. Temporary preparation files were removed.",
@@ -6962,16 +7079,10 @@ impl qobject::GameDetailsModel {
     }
 
     fn invalidate_launch_state(mut self: Pin<&mut Self>) {
-        if let Some(cancel) = self.as_ref().rust().launch_cancel.as_ref() {
-            cancel.store(true, AtomicOrdering::Relaxed);
-        }
-        self.as_mut().rust_mut().launch_cancel = None;
         self.as_mut().rust_mut().launch_generation =
             self.as_ref().rust().launch_generation.wrapping_add(1);
         self.as_mut().set_launch_discovery_busy(false);
-        self.as_mut().set_launch_busy(false);
         self.as_mut().set_can_launch(false);
-        self.as_mut().set_game_running(false);
         self.as_mut().set_launch_profile_open(false);
         self.as_mut()
             .set_launch_profile_default_template(QString::default());

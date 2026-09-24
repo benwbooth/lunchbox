@@ -18,6 +18,8 @@ TestCase {
             discoveryBusy: false
             launchBusy: false
             gameRunning: false
+            sessionStopping: false
+            sessionTitle: ""
             preparable: false
             prepareBusy: false
             emulatorName: "RetroArch · Mesen"
@@ -423,6 +425,29 @@ TestCase {
         action.clicked()
         verify(cancelled)
         verify(hero.launchBusy)
+    }
+
+    function test_running_game_replaces_play_with_stop() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            gameRunning: true,
+            sessionTitle: "Seiken Densetsu 3"
+        })
+        verify(hero)
+        const action = findChild(hero, "launchAction")
+        verify(action)
+        compare(action.text, "■  STOP EMULATOR")
+        verify(action.enabled)
+        verify(!action.highlighted)
+        let stopped = false
+        let played = false
+        hero.stopEmulatorRequested.connect(function() { stopped = true })
+        hero.playRequested.connect(function() { played = true })
+        action.clicked()
+        verify(stopped)
+        verify(!played)
+        hero.sessionStopping = true
+        compare(action.text, "STOPPING EMULATOR…")
+        verify(!action.enabled)
     }
 
     function test_missing_firmware_has_a_direct_setup_action() {

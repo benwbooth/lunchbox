@@ -111,9 +111,10 @@ Item {
                                                   : ""
     readonly property bool downloadInProgress: downloadJobIndex >= 0
                                                && downloadJobState !== "IMPORTED"
-    readonly property string primaryAction: !detailsCurrent || details.loading ? "LOADING…"
-            : details.launch_busy ? "STARTING…"
-            : details.game_running ? "GAME IS RUNNING"
+    readonly property string primaryAction: details.game_running
+            ? details.session_stopping ? "STOPPING…" : "STOP EMULATOR"
+            : details.launch_busy ? "CANCEL PREPARATION"
+            : !detailsCurrent || details.loading ? "LOADING…"
             : details.download_busy ? "ADDING DOWNLOAD…"
             : details.can_launch ? "PLAY"
             : selectedLocal ? "SET UP PLAY"
@@ -545,6 +546,14 @@ Item {
     }
 
     function activateAction(index) {
+        if (index === 0 && details.game_running) {
+            details.stop_emulator()
+            return
+        }
+        if (index === 0 && details.launch_busy) {
+            details.cancel_launch()
+            return
+        }
         if (selectedGameId.length === 0)
             return
         if (index === 0) {

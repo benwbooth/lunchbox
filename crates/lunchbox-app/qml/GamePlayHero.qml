@@ -13,6 +13,8 @@ Rectangle {
     required property bool discoveryBusy
     required property bool launchBusy
     required property bool gameRunning
+    required property bool sessionStopping
+    required property string sessionTitle
     required property bool preparable
     required property bool prepareBusy
     required property string emulatorName
@@ -74,6 +76,7 @@ Rectangle {
     signal playRequested()
     signal controllerMappingRequested()
     signal cancelLaunchRequested()
+    signal stopEmulatorRequested()
     signal setupRequested()
     signal prepareRequested()
     signal firmwareSetupRequested()
@@ -155,6 +158,16 @@ Rectangle {
                     elide: Text.ElideRight
                 }
             }
+        }
+
+        Text {
+            width: parent.width
+            visible: hero.gameRunning && hero.sessionTitle.length > 0
+            text: "Now playing: " + hero.sessionTitle
+            color: hero.accentCool
+            font.pixelSize: 10
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
         }
 
         Text {
@@ -681,20 +694,23 @@ Rectangle {
             width: parent.width
             height: 48
             text: hero.launchBusy ? "CANCEL PREPARATION"
-                  : hero.gameRunning ? "GAME IS RUNNING"
+                  : hero.gameRunning ? hero.sessionStopping ? "STOPPING EMULATOR…" : "■  STOP EMULATOR"
                   : hero.canLaunch ? "▶  PLAY"
                   : hero.prepareBusy ? "PREPARING INSTALL…"
                   : hero.prepareNeeded ? "PREPARE INSTALL"
                   : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
                   : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
-            enabled: hero.launchBusy
+            enabled: !hero.sessionStopping && (hero.launchBusy || hero.gameRunning
                      || (!hero.gameRunning && !hero.discoveryBusy && !hero.prepareBusy)
+                     )
             font.pixelSize: 12
             font.weight: Font.Bold
-            highlighted: hero.canLaunch && !hero.launchBusy
+            highlighted: hero.canLaunch && !hero.launchBusy && !hero.gameRunning
             onClicked: {
                 if (hero.launchBusy)
                     hero.cancelLaunchRequested()
+                else if (hero.gameRunning)
+                    hero.stopEmulatorRequested()
                 else if (hero.canLaunch)
                     hero.playRequested()
                 else if (hero.prepareNeeded)
