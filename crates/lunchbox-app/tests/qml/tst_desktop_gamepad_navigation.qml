@@ -29,6 +29,12 @@ TestCase {
         property int navigation_revision: 0
         property string navigation_action: ""
     }
+    QtObject {
+        id: videoPlayer
+        property int position: 0
+        property int duration: 36000
+        property bool seekable: true
+    }
     GridView {
         id: grid
         parent: contents
@@ -75,6 +81,13 @@ TestCase {
         id: searchField
         parent: contents
         x: 10; y: 500; width: 200; height: 40
+    }
+    Lunchbox.VideoSeekSlider {
+        id: videoSeek
+        parent: contents
+        x: 240; y: 500; width: 240; height: 36
+        mediaPlayer: videoPlayer
+        onActiveFocusChanged: if (activeFocus) host.activeFocusItem = this
     }
     ComboBox {
         id: combo
@@ -133,6 +146,14 @@ TestCase {
         host.activeFocusItem = windowFocusContainer
         compare(ring.parent, windowFocusContainer)
         verify(!ring.visible)
+    }
+    function test_video_seek_focus_uses_thumb_without_orange_box() {
+        videoSeek.forceActiveFocus()
+        compare(host.activeFocusItem, videoSeek)
+        const ring = findChild(videoSeek, "desktopGamepadFocusRing")
+        verify(ring !== null)
+        verify(!ring.visible)
+        verify(videoSeek.handle.scale > 1)
     }
     function test_fallback_outline_survives_focused_delegate_removal() {
         host.activeFocusItem = grid.itemAtIndex(0)

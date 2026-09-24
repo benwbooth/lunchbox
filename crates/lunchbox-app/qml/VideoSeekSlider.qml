@@ -8,6 +8,9 @@ T.Slider {
     property color trackColor: "#465166"
     property color progressColor: palette.highlight
     property color handleColor: palette.buttonText
+    // The thumb is the focus cue; the gamepad router must not frame the
+    // entire seek hit area with its fallback orange rectangle.
+    readonly property bool providesFocusIndicator: true
 
     from: 0
     to: mediaPlayer ? Math.max(1, mediaPlayer.duration) : 1
@@ -42,6 +45,7 @@ T.Slider {
         height: 12
         radius: 6
         color: seek.handleColor
+        scale: seek.activeFocus ? 1.33 : 1
     }
 
     onMoved: {
