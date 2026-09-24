@@ -1,9 +1,10 @@
 //! Session-scoped, localhost-only RetroArch AI Service to Ollama bridge.
 //! No screenshot is persisted or sent to a remote service.
 
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
@@ -264,6 +265,7 @@ impl TranslationSession {
         plan: &mut LaunchPlan,
         executable: &EmulatorExecutable,
         settings: &TranslationSettings,
+        output_dimensions: Option<(u32, u32)>,
     ) -> Result<Option<Self>> {
         if !settings.enabled || plan.retroarch_content.is_none() {
             return Ok(None);
@@ -275,6 +277,7 @@ impl TranslationSession {
             settings.model
         );
         let detector = load_detector()?;
+        let viewport = overlay_viewport(plan, executable, output_dimensions)?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
             .context("opening local translation bridge")?;
         listener.set_nonblocking(true)?;
@@ -288,9 +291,132 @@ impl TranslationSession {
         let settings = settings.clone();
         thread::Builder::new()
             .name("lunchbox-translation-bridge".into())
-            .spawn(move || serve(listener, &secret, &settings, &detector, &worker_stop))
+            .spawn(move || {
+                serve(
+                    listener,
+                    &secret,
+                    &settings,
+                    &detector,
+                    viewport,
+                    &worker_stop,
+                )
+            })
             .context("starting local translation bridge")?;
         Ok(Some(Self { stop }))
+    }
+}
+
+/// RetroArch 1.22's AI widget stretches the returned PNG over the full video
+/// output, even when the game uses a smaller custom viewport inside artwork.
+/// Read the exact launch config and map source-frame rectangles into that
+/// viewport before drawing the transparent response image.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct OverlayViewport {
+    output: (u32, u32),
+    game: TextRect,
+    content_zoom_percent: u32,
+}
+
+fn config_u32(contents: &str, key: &str) -> Option<u32> {
+    contents.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+        (name.trim() == key)
+            .then(|| value.trim().trim_matches('"').parse::<u32>().ok())
+            .flatten()
+    })
+}
+
+fn overlay_viewport(
+    plan: &LaunchPlan,
+    executable: &EmulatorExecutable,
+    output_dimensions: Option<(u32, u32)>,
+) -> Result<Option<OverlayViewport>> {
+    let arguments = retroarch_app_arguments(&plan.arguments, executable)?;
+    let Some(index) = crate::controller_launch_modes::append_config_index(arguments)? else {
+        return Ok(None);
+    };
+    let value = if arguments[index] == "--appendconfig" {
+        arguments.get(index + 1).and_then(|arg| arg.to_str())
+    } else {
+        arguments[index]
+            .to_str()
+            .and_then(|arg| arg.strip_prefix("--appendconfig="))
+    };
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let mut viewport_width = None;
+    let mut viewport_height = None;
+    let mut viewport_x = 0;
+    let mut viewport_y = 0;
+    for config in value.split('|') {
+        let Ok(contents) = std::fs::read_to_string(Path::new(config)) else {
+            continue;
+        };
+        viewport_width = config_u32(&contents, "custom_viewport_width").or(viewport_width);
+        viewport_height = config_u32(&contents, "custom_viewport_height").or(viewport_height);
+        viewport_x = config_u32(&contents, "custom_viewport_x").unwrap_or(viewport_x);
+        viewport_y = config_u32(&contents, "custom_viewport_y").unwrap_or(viewport_y);
+    }
+    let (Some(width), Some(height)) = (viewport_width, viewport_height) else {
+        return Ok(None);
+    };
+    let output =
+        crate::display_setup::probe_retroarch_output_dimensions(executable, output_dimensions)?;
+    ensure!(
+        width > 0 && height > 0 && width <= output.0 && height <= output.1,
+        "translation game viewport does not fit the video output"
+    );
+    let x1 = (output.0 - width) / 2 + viewport_x;
+    let y1 = (output.1 - height) / 2 + viewport_y;
+    ensure!(
+        x1.checked_add(width).is_some_and(|end| end <= output.0)
+            && y1.checked_add(height).is_some_and(|end| end <= output.1),
+        "translation game viewport is outside the video output"
+    );
+    Ok(Some(OverlayViewport {
+        output,
+        game: TextRect {
+            x1,
+            y1,
+            x2: x1 + width,
+            y2: y1 + height,
+        },
+        // Koko AIO's RetroTube content is visibly zoomed inside the custom
+        // viewport. The AI widget is drawn *after* the shader, so its raw
+        // core-frame coordinates need the same centered zoom. Use a
+        // dimensionless preset correction, never monitor-specific pixels.
+        content_zoom_percent: if retrotube_shader_active(arguments) {
+            120
+        } else {
+            100
+        },
+    }))
+}
+
+fn retrotube_shader_active(arguments: &[OsString]) -> bool {
+    arguments.iter().any(|argument| {
+        argument
+            .to_str()
+            .and_then(|value| value.strip_prefix("--set-shader="))
+            .and_then(|value| Path::new(value).file_stem())
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.starts_with("retrotube-tv-"))
+    })
+}
+
+fn retroarch_app_arguments<'a>(
+    arguments: &'a [OsString],
+    executable: &EmulatorExecutable,
+) -> Result<&'a [OsString]> {
+    if let EmulatorExecutable::Flatpak { app_id, .. } = executable {
+        let boundary = arguments
+            .iter()
+            .position(|argument| argument.to_str() == Some(app_id))
+            .context("Missing Flatpak RetroArch app boundary")?;
+        Ok(&arguments[boundary + 1..])
+    } else {
+        Ok(arguments)
     }
 }
 
@@ -311,6 +437,7 @@ fn serve(
     secret: &str,
     settings: &TranslationSettings,
     detector: &OcrEngine,
+    viewport: Option<OverlayViewport>,
     stop: &AtomicBool,
 ) {
     let mut cached: Option<CachedTranslation> = None;
@@ -325,6 +452,7 @@ fn serve(
                     secret,
                     settings,
                     Some(detector),
+                    viewport,
                     &mut cached,
                     &mut last_request_at,
                 ) {
@@ -406,6 +534,7 @@ fn handle_request(
     secret: &str,
     settings: &TranslationSettings,
     detector: Option<&OcrEngine>,
+    viewport: Option<OverlayViewport>,
     cached: &mut Option<CachedTranslation>,
     last_request_at: &mut Option<Instant>,
 ) -> Result<()> {
@@ -470,6 +599,7 @@ fn handle_request(
                 width,
                 height,
                 detector.context("text detector is not ready")?,
+                viewport,
                 cached.as_ref(),
             )?
         }
@@ -480,6 +610,7 @@ fn handle_request(
             width,
             height,
             detector.context("text detector is not ready")?,
+            viewport,
             None,
         )?
     };
@@ -610,17 +741,32 @@ struct TextGroup {
     line_height: u32,
 }
 
-fn nearby_text(a: TextGroup, b: TextGroup) -> bool {
+fn nearby_text(a: TextGroup, b: TextGroup, allow_multiline: bool) -> bool {
     let line_height = a.line_height.max(b.line_height).max(8);
     let vertical_gap = axis_gap(a.rect.y1, a.rect.y2, b.rect.y1, b.rect.y2);
     let horizontal_gap = axis_gap(a.rect.x1, a.rect.x2, b.rect.x1, b.rect.x2);
     let horizontal_overlap = axis_overlap(a.rect.x1, a.rect.x2, b.rect.x1, b.rect.x2);
-    (vertical_gap <= line_height * 2
-        && horizontal_overlap >= a.rect.width().min(b.rect.width()) / 4)
-        || (vertical_gap <= line_height / 2 && horizontal_gap <= line_height * 2)
+    let same_line = axis_overlap(a.rect.y1, a.rect.y2, b.rect.y1, b.rect.y2)
+        >= a.rect.height().min(b.rect.height()) / 2
+        && horizontal_gap <= line_height / 3;
+    same_line
+        || (allow_multiline
+            && vertical_gap <= line_height
+            && horizontal_overlap >= a.rect.width().min(b.rect.width()) / 2)
 }
 
 fn group_text_boxes(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextRect> {
+    let original_count = boxes.len();
+    if let Some((grid_top, line_height)) = dense_grid_start(&boxes, width, height) {
+        // A character picker or similarly dense menu grid is not dialogue.
+        // OCRing its full table produces speculative English and obscures the
+        // controls. Keep the separate labels above it, not the grid itself.
+        boxes.retain(|rect| {
+            rect.y1 < grid_top
+                && !(rect.width() > width / 2 && rect.y2.saturating_add(line_height) >= grid_top)
+        });
+    }
+    let allow_multiline = original_count <= 4;
     boxes.sort_by_key(|rect| (rect.y1, rect.x1));
     let mut groups: Vec<TextGroup> = Vec::new();
     for rect in boxes {
@@ -634,7 +780,7 @@ fn group_text_boxes(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<Te
         while let Some(index) = groups.iter().position(|other| {
             let merged = group.rect.union(other.rect);
             let line_height = group.line_height.max(other.line_height);
-            nearby_text(*other, group)
+            nearby_text(*other, group, allow_multiline)
                 && merged.height() <= line_height.saturating_mul(5)
                 && text_region_allowed(merged, width, height)
         }) {
@@ -648,6 +794,48 @@ fn group_text_boxes(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<Te
     groups.truncate(8);
     groups.sort_by_key(|group| (group.rect.y1, group.rect.x1));
     groups.into_iter().map(|group| group.rect).collect()
+}
+
+fn dense_grid_start(boxes: &[TextRect], width: u32, height: u32) -> Option<(u32, u32)> {
+    if boxes.len() < 12 {
+        return None;
+    }
+    let mut candidates = boxes
+        .iter()
+        .filter(|rect| rect.width() < width / 2 && rect.height() < height / 8)
+        .copied()
+        .collect::<Vec<_>>();
+    if candidates.len() < 12 {
+        return None;
+    }
+    let mut heights = candidates
+        .iter()
+        .map(|rect| rect.height())
+        .collect::<Vec<_>>();
+    heights.sort_unstable();
+    let line_height = heights[heights.len() / 2].max(8);
+    candidates.sort_by_key(|rect| rect.y1);
+    let mut rows: Vec<(u32, u32)> = Vec::new();
+    for rect in candidates {
+        if let Some((row_y, count)) = rows.last_mut()
+            && rect.y1.abs_diff(*row_y) <= line_height / 2
+        {
+            *count += 1;
+        } else {
+            rows.push((rect.y1, 1));
+        }
+    }
+    let dense_rows = rows
+        .into_iter()
+        .filter(|(_, count)| *count >= 3)
+        .map(|(y, _)| y)
+        .collect::<Vec<_>>();
+    dense_rows.windows(4).find_map(|window| {
+        window
+            .windows(2)
+            .all(|pair| pair[1] - pair[0] <= line_height * 3)
+            .then_some((window[0], line_height))
+    })
 }
 
 fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<TextRect>> {
@@ -737,6 +925,7 @@ fn render_translation(
     width: u32,
     height: u32,
     detector: &OcrEngine,
+    viewport: Option<OverlayViewport>,
     cached: Option<&CachedTranslation>,
 ) -> Result<(Vec<TranslatedRegion>, String)> {
     let bytes = BASE64
@@ -779,8 +968,64 @@ fn render_translation(
             background: sample_text_background(&screenshot, rect),
         });
     }
-    let overlay = render_regions_png(width, height, &regions)?;
+    let overlay = if let Some(viewport) = viewport {
+        let output = overlay_image_dimensions(viewport);
+        let transformed = regions
+            .iter()
+            .map(|region| TranslatedRegion {
+                rect: map_overlay_rect(region.rect, (width, height), viewport, output),
+                source: region.source.clone(),
+                english: region.english.clone(),
+                background: region.background,
+            })
+            .collect::<Vec<_>>();
+        render_regions_png(output.0, output.1, &transformed)?
+    } else {
+        render_regions_png(width, height, &regions)?
+    };
     Ok((regions, BASE64.encode(overlay)))
+}
+
+fn overlay_image_dimensions(viewport: OverlayViewport) -> (u32, u32) {
+    let width = 2048;
+    let height =
+        (u64::from(width) * u64::from(viewport.output.1) / u64::from(viewport.output.0)) as u32;
+    (width, height.max(64))
+}
+
+fn map_overlay_rect(
+    rect: TextRect,
+    source: (u32, u32),
+    viewport: OverlayViewport,
+    output: (u32, u32),
+) -> TextRect {
+    let center_x = (u64::from(viewport.game.x1 + viewport.game.x2) * u64::from(output.0)
+        / (2 * u64::from(viewport.output.0))) as u32;
+    let center_y = (u64::from(viewport.game.y1 + viewport.game.y2) * u64::from(output.1)
+        / (2 * u64::from(viewport.output.1))) as u32;
+    let map_x = |x: u32| {
+        let content_x = u64::from(viewport.game.x1)
+            + u64::from(x) * u64::from(viewport.game.width()) / u64::from(source.0);
+        let mapped = (content_x * u64::from(output.0) / u64::from(viewport.output.0)) as u32;
+        zoom_overlay_coordinate(mapped, center_x, viewport.content_zoom_percent, output.0)
+    };
+    let map_y = |y: u32| {
+        let content_y = u64::from(viewport.game.y1)
+            + u64::from(y) * u64::from(viewport.game.height()) / u64::from(source.1);
+        let mapped = (content_y * u64::from(output.1) / u64::from(viewport.output.1)) as u32;
+        zoom_overlay_coordinate(mapped, center_y, viewport.content_zoom_percent, output.1)
+    };
+    TextRect {
+        x1: map_x(rect.x1),
+        y1: map_y(rect.y1),
+        x2: map_x(rect.x2),
+        y2: map_y(rect.y2),
+    }
+}
+
+fn zoom_overlay_coordinate(value: u32, center: u32, percent: u32, limit: u32) -> u32 {
+    let delta = i64::from(value) - i64::from(center);
+    (i64::from(center) + delta * i64::from(percent) / 100).clamp(0, i64::from(limit)) as u32
 }
 
 fn subtitle_font() -> Option<&'static Font> {
@@ -819,12 +1064,19 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
     if region.english.is_empty() || !text_region_allowed(region.rect, width, height) {
         return;
     }
-    // The opaque part must stay attached to the detected source text. Never
-    // enlarge it to accommodate a long or hallucinated translation.
-    let padding = (region.rect.height() / 8).clamp(2, 8);
-    let panel = region.rect.padded(width, height, padding);
-    let usable_width = panel.width().saturating_sub(2 * padding);
-    let usable_height = panel.height().saturating_sub(2 * padding);
+    // The opaque part stays attached to detected source text. A small fixed
+    // margin covers antialiased or shader-expanded glyph edges, but a long
+    // translation never enlarges the panel.
+    let vertical_padding = (region.rect.height() / 4).clamp(3, 18);
+    let horizontal_padding = (region.rect.width() / 8).clamp(3, 36);
+    let panel = TextRect {
+        x1: region.rect.x1.saturating_sub(horizontal_padding),
+        y1: region.rect.y1.saturating_sub(vertical_padding),
+        x2: region.rect.x2.saturating_add(horizontal_padding).min(width),
+        y2: region.rect.y2.saturating_add(vertical_padding).min(height),
+    };
+    let usable_width = panel.width().saturating_sub(2 * horizontal_padding);
+    let usable_height = panel.height().saturating_sub(2 * vertical_padding);
     let preferred_font_px = (height as f32 / 17.0)
         .clamp(11.0, 52.0)
         .min((region.rect.height() as f32 / 3.5).max(11.0));
@@ -871,8 +1123,8 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
                 .map(|ch| font.metrics(ch, font_px).advance_width)
                 .sum();
             let mut cursor_x = (text_center_x as f32 - line_width / 2.0).clamp(
-                (panel.x1 + padding) as f32,
-                (panel.x2.saturating_sub(padding)) as f32,
+                (panel.x1 + horizontal_padding) as f32,
+                (panel.x2.saturating_sub(horizontal_padding)) as f32,
             );
             let baseline = text_top as f32 + row as f32 * line_height as f32 + ascent;
             for ch in line.chars() {
@@ -1001,7 +1253,7 @@ fn wrap_caption(text: &str, columns: usize, max_lines: usize) -> Option<Vec<Stri
 fn recognize_text_at(image: &str, base_url: &str) -> Result<String> {
     let raw = ollama_chat(
         OCR_MODEL,
-        "Text Recognition: Read only visible game dialogue, menu labels, and instructions in reading order. Return only the recognized text, without markdown, code fences, or commentary.",
+        "Text Recognition: Transcribe only text actually visible in this cropped game image. Preserve its original writing system, including Japanese kana and kanji. Do not translate, transliterate, repeat, explain, or guess. Return at most two lines of source text; if it is unreadable, return UNREADABLE.",
         Some(image),
         base_url,
     )?;
@@ -1015,12 +1267,28 @@ fn clean_ocr_text(raw: &str) -> String {
     let mut lines = Vec::new();
     for line in before_fence.lines() {
         let line = line.trim().trim_matches('"').trim();
+        let line = ["Text:", "OCR:", "Transcription:", "Recognized text:"]
+            .iter()
+            .find_map(|prefix| line.strip_prefix(prefix))
+            .unwrap_or(line)
+            .trim();
         if line.is_empty() || lines.last().is_some_and(|previous| *previous == line) {
             continue;
         }
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("unreadable")
+            || lower.starts_with("wait, let me")
+            || lower.starts_with("i cannot")
+            || lower.contains("abcdefghijklmnopqrstuvwxyz")
+        {
+            break;
+        }
         lines.push(line);
+        if lines.len() == 2 {
+            break;
+        }
     }
-    lines.join("\n").chars().take(1200).collect()
+    lines.join("\n").chars().take(160).collect()
 }
 
 fn translate_text_at(
@@ -1043,7 +1311,7 @@ fn translate_text_at(
         (name.to_owned(), settings.source_language.clone())
     };
     let prompt = format!(
-        "You are a professional {source_name} ({source_code}) to English (en) translator. Translate the following game dialogue or menu text accurately into natural English. Preserve names and the order of lines. Return only the English translation, without explanations or commentary.\n\n{source_text}"
+        "You are a professional {source_name} ({source_code}) to English (en) translator. Translate the following game dialogue or menu text accurately into natural English. Preserve names and the order of lines. Return only the exact English text that should replace the source. Do not add labels such as Text or Translation, explanations, extra punctuation, or commentary.\n\n{source_text}"
     );
     let raw = ollama_chat(&settings.model, &prompt, None, base_url)?;
     Ok(english_only_translation(&raw))
@@ -1068,7 +1336,7 @@ fn ollama_chat(model: &str, prompt: &str, image: Option<&str>, base_url: &str) -
         "messages": [message],
         "stream": false,
         "keep_alive": "10m",
-        "options": {"temperature": 0, "num_predict": 256},
+        "options": {"temperature": 0, "num_predict": if image.is_some() { 96 } else { 256 }},
     });
     let mut response = http_agent(Duration::from_secs(60))
         .post(&format!("{base_url}/api/chat"))
@@ -1109,6 +1377,32 @@ fn write_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flatpak_filesystem_flags_are_not_parsed_as_retroarch_options() {
+        let executable = EmulatorExecutable::Flatpak {
+            command: PathBuf::from("/usr/bin/flatpak"),
+            app_id: "org.libretro.RetroArch".to_owned(),
+        };
+        let arguments = [
+            "run",
+            "--filesystem=/tmp/lunchbox-session",
+            "org.libretro.RetroArch",
+            "--set-shader=/tmp/retrotube-tv-system-bezel.slangp",
+            "--appendconfig",
+            "/tmp/lunchbox-display.cfg",
+            "-L",
+            "/tmp/mesen-s_libretro.so",
+            "/tmp/game.sfc",
+        ]
+        .map(OsString::from);
+        let app_arguments = retroarch_app_arguments(&arguments, &executable).unwrap();
+        assert_eq!(
+            crate::controller_launch_modes::append_config_index(app_arguments).unwrap(),
+            Some(1)
+        );
+        assert!(retrotube_shader_active(app_arguments));
+    }
 
     #[test]
     fn translation_hotkey_preserves_retroarch_screenshots() {
@@ -1310,6 +1604,155 @@ mod tests {
     }
 
     #[test]
+    fn dense_character_picker_leaves_only_header_labels() {
+        let mut boxes = vec![
+            TextRect {
+                x1: 16,
+                y1: 20,
+                x2: 88,
+                y2: 50,
+            },
+            TextRect {
+                x1: 300,
+                y1: 37,
+                x2: 386,
+                y2: 66,
+            },
+            TextRect {
+                x1: 300,
+                y1: 80,
+                x2: 466,
+                y2: 105,
+            },
+            TextRect {
+                x1: 41,
+                y1: 160,
+                x2: 491,
+                y2: 185,
+            },
+        ];
+        for row in 0..6 {
+            for column in 0..4 {
+                let x = 40 + column * 115;
+                let y = 200 + row * 40;
+                boxes.push(TextRect {
+                    x1: x,
+                    y1: y,
+                    x2: x + 90,
+                    y2: y + 26,
+                });
+            }
+        }
+        assert_eq!(
+            group_text_boxes(boxes, 512, 478),
+            vec![
+                TextRect {
+                    x1: 16,
+                    y1: 20,
+                    x2: 88,
+                    y2: 50
+                },
+                TextRect {
+                    x1: 300,
+                    y1: 37,
+                    x2: 386,
+                    y2: 66
+                },
+                TextRect {
+                    x1: 300,
+                    y1: 80,
+                    x2: 466,
+                    y2: 105
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn overlay_maps_core_text_into_centered_ultrawide_game_opening() {
+        let viewport = OverlayViewport {
+            output: (6656, 2808),
+            game: TextRect {
+                x1: 1786,
+                y1: 249,
+                x2: 4870,
+                y2: 2558,
+            },
+            content_zoom_percent: 100,
+        };
+        let output = overlay_image_dimensions(viewport);
+        assert_eq!(output, (2048, 864));
+        let full = map_overlay_rect(
+            TextRect {
+                x1: 0,
+                y1: 0,
+                x2: 512,
+                y2: 478,
+            },
+            (512, 478),
+            viewport,
+            output,
+        );
+        assert!(full.x1 > 500 && full.x2 < 1550);
+        assert!(full.y1 > 50 && full.y2 < 800);
+        let label = map_overlay_rect(
+            TextRect {
+                x1: 300,
+                y1: 80,
+                x2: 466,
+                y2: 105,
+            },
+            (512, 478),
+            viewport,
+            output,
+        );
+        assert!(label.x1 >= full.x1 && label.x2 <= full.x2);
+        assert!(label.y1 >= full.y1 && label.y2 <= full.y2);
+        assert!(label.width() < full.width() / 2);
+    }
+
+    #[test]
+    fn retrotube_zoom_aligns_labels_to_the_rendered_sd3_menu() {
+        let viewport = OverlayViewport {
+            output: (6656, 2808),
+            game: TextRect {
+                x1: 1786,
+                y1: 249,
+                x2: 4870,
+                y2: 2558,
+            },
+            content_zoom_percent: 120,
+        };
+        let output = overlay_image_dimensions(viewport);
+        let duran = map_overlay_rect(
+            TextRect {
+                x1: 63,
+                y1: 58,
+                x2: 124,
+                y2: 88,
+            },
+            (512, 478),
+            viewport,
+            output,
+        );
+        let fighter = map_overlay_rect(
+            TextRect {
+                x1: 293,
+                y1: 77,
+                x2: 362,
+                y2: 100,
+            },
+            (512, 478),
+            viewport,
+            output,
+        );
+        assert!((575..=600).contains(&duran.x1));
+        assert!((95..=115).contains(&duran.y1));
+        assert!((1090..=1115).contains(&fighter.x1));
+        assert!((130..=150).contains(&fighter.y1));
+    }
+
+    #[test]
     fn long_translation_cannot_expand_panel_or_truncate_into_a_caption() {
         let rect = TextRect {
             x1: 1300,
@@ -1330,7 +1773,12 @@ mod tests {
         let mut short = region;
         short.english = "Open the door.".to_owned();
         draw_region(&mut pixels, 5120, 2160, &short);
-        let panel = rect.padded(5120, 2160, 8);
+        let panel = TextRect {
+            x1: 1264,
+            y1: 1513,
+            x2: 2086,
+            y2: 1617,
+        };
         for (index, pixel) in pixels.chunks_exact(4).enumerate() {
             if pixel[3] != 0 {
                 let x = index as u32 % 5120;
@@ -1359,6 +1807,12 @@ mod tests {
             ),
             "ここはマナの聖地です。\n勇者よ、扉を開けてください。"
         );
+    }
+
+    #[test]
+    fn ocr_strips_model_generated_text_label() {
+        assert_eq!(clean_ocr_text("デュラン\nText: デュラン"), "デュラン");
+        assert_eq!(clean_ocr_text("OCR: ファイター"), "ファイター");
     }
 
     #[test]
@@ -1440,6 +1894,7 @@ mod tests {
             &mut stream,
             "secret",
             &TranslationSettings::default(),
+            None,
             None,
             &mut cached,
             &mut None,
@@ -1551,17 +2006,47 @@ mod tests {
     fn live_ollama_overlay_probe() {
         let source_path = std::env::var("LUNCHBOX_TRANSLATION_SOURCE_IMAGE").unwrap();
         let overlay_path = std::env::var("LUNCHBOX_TRANSLATION_OVERLAY_IMAGE").unwrap();
-        let source = std::fs::read(source_path).unwrap();
+        let mut source = std::fs::read(source_path).unwrap();
+        if let Ok(crop) = std::env::var("LUNCHBOX_TRANSLATION_SOURCE_CROP") {
+            let values = crop
+                .split(',')
+                .map(|part| part.parse::<u32>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(values.len(), 4);
+            let image = image::load_from_memory(&source).unwrap().into_rgb8();
+            let cropped =
+                image::imageops::crop_imm(&image, values[0], values[1], values[2], values[3])
+                    .to_image();
+            let resized =
+                image::imageops::resize(&cropped, 512, 478, image::imageops::FilterType::Triangle);
+            let mut encoded = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(resized)
+                .write_to(&mut encoded, image::ImageFormat::Png)
+                .unwrap();
+            source = encoded.into_inner();
+        }
         let (width, height) = png_dimensions(&source).unwrap();
         let image = BASE64.encode(source);
         download_detector(&AtomicBool::new(false)).unwrap();
         let detector = load_detector().unwrap();
+        let viewport =
+            std::env::var_os("LUNCHBOX_TRANSLATION_ULTRAWIDE_PROBE").map(|_| OverlayViewport {
+                output: (6656, 2808),
+                game: TextRect {
+                    x1: 1786,
+                    y1: 249,
+                    x2: 4870,
+                    y2: 2558,
+                },
+                content_zoom_percent: 120,
+            });
         let (regions, overlay) = render_translation(
             &TranslationSettings::default(),
             &image,
             width,
             height,
             &detector,
+            viewport,
             None,
         )
         .unwrap();

@@ -6389,6 +6389,7 @@ impl qobject::GameDetailsModel {
                             &mut plan,
                             &option.executable,
                             &settings.translation,
+                            output_dimensions,
                         ) {
                             Ok(session) => translation_session = session,
                             Err(error) => {

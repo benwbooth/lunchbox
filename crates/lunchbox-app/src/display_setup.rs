@@ -636,7 +636,7 @@ pub fn attach_launch_display_configuration(
 /// GL backing surface, so custom viewport pixels must use the same units.
 /// Other contexts use the native mode directly. No host-specific DPI is baked
 /// into the launch profile or the artwork.
-fn probe_retroarch_output_dimensions(
+pub(crate) fn probe_retroarch_output_dimensions(
     executable: &EmulatorExecutable,
     qt_dimensions: Option<(u32, u32)>,
 ) -> Result<(u32, u32)> {
