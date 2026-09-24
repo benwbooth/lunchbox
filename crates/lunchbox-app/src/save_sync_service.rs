@@ -285,6 +285,7 @@ impl PreparedSync {
             && let Some(remote) = &self.remote
         {
             if self.own_manifest_id.as_deref() == Some(remote.id.as_str()) {
+                store.publish_readable_current(remote, None)?;
                 return Ok(AppliedSync {
                     manifest_id: remote.id.clone(),
                     recovery_directory: None,
@@ -292,6 +293,7 @@ impl PreparedSync {
                 });
             }
             if self.own_manifest_id.is_none() {
+                store.publish_readable_current(remote, None)?;
                 store.set_device_head(&DeviceHead::new(
                     self.scope.clone(),
                     self.device_id.clone(),
@@ -326,7 +328,7 @@ impl PreparedSync {
                 .as_ref()
                 .context("upload action has no file version")?;
             let path = artifact_path(&roots, &action.key)?;
-            store.put_blob_file(&self.scope, version, &path)?;
+            store.put_artifact_file(&self.scope, &action.key, version, &path)?;
         }
 
         let files = merged_files(&self.local, self.remote.as_ref(), &actions)?;
@@ -365,6 +367,7 @@ impl PreparedSync {
         }
 
         store.put_manifest(&manifest)?;
+        store.publish_readable_current(&manifest, self.remote.as_ref())?;
         store.set_device_head(&DeviceHead::new(
             self.scope.clone(),
             self.device_id.clone(),
@@ -927,7 +930,7 @@ fn prepare_local_mutations(
                 .create_new(true)
                 .open(&path)
                 .context("creating staged local save")?;
-            store.copy_blob_to(scope, version, &mut file)?;
+            store.copy_artifact_to(scope, &action.key, version, &mut file)?;
             file.sync_all().context("syncing staged local save")?;
             Some(path)
         } else {
@@ -1273,6 +1276,21 @@ mod tests {
 
         let prefix = provider.path().join("saves/v1/duckstation/linux");
         assert!(prefix.join("devices/device-a.json").is_file());
+        assert_eq!(
+            std::fs::read(prefix.join("current/saves/0/game.sav")).unwrap(),
+            b"folder-backed save"
+        );
+        assert_eq!(
+            std::fs::read(
+                prefix
+                    .join("versions")
+                    .join(FileVersion::from_bytes(b"folder-backed save", 1000).sha256)
+                    .join("saves/0/game.sav")
+            )
+            .unwrap(),
+            b"folder-backed save"
+        );
+        assert!(!prefix.join("blobs").exists());
         assert!(
             prefix
                 .join("manifests")

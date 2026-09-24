@@ -156,6 +156,16 @@ read-only discovery catalogs are deliberately excluded. Native paths remain
 lossless, so a profile moved between Linux, Windows, and macOS should be checked
 with Library Audit and relinked explicitly where host paths differ.
 
+Local-folder save sync (including an Insync-managed folder) keeps directly
+usable files at `saves/v1/<emulator>/<runtime>/current/saves/<route>/<game>.srm`
+and `current/states/<route>/<game>.state.auto`. Historical copies retain those
+filenames under `versions/<sha256>/saves|states/<route>/`; JSON manifests still
+record conflict ancestry and hashes. Lunchbox manages `current/`, so copy files
+out to edit them rather than changing the backup in place. Older hash-named
+`blobs/` remain readable during upgrade. The `lunchbox-save-migrate` utility
+can first prepare and verify named copies, then remove legacy blobs after the
+new files have been confirmed in the external sync provider.
+
 To exercise the preserved acquisition-first catalog, layer the local legacy
 game catalog, Minerva bundle index, and optional user state over the canonical
 database:

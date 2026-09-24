@@ -1,11 +1,13 @@
 //! OpenDAL-backed cloud storage for save synchronization.
 //!
-//! Blobs and manifests are immutable and content-addressed. Each installation
-//! updates only its own device-head pointer, avoiding a cross-provider global
+//! Manifests and historical save versions are immutable. Local-folder stores
+//! keep the original filenames in both their current and versioned copies;
+//! older content-addressed blobs remain readable for migration. Each
+//! installation updates only its own device-head pointer, avoiding a cross-provider global
 //! compare-and-swap requirement (Google Drive and Dropbox do not expose the
 //! conditional-write primitive that OneDrive does).
 
-use crate::save_sync::{FileVersion, SaveManifest, SyncScope};
+use crate::save_sync::{ArtifactKey, FileVersion, SaveManifest, SyncScope};
 use anyhow::{Context, Result, ensure};
 use opendal::layers::{RetryLayer, TimeoutLayer};
 #[cfg(test)]
@@ -282,6 +284,14 @@ pub struct CloudStore {
     _runtime: Arc<tokio::runtime::Runtime>,
     operator: blocking::Operator,
     can_rename: bool,
+    local_folder: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct LegacyMigrationReport {
+    pub named_versions: usize,
+    pub current_files: usize,
+    pub removed_blobs: usize,
 }
 
 impl CloudStore {
@@ -317,7 +327,9 @@ impl CloudStore {
                 Operator::new(builder).context("configuring OneDrive save storage")?
             }
         };
-        Self::from_operator(operator)
+        let mut store = Self::from_operator(operator)?;
+        store.local_folder = provider == CloudProvider::LocalFolder;
+        Ok(store)
     }
 
     #[cfg(test)]
@@ -356,7 +368,31 @@ impl CloudStore {
             _runtime: runtime,
             operator: blocking,
             can_rename: capability.rename,
+            local_folder: false,
         })
+    }
+
+    /// Save a version under its original filename. The digest names only its
+    /// containing version directory, so the file can be opened or copied by
+    /// a user without decoding a manifest or renaming a blob.
+    pub fn put_artifact_file(
+        &self,
+        scope: &SyncScope,
+        key: &ArtifactKey,
+        version: &FileVersion,
+        local_path: &Path,
+    ) -> Result<()> {
+        key.route()?;
+        if self.local_folder {
+            self.put_verified_file_at(
+                scope,
+                version,
+                local_path,
+                &named_version_path(scope, key, version),
+            )
+        } else {
+            self.put_blob_file(scope, version, local_path)
+        }
     }
 
     /// Perform authenticated write/read/delete IO without touching save data.
@@ -425,14 +461,28 @@ impl CloudStore {
         version: &FileVersion,
         local_path: &Path,
     ) -> Result<()> {
+        self.put_verified_file_at(
+            scope,
+            version,
+            local_path,
+            &blob_path(scope, &version.sha256),
+        )
+    }
+
+    fn put_verified_file_at(
+        &self,
+        scope: &SyncScope,
+        version: &FileVersion,
+        local_path: &Path,
+        final_path: &str,
+    ) -> Result<()> {
         scope.validate()?;
-        let final_path = blob_path(scope, &version.sha256);
         if self
             .operator
-            .exists(&final_path)
-            .context("checking cloud save blob")?
+            .exists(final_path)
+            .context("checking saved file version")?
         {
-            return self.verify_remote_blob(scope, version);
+            return self.verify_remote_path(final_path, version);
         }
 
         let before = std::fs::metadata(local_path)
@@ -498,19 +548,24 @@ impl CloudStore {
             // this verified staging object.
             if self
                 .operator
-                .exists(&final_path)
-                .context("rechecking cloud save blob")?
+                .exists(final_path)
+                .context("rechecking saved file version")?
             {
-                self.verify_remote_blob(scope, version)?;
+                self.verify_remote_path(final_path, version)?;
             } else {
+                if let Some((parent, _)) = final_path.rsplit_once('/') {
+                    self.operator
+                        .create_dir(&format!("{parent}/"))
+                        .context("creating save version directory")?;
+                }
                 if self.can_rename {
                     self.operator
-                        .rename(&staging_path, &final_path)
-                        .context("publishing immutable cloud save blob")?;
+                        .rename(&staging_path, final_path)
+                        .context("publishing immutable save version")?;
                 } else {
-                    self.copy_remote_path(&staging_path, &final_path)?;
+                    self.copy_remote_path(&staging_path, final_path)?;
                 }
-                self.verify_remote_blob(scope, version)?;
+                self.verify_remote_path(final_path, version)?;
             }
             Ok(())
         })();
@@ -528,12 +583,34 @@ impl CloudStore {
         destination: &mut impl Write,
     ) -> Result<()> {
         scope.validate()?;
+        self.copy_verified_path_to(&blob_path(scope, &version.sha256), version, destination)
+    }
+
+    pub fn copy_artifact_to(
+        &self,
+        scope: &SyncScope,
+        key: &ArtifactKey,
+        version: &FileVersion,
+        destination: &mut impl Write,
+    ) -> Result<()> {
+        scope.validate()?;
+        key.route()?;
+        let path = self.version_source_path(scope, key, version)?;
+        self.copy_verified_path_to(&path, version, destination)
+    }
+
+    fn copy_verified_path_to(
+        &self,
+        path: &str,
+        version: &FileVersion,
+        destination: &mut impl Write,
+    ) -> Result<()> {
         let mut source = self
             .operator
-            .reader(&blob_path(scope, &version.sha256))
-            .context("opening cloud save blob")?
+            .reader(path)
+            .context("opening saved file version")?
             .into_std_read(..)
-            .context("streaming cloud save blob")?;
+            .context("streaming saved file version")?;
         let mut hasher = Sha256::new();
         let mut total = 0_u64;
         let mut buffer = vec![0_u8; 1024 * 1024];
@@ -558,6 +635,186 @@ impl CloudStore {
             "cloud save blob hash mismatch"
         );
         Ok(())
+    }
+
+    fn version_source_path(
+        &self,
+        scope: &SyncScope,
+        key: &ArtifactKey,
+        version: &FileVersion,
+    ) -> Result<String> {
+        let legacy = blob_path(scope, &version.sha256);
+        if self.local_folder {
+            let named = named_version_path(scope, key, version);
+            if self
+                .operator
+                .exists(&named)
+                .context("checking named save version")?
+            {
+                return Ok(named);
+            }
+            // Promote legacy content the first time it is used. Keep the old
+            // object for devices that have not yet upgraded their sync code.
+            self.verify_remote_path(&legacy, version)?;
+            if let Some((parent, _)) = named.rsplit_once('/') {
+                self.operator
+                    .create_dir(&format!("{parent}/"))
+                    .context("creating migrated save version directory")?;
+            }
+            self.copy_remote_path(&legacy, &named)?;
+            self.verify_remote_path(&named, version)?;
+            return Ok(named);
+        }
+        Ok(legacy)
+    }
+
+    /// A browsable copy of the committed backup, without encoded filenames.
+    /// The immutable named versions remain the source for conflict recovery.
+    pub fn publish_readable_current(
+        &self,
+        manifest: &SaveManifest,
+        previous: Option<&SaveManifest>,
+    ) -> Result<()> {
+        if !self.local_folder {
+            return Ok(());
+        }
+        manifest.validate()?;
+        for (key, version) in &manifest.files {
+            let current = current_file_path(&manifest.scope, key);
+            if self
+                .operator
+                .exists(&current)
+                .context("checking readable save backup")?
+                && self.verify_remote_path(&current, version).is_ok()
+            {
+                continue;
+            }
+            let source = self.version_source_path(&manifest.scope, key, version)?;
+            let staged = format!(
+                "{}/staging/current-{}",
+                manifest.scope.remote_prefix(),
+                Uuid::new_v4().simple()
+            );
+            let result = (|| {
+                self.copy_remote_path(&source, &staged)?;
+                self.verify_remote_path(&staged, version)?;
+                if let Some((parent, _)) = current.rsplit_once('/') {
+                    self.operator
+                        .create_dir(&format!("{parent}/"))
+                        .context("creating readable save directory")?;
+                }
+                self.operator
+                    .rename(&staged, &current)
+                    .context("publishing readable save backup")?;
+                self.verify_remote_path(&current, version)
+            })();
+            let _ = self.operator.delete(&staged);
+            result?;
+        }
+        if let Some(previous) = previous {
+            for key in previous.files.keys() {
+                if !manifest.files.contains_key(key) {
+                    self.operator
+                        .delete(&current_file_path(&manifest.scope, key))
+                        .context("removing obsolete readable save backup")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Convert every manifest-backed legacy blob in one local-folder scope
+    /// before removing any of them. Unreferenced blobs are retained as possible
+    /// interrupted-upload recovery data and make a cleanup request fail closed.
+    pub fn migrate_legacy_scope(
+        &self,
+        scope: &SyncScope,
+        device_id: &str,
+        remove_blobs: bool,
+    ) -> Result<LegacyMigrationReport> {
+        ensure!(
+            self.local_folder,
+            "legacy migration requires a local folder"
+        );
+        scope.validate()?;
+        let heads = self.device_heads(scope)?;
+        ensure!(
+            heads.len() == 1 && heads[0].device_id == device_id,
+            "legacy cleanup requires exactly one known device head for this scope"
+        );
+
+        let manifest_prefix = format!("{}/manifests/", scope.remote_prefix());
+        let entries = self
+            .operator
+            .list(&manifest_prefix)
+            .context("listing legacy save manifests")?;
+        ensure!(
+            entries.len() <= MAX_GRAPH_MANIFESTS,
+            "too many legacy save manifests to migrate safely"
+        );
+        let mut referenced = BTreeMap::<String, Vec<(ArtifactKey, FileVersion)>>::new();
+        for entry in entries {
+            let path = entry.path();
+            let Some(id) = path
+                .strip_prefix(&manifest_prefix)
+                .and_then(|name| name.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            let manifest = self.get_manifest(scope, id)?;
+            for (key, version) in manifest.files {
+                let versions = referenced.entry(version.sha256.clone()).or_default();
+                if !versions.iter().any(|(existing, _)| existing == &key) {
+                    versions.push((key, version));
+                }
+            }
+        }
+        let blob_prefix = format!("{}/blobs/", scope.remote_prefix());
+        let blobs = self
+            .operator
+            .list(&blob_prefix)
+            .context("listing legacy save blobs")?
+            .into_iter()
+            .filter_map(|entry| entry.path().strip_prefix(&blob_prefix).map(str::to_owned))
+            .filter(|name| !name.is_empty() && !name.ends_with('/'))
+            .collect::<Vec<_>>();
+        for digest in &blobs {
+            validate_sha256(digest)?;
+            ensure!(
+                referenced.contains_key(digest),
+                "unreferenced legacy save blob {digest} needs manual recovery review"
+            );
+        }
+
+        let mut named_versions = 0;
+        for versions in referenced.values() {
+            for (key, version) in versions {
+                let named = self.version_source_path(scope, key, version)?;
+                self.verify_remote_path(&named, version)?;
+                named_versions += 1;
+            }
+        }
+        let current_manifest = self.get_manifest(scope, &heads[0].manifest_id)?;
+        self.publish_readable_current(&current_manifest, None)?;
+        // Recheck every migrated copy before the first destructive operation.
+        for digest in &blobs {
+            for (key, version) in &referenced[digest] {
+                self.verify_remote_path(&blob_path(scope, digest), version)?;
+                self.verify_remote_path(&named_version_path(scope, key, version), version)?;
+            }
+        }
+        if remove_blobs {
+            for digest in &blobs {
+                self.operator
+                    .delete(&blob_path(scope, digest))
+                    .context("removing verified legacy save blob")?;
+            }
+        }
+        Ok(LegacyMigrationReport {
+            named_versions,
+            current_files: current_manifest.files.len(),
+            removed_blobs: if remove_blobs { blobs.len() } else { 0 },
+        })
     }
 
     pub fn put_manifest(&self, manifest: &SaveManifest) -> Result<()> {
@@ -733,10 +990,6 @@ impl CloudStore {
         Ok(())
     }
 
-    fn verify_remote_blob(&self, scope: &SyncScope, version: &FileVersion) -> Result<()> {
-        self.verify_remote_path(&blob_path(scope, &version.sha256), version)
-    }
-
     fn copy_remote_path(&self, source_path: &str, destination_path: &str) -> Result<()> {
         let mut source = self
             .operator
@@ -844,6 +1097,19 @@ fn configure_onedrive(mut builder: Onedrive, auth: &CloudAuth) -> Onedrive {
         builder = builder.client_secret(secret);
     }
     builder
+}
+
+fn named_version_path(scope: &SyncScope, key: &ArtifactKey, version: &FileVersion) -> String {
+    format!(
+        "{}/versions/{}/{}",
+        scope.remote_prefix(),
+        version.sha256,
+        key.as_str()
+    )
+}
+
+fn current_file_path(scope: &SyncScope, key: &ArtifactKey) -> String {
+    format!("{}/current/{}", scope.remote_prefix(), key.as_str())
 }
 
 fn blob_path(scope: &SyncScope, digest: &str) -> String {
@@ -1099,7 +1365,7 @@ mod tests {
     }
 
     #[test]
-    fn local_folder_store_probes_and_preserves_the_remote_prefix() {
+    fn local_folder_store_keeps_usable_filenames_and_reads_legacy_blobs() {
         let directory = tempfile::tempdir().unwrap();
         let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
         let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
@@ -1113,13 +1379,198 @@ mod tests {
 
         let bytes = b"folder-backed save";
         let file = version(bytes, 100);
-        store.put_blob(&scope(), &file, bytes).unwrap();
-        let expected = directory
+        let key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::Saves,
+                root_index: 0,
+            },
+            "Seiken Densetsu 3.srm",
+        )
+        .unwrap();
+        let local = directory.path().join("local.srm");
+        std::fs::write(&local, bytes).unwrap();
+        store
+            .put_artifact_file(&scope(), &key, &file, &local)
+            .unwrap();
+        let named = directory
             .path()
-            .join("saves/v1/duckstation/linux/blobs")
-            .join(&file.sha256);
-        assert_eq!(std::fs::read(expected).unwrap(), bytes);
-        assert_eq!(store.get_blob(&scope(), &file).unwrap(), bytes);
+            .join("saves/v1/duckstation/linux/versions")
+            .join(&file.sha256)
+            .join(key.as_str());
+        assert_eq!(std::fs::read(named).unwrap(), bytes);
+        let mut downloaded = Vec::new();
+        store
+            .copy_artifact_to(&scope(), &key, &file, &mut downloaded)
+            .unwrap();
+        assert_eq!(downloaded, bytes);
+
+        let first = SaveManifest::new(
+            scope(),
+            Vec::new(),
+            "desktop-a",
+            100,
+            BTreeMap::from([(key.clone(), file.clone())]),
+        )
+        .unwrap();
+        store.publish_readable_current(&first, None).unwrap();
+        let current = directory
+            .path()
+            .join("saves/v1/duckstation/linux/current")
+            .join(key.as_str());
+        assert_eq!(std::fs::read(&current).unwrap(), bytes);
+
+        let replacement = b"new game save";
+        std::fs::write(&local, replacement).unwrap();
+        let replacement_version = version(replacement, 200);
+        store
+            .put_artifact_file(&scope(), &key, &replacement_version, &local)
+            .unwrap();
+        let second = SaveManifest::new(
+            scope(),
+            vec![first.id.clone()],
+            "desktop-a",
+            200,
+            BTreeMap::from([(key.clone(), replacement_version)]),
+        )
+        .unwrap();
+        store
+            .publish_readable_current(&second, Some(&first))
+            .unwrap();
+        assert_eq!(std::fs::read(&current).unwrap(), replacement);
+
+        let old_key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::States,
+                root_index: 0,
+            },
+            "Legacy Game.state.auto",
+        )
+        .unwrap();
+        let old_bytes = b"legacy state";
+        let old_version = version(old_bytes, 100);
+        store.put_blob(&scope(), &old_version, old_bytes).unwrap();
+        let mut restored = Vec::new();
+        store
+            .copy_artifact_to(&scope(), &old_key, &old_version, &mut restored)
+            .unwrap();
+        assert_eq!(restored, old_bytes);
+        assert_eq!(
+            std::fs::read(
+                directory
+                    .path()
+                    .join("saves/v1/duckstation/linux/versions")
+                    .join(&old_version.sha256)
+                    .join(old_key.as_str())
+            )
+            .unwrap(),
+            old_bytes
+        );
+    }
+
+    #[test]
+    fn local_folder_migrates_all_manifest_versions_before_removing_legacy_blobs() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
+        let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
+        let key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::States,
+                root_index: 0,
+            },
+            "Game.state.auto",
+        )
+        .unwrap();
+        let older = version(b"older state", 100);
+        let newer = version(b"newer state", 200);
+        for (file, bytes) in [
+            (&older, b"older state".as_slice()),
+            (&newer, b"newer state"),
+        ] {
+            store.put_blob(&scope(), file, bytes).unwrap();
+        }
+        let first = SaveManifest::new(
+            scope(),
+            Vec::new(),
+            "desktop-a",
+            100,
+            BTreeMap::from([(key.clone(), older.clone())]),
+        )
+        .unwrap();
+        let second = SaveManifest::new(
+            scope(),
+            vec![first.id.clone()],
+            "desktop-a",
+            200,
+            BTreeMap::from([(key.clone(), newer.clone())]),
+        )
+        .unwrap();
+        store.put_manifest(&first).unwrap();
+        store.put_manifest(&second).unwrap();
+        store
+            .set_device_head(
+                &DeviceHead::new(scope(), "desktop-a", second.id.clone(), 200).unwrap(),
+            )
+            .unwrap();
+
+        let report = store
+            .migrate_legacy_scope(&scope(), "desktop-a", true)
+            .unwrap();
+        assert_eq!(report.named_versions, 2);
+        assert_eq!(report.current_files, 1);
+        assert_eq!(report.removed_blobs, 2);
+        for (file, bytes) in [
+            (&older, b"older state".as_slice()),
+            (&newer, b"newer state"),
+        ] {
+            assert_eq!(
+                std::fs::read(
+                    directory
+                        .path()
+                        .join(named_version_path(&scope(), &key, file))
+                )
+                .unwrap(),
+                bytes
+            );
+            assert!(
+                !directory
+                    .path()
+                    .join(blob_path(&scope(), &file.sha256))
+                    .exists()
+            );
+        }
+        assert_eq!(
+            std::fs::read(directory.path().join(current_file_path(&scope(), &key))).unwrap(),
+            b"newer state"
+        );
+    }
+
+    #[test]
+    fn local_folder_refuses_to_delete_unreferenced_legacy_blob() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
+        let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
+        let manifest = manifest(Vec::new(), "desktop-a", 100, b"known save");
+        store
+            .put_blob(&scope(), &version(b"known save", 100), b"known save")
+            .unwrap();
+        store
+            .put_blob(&scope(), &version(b"orphan", 100), b"orphan")
+            .unwrap();
+        store.put_manifest(&manifest).unwrap();
+        store
+            .set_device_head(&DeviceHead::new(scope(), "desktop-a", manifest.id, 100).unwrap())
+            .unwrap();
+        assert!(
+            store
+                .migrate_legacy_scope(&scope(), "desktop-a", true)
+                .is_err()
+        );
+        assert!(
+            directory
+                .path()
+                .join(blob_path(&scope(), &version(b"orphan", 100).sha256))
+                .exists()
+        );
     }
 
     #[test]

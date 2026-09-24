@@ -235,6 +235,7 @@ ApplicationWindow {
     property string saveFileToast: ""
     property bool saveFileToastGood: false
     property var cloudActiveTarget: null
+    property var cloudLastSyncTarget: null
     property string cloudSyncError: ""
     property int mediaBundleProbeStage: 0
     property string mediaPlaybackMessage: ""
@@ -1685,6 +1686,7 @@ ApplicationWindow {
             return
         }
         root.cloudActiveTarget = target
+        root.cloudLastSyncTarget = target
         root.cloudLaunchPending = true
         saveSync.begin_sync(target.emulator_slug, target.runtime_platform,
                             "pre_launch")
@@ -1707,6 +1709,7 @@ ApplicationWindow {
             return
         }
         root.cloudActiveTarget = null
+        root.cloudLastSyncTarget = target
         root.cloudLaunchPending = false
         saveSync.begin_sync(target.emulator_slug, target.runtime_platform, "manual")
     }
@@ -3682,11 +3685,16 @@ ApplicationWindow {
                 saveSyncToastHideTimer.restart()
                 if (saveSync.operation === "post_exit"
                         && saveSync.provider === "local_folder"
-                        && saveSync.local_folder_root.length > 0) {
-                    const destination = saveSync.local_folder_root + "/saves"
+                        && saveSync.local_folder_root.length > 0
+                        && root.cloudLastSyncTarget) {
+                    const destination = saveSync.local_folder_root
+                            + "/saves/v1/"
+                            + root.cloudLastSyncTarget.emulator_slug
+                            + "/" + root.cloudLastSyncTarget.runtime_platform
+                            + "/current"
                     root.saveFileToast = gameDetails.title
                             + ": Save backup synchronized to " + destination
-                            + " (versioned files)"
+                            + " (original filenames)"
                     root.saveFileToastGood = true
                     saveFileToastHideTimer.restart()
                     root.rememberNotification(root.saveFileToast, true)
@@ -6626,6 +6634,7 @@ ApplicationWindow {
                         && saveSync.credentials_saved
                         && saveSync.automatic_enabled
                         && root.cloudActiveTarget) {
+                    root.cloudLastSyncTarget = root.cloudActiveTarget
                     saveSync.begin_sync(root.cloudActiveTarget.emulator_slug,
                                         root.cloudActiveTarget.runtime_platform,
                                         "post_exit")
