@@ -38,6 +38,9 @@ const TRANSLATION_HOTKEY: &str = "f10";
 const MAX_REQUEST_BYTES: usize = 80 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 128 * 1024;
 const MAX_FRAME_PIXELS: u64 = 16_000_000;
+// Keep the game legible beneath a translated region without letting the
+// original glyphs compete with the English foreground.
+const REGION_BACKGROUND_ALPHA: u8 = 224;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -524,6 +527,7 @@ impl TextRect {
 #[derive(Clone, Debug)]
 struct TranslatedRegion {
     rect: TextRect,
+    source_line_height: u32,
     source: String,
     english: String,
     background: [u8; 3],
@@ -735,7 +739,7 @@ fn text_region_allowed(rect: TextRect, width: u32, height: u32) -> bool {
             <= u64::from(width) * u64::from(height) * 20
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct TextGroup {
     rect: TextRect,
     line_height: u32,
@@ -755,7 +759,7 @@ fn nearby_text(a: TextGroup, b: TextGroup, allow_multiline: bool) -> bool {
             && horizontal_overlap >= a.rect.width().min(b.rect.width()) / 2)
 }
 
-fn group_text_boxes(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextRect> {
+fn group_text_regions(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextGroup> {
     let original_count = boxes.len();
     if let Some((grid_top, line_height)) = dense_grid_start(&boxes, width, height) {
         // A character picker or similarly dense menu grid is not dialogue.
@@ -793,7 +797,15 @@ fn group_text_boxes(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<Te
     groups.sort_by_key(|group| std::cmp::Reverse(group.rect.width() * group.rect.height()));
     groups.truncate(8);
     groups.sort_by_key(|group| (group.rect.y1, group.rect.x1));
-    groups.into_iter().map(|group| group.rect).collect()
+    groups
+}
+
+#[cfg(test)]
+fn group_text_boxes(boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextRect> {
+    group_text_regions(boxes, width, height)
+        .into_iter()
+        .map(|group| group.rect)
+        .collect()
 }
 
 fn dense_grid_start(boxes: &[TextRect], width: u32, height: u32) -> Option<(u32, u32)> {
@@ -838,7 +850,7 @@ fn dense_grid_start(boxes: &[TextRect], width: u32, height: u32) -> Option<(u32,
     })
 }
 
-fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<TextRect>> {
+fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<TextGroup>> {
     let (width, height) = image.dimensions();
     let source = ImageSource::from_bytes(image.as_raw(), (width, height))?;
     let prepared = detector.prepare_input(source)?;
@@ -875,7 +887,7 @@ fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<Tex
             rectangles.push(rect);
         }
     }
-    let regions = group_text_boxes(rectangles, width, height);
+    let regions = group_text_regions(rectangles, width, height);
     eprintln!("LUNCHBOX_TRANSLATION_DETECTION: frame={width}x{height} regions={regions:?}");
     Ok(regions)
 }
@@ -940,7 +952,8 @@ fn render_translation(
     );
     let boxes = detect_text_regions(detector, &screenshot)?;
     let mut regions = Vec::new();
-    for rect in boxes {
+    for detected in boxes {
+        let rect = detected.rect;
         let crop = crop_region_png(&screenshot, rect.padded(width, height, 8))?;
         let source = recognize_text_at(&crop, OLLAMA_URL)?;
         if source.chars().filter(|ch| ch.is_alphabetic()).count() < 2 {
@@ -963,6 +976,7 @@ fn render_translation(
         }
         regions.push(TranslatedRegion {
             rect,
+            source_line_height: detected.line_height,
             source,
             english,
             background: sample_text_background(&screenshot, rect),
@@ -974,6 +988,12 @@ fn render_translation(
             .iter()
             .map(|region| TranslatedRegion {
                 rect: map_overlay_rect(region.rect, (width, height), viewport, output),
+                source_line_height: map_overlay_line_height(
+                    region.source_line_height,
+                    (width, height),
+                    viewport,
+                    output,
+                ),
                 source: region.source.clone(),
                 english: region.english.clone(),
                 background: region.background,
@@ -1023,6 +1043,20 @@ fn map_overlay_rect(
     }
 }
 
+fn map_overlay_line_height(
+    line_height: u32,
+    source: (u32, u32),
+    viewport: OverlayViewport,
+    output: (u32, u32),
+) -> u32 {
+    let numerator = u64::from(line_height)
+        * u64::from(viewport.game.height())
+        * u64::from(output.1)
+        * u64::from(viewport.content_zoom_percent);
+    let denominator = u64::from(source.1) * u64::from(viewport.output.1) * 100;
+    ((numerator + denominator / 2) / denominator).max(1) as u32
+}
+
 fn zoom_overlay_coordinate(value: u32, center: u32, percent: u32, limit: u32) -> u32 {
     let delta = i64::from(value) - i64::from(center);
     (i64::from(center) + delta * i64::from(percent) / 100).clamp(0, i64::from(limit)) as u32
@@ -1064,11 +1098,12 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
     if region.english.is_empty() || !text_region_allowed(region.rect, width, height) {
         return;
     }
-    // The opaque part stays attached to detected source text. A small fixed
-    // margin covers antialiased or shader-expanded glyph edges, but a long
-    // translation never enlarges the panel.
-    let vertical_padding = (region.rect.height() / 4).clamp(3, 18);
-    let horizontal_padding = (region.rect.width() / 8).clamp(3, 36);
+    // Pad by the source glyph height, not the dimensions of a merged dialogue
+    // block. This keeps a multi-line translation attached to the text instead
+    // of growing into a large rectangle over the scene.
+    let source_line_height = region.source_line_height.max(1).min(region.rect.height());
+    let vertical_padding = (source_line_height / 5).clamp(2, 8);
+    let horizontal_padding = (source_line_height / 3).clamp(3, 12);
     let panel = TextRect {
         x1: region.rect.x1.saturating_sub(horizontal_padding),
         y1: region.rect.y1.saturating_sub(vertical_padding),
@@ -1076,21 +1111,16 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
         y2: region.rect.y2.saturating_add(vertical_padding).min(height),
     };
     let usable_width = panel.width().saturating_sub(2 * horizontal_padding);
-    let usable_height = panel.height().saturating_sub(2 * vertical_padding);
-    let preferred_font_px = (height as f32 / 17.0)
-        .clamp(11.0, 52.0)
-        .min((region.rect.height() as f32 / 3.5).max(11.0));
-    let Some((font_px, line_height, lines)) = (8..=(preferred_font_px * 2.0) as u32)
-        .rev()
-        .map(|half_px| half_px as f32 / 2.0)
-        .find_map(|font_px| {
-            let line_height = (font_px * 1.35).ceil() as u32;
-            let columns = (usable_width as f32 / (font_px * 0.64)).floor() as usize;
-            let max_lines = (usable_height / line_height).min(6) as usize;
-            wrap_caption(&region.english, columns, max_lines)
-                .map(|lines| (font_px, line_height, lines))
-        })
-    else {
+    let usable_height = panel.height().saturating_sub(vertical_padding);
+    let font = subtitle_font();
+    let Some((font_px, line_height, lines)) = choose_caption_layout(
+        &region.english,
+        font,
+        source_line_height,
+        height,
+        usable_width,
+        usable_height,
+    ) else {
         return;
     };
     let total_height = line_height * lines.len() as u32;
@@ -1107,13 +1137,13 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
                     region.background[0],
                     region.background[1],
                     region.background[2],
-                    255,
+                    REGION_BACKGROUND_ALPHA,
                 ],
             );
         }
     }
     let mut mask = vec![0u8; panel.width() as usize * panel.height() as usize];
-    if let Some(font) = subtitle_font() {
+    if let Some(font) = font {
         let ascent = font
             .horizontal_line_metrics(font_px)
             .map_or(font_px, |metrics| metrics.ascent);
@@ -1184,14 +1214,43 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
             let y = panel.y1 + index as u32 / panel.width();
             let pixel_index = ((y * width + x) * 4) as usize;
             let pixel = &mut pixels[pixel_index..pixel_index + 4];
+            let ink = u32::from(coverage);
+            let background = u32::from(REGION_BACKGROUND_ALPHA);
+            let output_alpha = ink * 255 + background * (255 - ink);
             for channel in &mut pixel[..3] {
-                *channel = (((u32::from(*channel) * u32::from(255 - coverage))
-                    + foreground * u32::from(coverage))
-                    / 255) as u8;
+                let output_color =
+                    foreground * ink * 255 + u32::from(*channel) * background * (255 - ink);
+                *channel = ((output_color + output_alpha / 2) / output_alpha) as u8;
             }
-            pixel[3] = pixel[3].max(coverage);
+            pixel[3] = ((output_alpha + 127) / 255) as u8;
         }
     }
+}
+
+fn choose_caption_layout(
+    text: &str,
+    font: Option<&Font>,
+    source_line_height: u32,
+    frame_height: u32,
+    usable_width: u32,
+    usable_height: u32,
+) -> Option<(f32, u32, Vec<String>)> {
+    let preferred_font_px = preferred_font_size(source_line_height, frame_height);
+    (8..=(preferred_font_px * 2.0).floor() as u32)
+        .rev()
+        .map(|half_px| half_px as f32 / 2.0)
+        .find_map(|font_px| {
+            let line_height = (font_px * 1.12).ceil() as u32;
+            let max_lines = (usable_height / line_height).min(6) as usize;
+            wrap_caption_pixels(text, font, font_px, usable_width, max_lines)
+                .map(|lines| (font_px, line_height, lines))
+        })
+}
+
+fn preferred_font_size(source_line_height: u32, frame_height: u32) -> f32 {
+    // Latin cap height is typically about three quarters of the font's em
+    // size, so a 1.3x em tracks the detected Japanese glyph height.
+    (source_line_height as f32 * 1.3).clamp(8.0, (frame_height as f32 / 6.0).clamp(12.0, 72.0))
 }
 
 fn encode_rgba_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
@@ -1211,36 +1270,68 @@ fn put_pixel(pixels: &mut [u8], width: u32, x: u32, y: u32, color: [u8; 4]) {
     pixels[offset..offset + 4].copy_from_slice(&color);
 }
 
-fn wrap_caption(text: &str, columns: usize, max_lines: usize) -> Option<Vec<String>> {
-    if columns == 0 || max_lines == 0 {
+fn caption_width(text: &str, font: Option<&Font>, font_px: f32) -> f32 {
+    if let Some(font) = font {
+        text.chars()
+            .map(|ch| font.metrics(ch, font_px).advance_width)
+            .sum()
+    } else {
+        text.chars().count() as f32 * 8.0
+    }
+}
+
+fn wrap_caption_pixels(
+    text: &str,
+    font: Option<&Font>,
+    font_px: f32,
+    max_width: u32,
+    max_lines: usize,
+) -> Option<Vec<String>> {
+    if max_width == 0 || max_lines == 0 {
         return None;
     }
+    let fits = |line: &str| caption_width(line, font, font_px) <= max_width as f32;
     let mut lines = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {
-        let word_length = word.chars().count();
-        if !current.is_empty() && current.chars().count() + 1 + word_length > columns {
+        let with_word = if current.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{current} {word}")
+        };
+        if fits(&with_word) {
+            current = with_word;
+            continue;
+        }
+        if !current.is_empty() {
             lines.push(std::mem::take(&mut current));
-            if lines.len() == max_lines {
+            if lines.len() >= max_lines {
                 return None;
             }
         }
-        if word_length <= columns {
-            if !current.is_empty() {
-                current.push(' ');
-            }
+        if fits(word) {
             current.push_str(word);
-        } else {
-            let mut remaining = word.chars().peekable();
-            while remaining.peek().is_some() {
-                current.extend(remaining.by_ref().take(columns));
-                if remaining.peek().is_none() {
-                    break;
-                }
-                lines.push(std::mem::take(&mut current));
-                if lines.len() == max_lines {
-                    return None;
-                }
+            continue;
+        }
+        // Some models return a long token or omit spaces. Split that token
+        // at glyph boundaries, retaining every character rather than clipping.
+        for ch in word.chars() {
+            let mut candidate = current.clone();
+            candidate.push(ch);
+            if fits(&candidate) {
+                current = candidate;
+                continue;
+            }
+            if current.is_empty() {
+                return None;
+            }
+            lines.push(std::mem::take(&mut current));
+            if lines.len() >= max_lines {
+                return None;
+            }
+            current.push(ch);
+            if !fits(&current) {
+                return None;
             }
         }
     }
@@ -1433,6 +1524,7 @@ mod tests {
                 x2: 190,
                 y2: 48,
             },
+            source_line_height: 22,
             source: "扉を開けてください。".to_owned(),
             english: "Open the door.".to_owned(),
             background: [9, 14, 22],
@@ -1449,7 +1541,7 @@ mod tests {
         reader.next_frame(&mut pixels).unwrap();
         assert_eq!(pixels[3], 0);
         assert_eq!(pixels[(239 * 320 * 4) + 3], 0);
-        assert_eq!(pixels[((30 * 320 + 40) * 4) + 3], 255);
+        assert_eq!(pixels[((30 * 320 + 22) * 4) + 3], REGION_BACKGROUND_ALPHA);
         assert_eq!(pixels[((170 * 320 + 40) * 4) + 3], 0);
         assert!(pixels.chunks_exact(4).any(|pixel| pixel[0] == 255));
     }
@@ -1464,6 +1556,7 @@ mod tests {
                     x2: 110,
                     y2: 40,
                 },
+                source_line_height: 16,
                 source: "北へ".to_owned(),
                 english: "North".to_owned(),
                 background: [9, 14, 22],
@@ -1475,6 +1568,7 @@ mod tests {
                     x2: 140,
                     y2: 200,
                 },
+                source_line_height: 16,
                 source: "南へ".to_owned(),
                 english: "South".to_owned(),
                 background: [9, 14, 22],
@@ -1486,8 +1580,8 @@ mod tests {
             .unwrap();
         let mut pixels = vec![0; decoder.output_buffer_size().unwrap()];
         decoder.next_frame(&mut pixels).unwrap();
-        assert_eq!(pixels[((30 * 320 + 40) * 4) + 3], 255);
-        assert_eq!(pixels[((190 * 320 + 40) * 4) + 3], 255);
+        assert_eq!(pixels[((30 * 320 + 17) * 4) + 3], REGION_BACKGROUND_ALPHA);
+        assert_eq!(pixels[((190 * 320 + 17) * 4) + 3], REGION_BACKGROUND_ALPHA);
         assert_eq!(pixels[((110 * 320 + 40) * 4) + 3], 0);
     }
 
@@ -1500,6 +1594,7 @@ mod tests {
                 x2: 238,
                 y2: 201,
             },
+            source_line_height: 17,
             source: "ここはマナの聖地です。".to_owned(),
             english: "This is a sacred place of mana. Hero, please open the gate.".to_owned(),
             background: [24, 22, 32],
@@ -1511,7 +1606,7 @@ mod tests {
         let mut pixels = vec![0; decoder.output_buffer_size().unwrap()];
         decoder.next_frame(&mut pixels).unwrap();
         assert_eq!(pixels[((146 * 320 + 100) * 4) + 3], 0);
-        assert_eq!(pixels[((170 * 320 + 100) * 4) + 3], 255);
+        assert_eq!(pixels[((170 * 320 + 21) * 4) + 3], REGION_BACKGROUND_ALPHA);
         assert_eq!(pixels[((225 * 320 + 100) * 4) + 3], 0);
     }
 
@@ -1530,6 +1625,28 @@ mod tests {
             }
         }
         assert_eq!(sample_text_background(&image, rect), [21, 35, 49]);
+    }
+
+    #[test]
+    fn english_font_tracks_detected_source_glyph_height() {
+        let font = subtitle_font();
+        let small = choose_caption_layout("Open", font, 12, 1000, 240, 60).unwrap();
+        let large = choose_caption_layout("Open", font, 24, 1000, 240, 60).unwrap();
+        assert!(large.0 >= small.0 * 1.5, "small={small:?} large={large:?}");
+        assert_eq!(large.2, vec!["Open"]);
+    }
+
+    #[test]
+    fn caption_wrap_uses_rendered_glyph_width_without_losing_words() {
+        let font = subtitle_font();
+        let text = "A very wide translation in a narrow game window";
+        let lines = wrap_caption_pixels(text, font, 20.0, 110, 8).unwrap();
+        assert_eq!(lines.join(" "), text);
+        assert!(
+            lines
+                .iter()
+                .all(|line| caption_width(line, font, 20.0) <= 110.0)
+        );
     }
 
     #[test]
@@ -1554,8 +1671,14 @@ mod tests {
                 y2: 29,
             },
         ];
+        let groups = group_text_regions(boxes, 320, 240);
+        assert_eq!(groups[0].line_height, 14);
+        assert_eq!(groups[1].line_height, 15);
         assert_eq!(
-            group_text_boxes(boxes, 320, 240),
+            groups
+                .into_iter()
+                .map(|group| group.rect)
+                .collect::<Vec<_>>(),
             vec![
                 TextRect {
                     x1: 10,
@@ -1750,6 +1873,8 @@ mod tests {
         assert!((95..=115).contains(&duran.y1));
         assert!((1090..=1115).contains(&fighter.x1));
         assert!((130..=150).contains(&fighter.y1));
+        let mapped_line_height = map_overlay_line_height(23, (512, 478), viewport, output);
+        assert!(mapped_line_height.abs_diff(fighter.height()) <= 2);
     }
 
     #[test]
@@ -1762,6 +1887,7 @@ mod tests {
         };
         let region = TranslatedRegion {
             rect,
+            source_line_height: 28,
             source: "日本語".to_owned(),
             english: "The translation must never obscure the game. ".repeat(80),
             background: [10, 20, 30],
@@ -1774,10 +1900,10 @@ mod tests {
         short.english = "Open the door.".to_owned();
         draw_region(&mut pixels, 5120, 2160, &short);
         let panel = TextRect {
-            x1: 1264,
-            y1: 1513,
-            x2: 2086,
-            y2: 1617,
+            x1: 1291,
+            y1: 1525,
+            x2: 2059,
+            y2: 1605,
         };
         for (index, pixel) in pixels.chunks_exact(4).enumerate() {
             if pixel[3] != 0 {
@@ -1787,7 +1913,7 @@ mod tests {
                 assert!(y >= panel.y1 && y < panel.y2);
             }
         }
-        assert_eq!(pixels[((1565 * 5120 + 1400) * 4 + 3) as usize], 255);
+        assert!(pixels[((1565 * 5120 + 1400) * 4 + 3) as usize] > 0);
     }
 
     #[test]
@@ -1859,6 +1985,7 @@ mod tests {
                     x2: 54,
                     y2: 40,
                 },
+                source_line_height: 16,
                 source: "開く".to_owned(),
                 english: "OPEN".to_owned(),
                 background: [9, 14, 22],
