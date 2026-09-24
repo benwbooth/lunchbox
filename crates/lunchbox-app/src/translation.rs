@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -298,8 +298,8 @@ impl TranslationSession {
                 serve(
                     listener,
                     &secret,
-                    &settings,
-                    &detector,
+                    settings,
+                    detector,
                     viewport,
                     &worker_stop,
                 )
@@ -438,27 +438,61 @@ impl Drop for TranslationSession {
 fn serve(
     listener: TcpListener,
     secret: &str,
-    settings: &TranslationSettings,
-    detector: &OcrEngine,
+    settings: TranslationSettings,
+    detector: OcrEngine,
     viewport: Option<OverlayViewport>,
     stop: &AtomicBool,
 ) {
-    let mut cached: Option<CachedTranslation> = None;
-    let mut last_request_at = None;
+    let (jobs, pending_jobs) = mpsc::sync_channel::<TranslationJob>(1);
+    let (completed_jobs, results) = mpsc::channel();
+    let worker_settings = settings;
+    let worker = thread::Builder::new()
+        .name("lunchbox-translation-worker".into())
+        .spawn(move || {
+            let mut cached: Option<CachedTranslation> = None;
+            for job in pending_jobs {
+                let result = render_translation(
+                    &worker_settings,
+                    &job.image,
+                    job.dimensions.0,
+                    job.dimensions.1,
+                    &detector,
+                    viewport,
+                    cached.as_ref(),
+                )
+                .map(|(regions, overlay)| CachedTranslation {
+                    digest: job.digest,
+                    regions,
+                    dimensions: job.dimensions,
+                    overlay,
+                });
+                if let Ok(translation) = &result {
+                    cached = Some(translation.clone());
+                }
+                if completed_jobs.send((job.digest, result)).is_err() {
+                    break;
+                }
+            }
+        });
+    let Ok(_worker) = worker else {
+        eprintln!("LUNCHBOX_TRANSLATION_BRIDGE_FAILED: could not start translation worker");
+        return;
+    };
+    let mut state = TranslationBridge {
+        jobs,
+        results,
+        cached: None,
+        in_flight: None,
+        retry_after: None,
+        last_started_at: None,
+        status_overlay: None,
+    };
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((mut stream, _)) => {
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
                 let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
-                if let Err(error) = handle_request(
-                    &mut stream,
-                    secret,
-                    settings,
-                    Some(detector),
-                    viewport,
-                    &mut cached,
-                    &mut last_request_at,
-                ) {
+                if let Err(error) = handle_request(&mut stream, secret, viewport, &mut state) {
                     eprintln!("LUNCHBOX_TRANSLATION_REQUEST_FAILED: {error:#}");
                     let _ = write_json(&mut stream, 200, &json!({"error": error.to_string()}));
                 }
@@ -474,6 +508,23 @@ fn serve(
     }
 }
 
+struct TranslationJob {
+    digest: [u8; 32],
+    dimensions: (u32, u32),
+    image: String,
+}
+
+struct TranslationBridge {
+    jobs: mpsc::SyncSender<TranslationJob>,
+    results: mpsc::Receiver<([u8; 32], Result<CachedTranslation>)>,
+    cached: Option<CachedTranslation>,
+    in_flight: Option<[u8; 32]>,
+    retry_after: Option<([u8; 32], Instant)>,
+    last_started_at: Option<Instant>,
+    status_overlay: Option<((u32, u32), &'static str, String)>,
+}
+
+#[derive(Clone)]
 struct CachedTranslation {
     digest: [u8; 32],
     regions: Vec<TranslatedRegion>,
@@ -536,11 +587,8 @@ struct TranslatedRegion {
 fn handle_request(
     stream: &mut TcpStream,
     secret: &str,
-    settings: &TranslationSettings,
-    detector: Option<&OcrEngine>,
     viewport: Option<OverlayViewport>,
-    cached: &mut Option<CachedTranslation>,
-    last_request_at: &mut Option<Instant>,
+    state: &mut TranslationBridge,
 ) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let request_line = read_http_line(&mut reader)?;
@@ -585,47 +633,98 @@ fn handle_request(
         let (width, height, png) = bmp_to_png(&decoded)?;
         (width, height, BASE64.encode(png))
     };
-    if let Some(last) = last_request_at {
-        let wait = Duration::from_millis(1500).saturating_sub(last.elapsed());
-        if !wait.is_zero() {
-            thread::sleep(wait);
+    let digest: [u8; 32] = Sha256::digest(&decoded).into();
+    while let Ok((completed_digest, result)) = state.results.try_recv() {
+        state.in_flight = None;
+        match result {
+            Ok(translation) => {
+                state.cached = Some(translation);
+                state.retry_after = None;
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_TRANSLATION_REQUEST_FAILED: {error:#}");
+                state.retry_after =
+                    Some((completed_digest, Instant::now() + Duration::from_secs(10)));
+            }
         }
     }
-    *last_request_at = Some(Instant::now());
-    let digest: [u8; 32] = Sha256::digest(&decoded).into();
-    let (regions, overlay) = if let Some(old) = cached.as_ref() {
-        if old.digest == digest {
-            (old.regions.clone(), old.overlay.clone())
-        } else {
-            render_translation(
-                settings,
-                &model_image,
-                width,
-                height,
-                detector.context("text detector is not ready")?,
-                viewport,
-                cached.as_ref(),
-            )?
-        }
+    if state
+        .cached
+        .as_ref()
+        .is_some_and(|old| old.digest == digest)
+    {
+        return write_json(
+            stream,
+            200,
+            &json!({"image": state.cached.as_ref().unwrap().overlay, "auto": "auto"}),
+        );
+    }
+    let can_retry = !state
+        .retry_after
+        .is_some_and(|(failed, until)| failed == digest && Instant::now() < until);
+    let can_start = state.in_flight.is_none()
+        && can_retry
+        && state
+            .last_started_at
+            .is_none_or(|last| last.elapsed() >= Duration::from_millis(1500));
+    if can_start {
+        state.jobs.try_send(TranslationJob {
+            digest,
+            dimensions: (width, height),
+            image: model_image,
+        })?;
+        state.in_flight = Some(digest);
+        state.last_started_at = Some(Instant::now());
+    }
+    let label = if can_retry {
+        "Translating…"
     } else {
-        render_translation(
-            settings,
-            &model_image,
-            width,
-            height,
-            detector.context("text detector is not ready")?,
-            viewport,
-            None,
-        )?
+        "Translation failed; retrying…"
     };
-    *cached = Some(CachedTranslation {
-        digest,
-        regions,
-        dimensions: (width, height),
-        overlay: overlay.clone(),
-    });
+    let overlay = status_overlay(state, viewport, (width, height), label)?;
     write_json(stream, 200, &json!({"image": overlay, "auto": "auto"}))?;
     Ok(())
+}
+
+fn status_overlay<'a>(
+    state: &'a mut TranslationBridge,
+    viewport: Option<OverlayViewport>,
+    frame: (u32, u32),
+    label: &'static str,
+) -> Result<&'a str> {
+    let output = viewport.map(overlay_image_dimensions).unwrap_or_else(|| {
+        let width = frame.0.min(2048);
+        (
+            width,
+            (u64::from(width) * u64::from(frame.1) / u64::from(frame.0)) as u32,
+        )
+    });
+    if state
+        .status_overlay
+        .as_ref()
+        .map(|(size, text, _)| (*size, *text))
+        != Some((output, label))
+    {
+        let rect = TextRect {
+            x1: 24,
+            y1: 24,
+            x2: 260.min(output.0),
+            y2: 62.min(output.1),
+        };
+        let region = TranslatedRegion {
+            rect,
+            source_line_height: 26,
+            source: String::new(),
+            english: label.into(),
+            background: [9, 14, 22],
+        };
+        state.status_overlay = Some((
+            output,
+            label,
+            BASE64.encode(render_regions_png(output.0, output.1, &[region])?),
+        ));
+    }
+    Ok(&state.status_overlay.as_ref().unwrap().2)
 }
 
 fn read_http_line(reader: &mut impl BufRead) -> Result<String> {
@@ -1973,7 +2072,7 @@ mod tests {
     }
 
     #[test]
-    fn retroarch_request_without_format_field_returns_image_and_auto() {
+    fn retroarch_request_without_format_field_reuses_cached_image() {
         let screenshot = render_regions_png(64, 64, &[]).unwrap();
         let overlay = render_regions_png(
             64,
@@ -1993,7 +2092,7 @@ mod tests {
         )
         .unwrap();
         let digest: [u8; 32] = Sha256::digest(&screenshot).into();
-        let mut cached = Some(CachedTranslation {
+        let cached = Some(CachedTranslation {
             digest,
             regions: vec![],
             dimensions: (64, 64),
@@ -2017,16 +2116,18 @@ mod tests {
             response
         });
         let (mut stream, _) = listener.accept().unwrap();
-        handle_request(
-            &mut stream,
-            "secret",
-            &TranslationSettings::default(),
-            None,
-            None,
-            &mut cached,
-            &mut None,
-        )
-        .unwrap();
+        let (jobs, _pending) = mpsc::sync_channel(1);
+        let (_completed, results) = mpsc::channel();
+        let mut state = TranslationBridge {
+            jobs,
+            results,
+            cached,
+            in_flight: None,
+            retry_after: None,
+            last_started_at: None,
+            status_overlay: None,
+        };
+        handle_request(&mut stream, "secret", None, &mut state).unwrap();
         drop(stream);
         let response = client.join().unwrap();
         let body = response.split("\r\n\r\n").nth(1).unwrap();
@@ -2034,6 +2135,51 @@ mod tests {
         assert_eq!(body["auto"], "auto");
         let image = BASE64.decode(body["image"].as_str().unwrap()).unwrap();
         assert_eq!(png_dimensions(&image).unwrap(), (64, 64));
+    }
+
+    #[test]
+    fn first_f10_request_responds_before_translation_finishes() {
+        let screenshot = render_regions_png(512, 478, &[]).unwrap();
+        let digest: [u8; 32] = Sha256::digest(&screenshot).into();
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = thread::spawn(move || {
+            let mut stream = TcpStream::connect(address).unwrap();
+            let body = serde_json::to_vec(&json!({"image": BASE64.encode(screenshot)})).unwrap();
+            write!(
+                stream,
+                "POST /secret?output=image,png,png-a HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).unwrap();
+            response
+        });
+        let (jobs, pending) = mpsc::sync_channel(1);
+        let (_completed, results) = mpsc::channel();
+        let mut state = TranslationBridge {
+            jobs,
+            results,
+            cached: None,
+            in_flight: None,
+            retry_after: None,
+            last_started_at: None,
+            status_overlay: None,
+        };
+        let (mut stream, _) = listener.accept().unwrap();
+        let start = Instant::now();
+        handle_request(&mut stream, "secret", None, &mut state).unwrap();
+        assert!(start.elapsed() < Duration::from_secs(2));
+        drop(stream);
+        let response = client.join().unwrap();
+        let body: Value = serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(body["auto"], "auto");
+        assert!(body["image"].as_str().is_some());
+        assert_eq!(state.in_flight, Some(digest));
+        assert_eq!(pending.try_recv().unwrap().digest, digest);
     }
 
     #[test]
