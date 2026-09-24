@@ -6129,7 +6129,7 @@ impl qobject::GameDetailsModel {
             // overflows before the plan builder runs its first statement.
             .stack_size(64 * 1024 * 1024)
             .spawn(move || {
-                let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<(String, bool)>)> {
+                let launch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<(String, bool)>)> {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
@@ -6182,6 +6182,19 @@ impl qobject::GameDetailsModel {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
+                    let preparing_game_id = game_id.clone();
+                    let preparing_cancel = Arc::clone(&launch_cancel);
+                    let _ = started_thread.queue(move |mut model| {
+                        if generation == model.as_ref().rust().launch_generation
+                            && model.as_ref().game_id().to_string() == preparing_game_id
+                            && *model.as_ref().launch_busy()
+                            && !preparing_cancel.load(AtomicOrdering::Relaxed)
+                        {
+                            model.as_mut().set_launch_status(qstring(
+                                "Preparing controller input, display, and translation…",
+                            ));
+                        }
+                    });
                     // Calibrated mappings are an enhancement, never a launch
                     // requirement: any failure here is reported as a warning
                     // and the game starts on the emulator's own input setup
@@ -6476,6 +6489,19 @@ impl qobject::GameDetailsModel {
                             std::thread::sleep(Duration::from_millis(25));
                         }
                     }
+                    let starting_game_id = game_id.clone();
+                    let starting_cancel = Arc::clone(&launch_cancel);
+                    let _ = started_thread.queue(move |mut model| {
+                        if generation == model.as_ref().rust().launch_generation
+                            && model.as_ref().game_id().to_string() == starting_game_id
+                            && *model.as_ref().launch_busy()
+                            && !starting_cancel.load(AtomicOrdering::Relaxed)
+                        {
+                            model
+                                .as_mut()
+                                .set_launch_status(qstring("Starting the emulator…"));
+                        }
+                    });
                     let mut child = match calibrated_session.as_mut() {
                         Some(session) => session.spawn_frontend(&plan, &launch_cancel)?,
                         None => crate::emulator::spawn_launch_plan(&plan)?,
@@ -6664,7 +6690,15 @@ impl qobject::GameDetailsModel {
                         .as_ref()
                         .and_then(|observation| observation.exit_notice());
                     Ok((exit, tracking_warning, activity_recorded, save_notice))
-                })();
+                }))
+                .unwrap_or_else(|panic| {
+                    let detail = panic
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| panic.downcast_ref::<&str>().copied())
+                        .unwrap_or("unknown panic");
+                    Err(anyhow::anyhow!("emulator launch preparation crashed: {detail}"))
+                });
                 match launch {
                     Ok((exit, tracking_warning, activity_recorded, save_notice)) => {
                         let _ = qt_thread.queue(move |mut model| {

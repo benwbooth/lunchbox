@@ -511,7 +511,7 @@ fn extract_seven_zip(
                 )
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             } else {
-                std::io::copy(reader, &mut std::io::sink())?;
+                drain_unselected_member(reader, cancelled)?;
             }
             Ok(true)
         })
@@ -526,6 +526,21 @@ struct RarLaunchWriter {
     written: u64,
     total_written: Arc<AtomicU64>,
     cancelled: Arc<AtomicBool>,
+}
+
+struct CancellableSink(Arc<AtomicBool>);
+
+impl Write for CancellableSink {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.0.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other(LAUNCH_CANCELLED_ERROR));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 impl Write for RarLaunchWriter {
@@ -593,7 +608,7 @@ fn extract_rar(
                 .map_err(|error| rars::Error::from(std::io::Error::other(error.to_string())))?;
             let key = portable_path_key(&relative);
             let Some(member) = selected.get(&key) else {
-                return Ok(Box::new(std::io::sink()) as Box<dyn Write>);
+                return Ok(Box::new(CancellableSink(Arc::clone(cancelled))) as Box<dyn Write>);
             };
             let destination = output.join(&member.relative_path);
             if let Some(parent) = destination.parent() {
@@ -686,6 +701,21 @@ fn copy_member(
         );
     }
     Ok(())
+}
+
+fn drain_unselected_member(
+    reader: &mut (impl Read + ?Sized),
+    cancelled: &AtomicBool,
+) -> std::io::Result<()> {
+    let mut buffer = [0u8; 1024 * 1024];
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other(LAUNCH_CANCELLED_ERROR));
+        }
+        if reader.read(&mut buffer)? == 0 {
+            return Ok(());
+        }
+    }
 }
 
 fn ensure_all_extracted(remaining: BTreeSet<String>, format: &str) -> Result<()> {
@@ -1075,7 +1105,7 @@ fn deduplicated_parents(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf
     roots.into_values().collect()
 }
 
-fn check_cancelled(cancelled: &Arc<AtomicBool>) -> Result<()> {
+fn check_cancelled(cancelled: &AtomicBool) -> Result<()> {
     if cancelled.load(Ordering::Relaxed) {
         bail!(LAUNCH_CANCELLED_ERROR);
     }
@@ -1331,5 +1361,30 @@ mod tests {
         let error = prepare_for_launch_in(&archive, false, &cancelled, &cache).unwrap_err();
         assert_eq!(error.to_string(), LAUNCH_CANCELLED_ERROR);
         assert!(!cache.join("launch-preparation").exists());
+    }
+
+    #[test]
+    fn skipped_archive_payloads_observe_cancellation() {
+        struct CancelAfterRead(Arc<AtomicBool>);
+
+        impl Read for CancelAfterRead {
+            fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+                self.0.store(true, Ordering::Relaxed);
+                bytes[0] = 42;
+                Ok(1)
+            }
+        }
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let error =
+            drain_unselected_member(&mut CancelAfterRead(Arc::clone(&cancelled)), &cancelled)
+                .unwrap_err();
+        assert_eq!(error.to_string(), LAUNCH_CANCELLED_ERROR);
+
+        cancelled.store(false, Ordering::Relaxed);
+        let mut sink = CancellableSink(Arc::clone(&cancelled));
+        assert_eq!(sink.write(b"discard").unwrap(), 7);
+        cancelled.store(true, Ordering::Relaxed);
+        assert!(sink.write(b"discard").is_err());
     }
 }
