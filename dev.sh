@@ -6,7 +6,7 @@
 # change instead of for the whole build. A failed build leaves the running app
 # alone.
 #
-#     ./dev.sh &          # watch crates/ and restart on every change
+#     ./dev.sh &          # watch app and vendored Rust code, then restart
 #
 # Runs the debug binary: the first link takes a few minutes, later one-file Rust
 # rebuilds take about twenty-five seconds.
@@ -66,6 +66,7 @@ fi
 # marker line is the only thing we have to trust.
 watchexec --restart --shell=none \
   --watch crates \
+  --watch vendor \
   --watch Cargo.toml \
   --watch Cargo.lock \
   --exts rs,qml,json,toml,lock \

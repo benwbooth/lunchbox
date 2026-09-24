@@ -2009,11 +2009,11 @@ impl qobject::SettingsModel {
                     model_object.as_mut().set_translation_busy(false);
                     let status = match result {
                         Ok(true) => {
-                            format!("GLM-OCR and {model} are installed in local Ollama and ready.")
+                            format!("GLM-OCR, {model}, and the text placement model are ready.")
                         }
-                        Ok(false) => {
-                            format!("Ollama is running, but GLM-OCR or {model} is missing.")
-                        }
+                        Ok(false) => format!(
+                            "A required model is missing: GLM-OCR, {model}, or text placement."
+                        ),
                         Err(error) => format!("Local Ollama is unavailable: {error}"),
                     };
                     model_object
@@ -2038,7 +2038,7 @@ impl qobject::SettingsModel {
         self.as_mut().set_translation_busy(true);
         self.as_mut().set_translation_progress(0);
         self.as_mut().set_translation_status(qstring(format!(
-            "Downloading GLM-OCR and {model} into Ollama…"
+            "Downloading GLM-OCR, {model}, and text placement…"
         )));
         let qt_thread = self.as_ref().qt_thread();
         let progress_thread = qt_thread.clone();
@@ -2067,7 +2067,7 @@ impl qobject::SettingsModel {
                             model_object
                                 .as_mut()
                                 .set_translation_status(qstring(format!(
-                                    "GLM-OCR and {model} are ready for local game translation."
+                                    "GLM-OCR, {model}, and text placement are ready."
                                 )));
                         }
                         Err(error) => {

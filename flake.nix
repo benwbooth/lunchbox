@@ -244,6 +244,7 @@
             lunchbox-dev() {
               watchexec --restart --shell=none \
                 --watch crates \
+                --watch vendor \
                 --watch Cargo.toml \
                 --watch Cargo.lock \
                 --exts rs,qml,json,toml,lock \

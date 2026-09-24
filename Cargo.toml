@@ -70,3 +70,8 @@ zip = "8.6"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# rten-gemm 0.24's AVX-512 intrinsic is rejected by the pinned Nix LLVM 21.
+# Keep the upstream crate with one instruction-equivalent inline-asm fix.
+[patch.crates-io]
+rten-gemm = { path = "vendor/rten-gemm" }
