@@ -591,28 +591,63 @@ fn axis_overlap(a1: u32, a2: u32, b1: u32, b2: u32) -> u32 {
     a2.min(b2).saturating_sub(a1.max(b1))
 }
 
-fn nearby_text(a: TextRect, b: TextRect) -> bool {
-    let line_height = a.height().max(b.height()).max(8);
-    let vertical_gap = axis_gap(a.y1, a.y2, b.y1, b.y2);
-    let horizontal_gap = axis_gap(a.x1, a.x2, b.x1, b.x2);
-    let horizontal_overlap = axis_overlap(a.x1, a.x2, b.x1, b.x2);
-    (vertical_gap <= line_height * 2 && horizontal_overlap >= a.width().min(b.width()) / 4)
+fn text_region_allowed(rect: TextRect, width: u32, height: u32) -> bool {
+    rect.x1 < rect.x2
+        && rect.y1 < rect.y2
+        && rect.x2 <= width
+        && rect.y2 <= height
+        && rect.width() >= 8
+        && rect.height() >= 5
+        && u64::from(rect.width()) * 100 <= u64::from(width) * 95
+        && u64::from(rect.height()) * 100 <= u64::from(height) * 30
+        && u64::from(rect.width()) * u64::from(rect.height()) * 100
+            <= u64::from(width) * u64::from(height) * 20
+}
+
+#[derive(Clone, Copy)]
+struct TextGroup {
+    rect: TextRect,
+    line_height: u32,
+}
+
+fn nearby_text(a: TextGroup, b: TextGroup) -> bool {
+    let line_height = a.line_height.max(b.line_height).max(8);
+    let vertical_gap = axis_gap(a.rect.y1, a.rect.y2, b.rect.y1, b.rect.y2);
+    let horizontal_gap = axis_gap(a.rect.x1, a.rect.x2, b.rect.x1, b.rect.x2);
+    let horizontal_overlap = axis_overlap(a.rect.x1, a.rect.x2, b.rect.x1, b.rect.x2);
+    (vertical_gap <= line_height * 2
+        && horizontal_overlap >= a.rect.width().min(b.rect.width()) / 4)
         || (vertical_gap <= line_height / 2 && horizontal_gap <= line_height * 2)
 }
 
-fn group_text_boxes(mut boxes: Vec<TextRect>) -> Vec<TextRect> {
+fn group_text_boxes(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextRect> {
     boxes.sort_by_key(|rect| (rect.y1, rect.x1));
-    let mut groups = Vec::new();
-    for mut rect in boxes {
-        while let Some(index) = groups.iter().position(|group| nearby_text(*group, rect)) {
-            rect = rect.union(groups.swap_remove(index));
+    let mut groups: Vec<TextGroup> = Vec::new();
+    for rect in boxes {
+        if !text_region_allowed(rect, width, height) {
+            continue;
         }
-        groups.push(rect);
+        let mut group = TextGroup {
+            rect,
+            line_height: rect.height(),
+        };
+        while let Some(index) = groups.iter().position(|other| {
+            let merged = group.rect.union(other.rect);
+            let line_height = group.line_height.max(other.line_height);
+            nearby_text(*other, group)
+                && merged.height() <= line_height.saturating_mul(5)
+                && text_region_allowed(merged, width, height)
+        }) {
+            let other = groups.swap_remove(index);
+            group.rect = group.rect.union(other.rect);
+            group.line_height = group.line_height.max(other.line_height);
+        }
+        groups.push(group);
     }
-    groups.sort_by_key(|rect: &TextRect| std::cmp::Reverse(rect.width() * rect.height()));
+    groups.sort_by_key(|group| std::cmp::Reverse(group.rect.width() * group.rect.height()));
     groups.truncate(8);
-    groups.sort_by_key(|rect| (rect.y1, rect.x1));
-    groups
+    groups.sort_by_key(|group| (group.rect.y1, group.rect.x1));
+    groups.into_iter().map(|group| group.rect).collect()
 }
 
 fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<TextRect>> {
@@ -648,11 +683,13 @@ fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<Tex
             .ceil()
             .clamp(0.0, height as f32) as u32;
         let rect = TextRect { x1, y1, x2, y2 };
-        if rect.width() >= 8 && rect.height() >= 5 {
+        if text_region_allowed(rect, width, height) {
             rectangles.push(rect);
         }
     }
-    Ok(group_text_boxes(rectangles))
+    let regions = group_text_boxes(rectangles, width, height);
+    eprintln!("LUNCHBOX_TRANSLATION_DETECTION: frame={width}x{height} regions={regions:?}");
+    Ok(regions)
 }
 
 fn crop_region_png(image: &RgbImage, rect: TextRect) -> Result<String> {
@@ -736,7 +773,7 @@ fn render_translation(
             continue;
         }
         regions.push(TranslatedRegion {
-            rect: previous.map_or(rect, |old| old.rect),
+            rect,
             source,
             english,
             background: sample_text_background(&screenshot, rect),
@@ -779,57 +816,36 @@ fn render_regions_png(width: u32, height: u32, regions: &[TranslatedRegion]) -> 
 }
 
 fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRegion) {
-    if region.english.is_empty() {
+    if region.english.is_empty() || !text_region_allowed(region.rect, width, height) {
         return;
     }
-    // Keep short game-text regions legible without expanding a translation
-    // panel over nearby dialogue-box borders or unrelated artwork.
-    let font_px = (height as f32 / 17.0)
+    // The opaque part must stay attached to the detected source text. Never
+    // enlarge it to accommodate a long or hallucinated translation.
+    let padding = (region.rect.height() / 8).clamp(2, 8);
+    let panel = region.rect.padded(width, height, padding);
+    let usable_width = panel.width().saturating_sub(2 * padding);
+    let usable_height = panel.height().saturating_sub(2 * padding);
+    let preferred_font_px = (height as f32 / 17.0)
         .clamp(11.0, 52.0)
         .min((region.rect.height() as f32 / 3.5).max(11.0));
-    let line_height = (font_px * 1.35).ceil() as u32;
-    let margin = (width / 80).clamp(2, 24);
-    let padding = (font_px / 1.5).ceil() as u32;
-    let max_width = width.saturating_sub(2 * margin).max(1);
-    let desired_width =
-        (region.english.chars().count() as f32 * font_px * 0.56 / 2.0).ceil() as u32;
-    let panel_width = region
-        .rect
-        .width()
-        .saturating_add(2 * padding)
-        .max(desired_width)
-        .min(max_width);
-    let columns = ((panel_width.saturating_sub(2 * padding)) as f32 / (font_px * 0.56))
-        .floor()
-        .max(1.0) as usize;
-    let max_lines =
-        ((height.saturating_sub(2 * (margin + padding))) / line_height).clamp(1, 6) as usize;
-    let lines = wrap_caption(&region.english, columns, max_lines);
-    if lines.is_empty() {
+    let Some((font_px, line_height, lines)) = (8..=(preferred_font_px * 2.0) as u32)
+        .rev()
+        .map(|half_px| half_px as f32 / 2.0)
+        .find_map(|font_px| {
+            let line_height = (font_px * 1.35).ceil() as u32;
+            let columns = (usable_width as f32 / (font_px * 0.64)).floor() as usize;
+            let max_lines = (usable_height / line_height).min(6) as usize;
+            wrap_caption(&region.english, columns, max_lines)
+                .map(|lines| (font_px, line_height, lines))
+        })
+    else {
         return;
-    }
+    };
     let total_height = line_height * lines.len() as u32;
-    let panel_height = region
-        .rect
-        .height()
-        .saturating_add(2 * padding)
-        .max(total_height + 2 * padding)
-        .min(height.saturating_sub(2 * margin));
-    let center_x = region.rect.x1.saturating_add(region.rect.width() / 2);
-    let panel_left = center_x
-        .saturating_sub(panel_width / 2)
-        .min(width.saturating_sub(margin + panel_width))
-        .max(margin);
-    let panel_top = region
-        .rect
-        .y1
-        .saturating_sub(padding)
-        .min(height.saturating_sub(margin + panel_height))
-        .max(margin);
-    let text_top = panel_top + panel_height.saturating_sub(total_height) / 2;
-    let text_center_x = panel_left + panel_width / 2;
-    for y in panel_top..panel_top + panel_height {
-        for x in panel_left..panel_left + panel_width {
+    let text_top = panel.y1 + panel.height().saturating_sub(total_height) / 2;
+    let text_center_x = panel.x1 + panel.width() / 2;
+    for y in panel.y1..panel.y2 {
+        for x in panel.x1..panel.x2 {
             put_pixel(
                 pixels,
                 width,
@@ -844,7 +860,7 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
             );
         }
     }
-    let mut mask = vec![0u8; width as usize * height as usize];
+    let mut mask = vec![0u8; panel.width() as usize * panel.height() as usize];
     if let Some(font) = subtitle_font() {
         let ascent = font
             .horizontal_line_metrics(font_px)
@@ -855,8 +871,8 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
                 .map(|ch| font.metrics(ch, font_px).advance_width)
                 .sum();
             let mut cursor_x = (text_center_x as f32 - line_width / 2.0).clamp(
-                (panel_left + padding) as f32,
-                (panel_left + panel_width.saturating_sub(padding)) as f32,
+                (panel.x1 + padding) as f32,
+                (panel.x2.saturating_sub(padding)) as f32,
             );
             let baseline = text_top as f32 + row as f32 * line_height as f32 + ascent;
             for ch in line.chars() {
@@ -867,8 +883,13 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
                     for gx in 0..metrics.width {
                         let x = glyph_x + gx as i32;
                         let y = glyph_y + gy as i32;
-                        if x >= 0 && y >= 0 && x < width as i32 && y < height as i32 {
-                            let index = y as usize * width as usize + x as usize;
+                        if x >= panel.x1 as i32
+                            && y >= panel.y1 as i32
+                            && x < panel.x2 as i32
+                            && y < panel.y2 as i32
+                        {
+                            let index = (y as u32 - panel.y1) as usize * panel.width() as usize
+                                + (x as u32 - panel.x1) as usize;
                             mask[index] = mask[index].max(bitmap[gy * metrics.width + gx]);
                         }
                     }
@@ -879,15 +900,21 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
     } else {
         // The built-in bitmap font keeps captions available on minimal systems.
         for (row, line) in lines.iter().enumerate() {
-            let start_x = text_center_x.saturating_sub(line.len() as u32 * 4);
+            let start_x = text_center_x.saturating_sub(line.chars().count() as u32 * 4);
             for (column, ch) in line.chars().enumerate() {
                 if let Some(glyph) = BASIC_FONTS.get(ch).or_else(|| BASIC_FONTS.get('?')) {
                     for (gy, bits) in glyph.iter().enumerate() {
                         for gx in 0..8u32 {
                             let x = start_x + column as u32 * 8 + gx;
                             let y = text_top + row as u32 * line_height + gy as u32;
-                            if bits & (1 << gx) != 0 && x < width && y < height {
-                                mask[(y * width + x) as usize] = 255;
+                            if bits & (1 << gx) != 0
+                                && x >= panel.x1
+                                && y >= panel.y1
+                                && x < panel.x2
+                                && y < panel.y2
+                            {
+                                mask[((y - panel.y1) * panel.width() + x - panel.x1) as usize] =
+                                    255;
                             }
                         }
                     }
@@ -901,7 +928,10 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
     let foreground = if brightness < 1_400_000 { 255 } else { 0 };
     for (index, coverage) in mask.into_iter().enumerate() {
         if coverage > 0 {
-            let pixel = &mut pixels[index * 4..index * 4 + 4];
+            let x = panel.x1 + index as u32 % panel.width();
+            let y = panel.y1 + index as u32 / panel.width();
+            let pixel_index = ((y * width + x) * 4) as usize;
+            let pixel = &mut pixels[pixel_index..pixel_index + 4];
             for channel in &mut pixel[..3] {
                 *channel = (((u32::from(*channel) * u32::from(255 - coverage))
                     + foreground * u32::from(coverage))
@@ -929,27 +959,43 @@ fn put_pixel(pixels: &mut [u8], width: u32, x: u32, y: u32, color: [u8; 4]) {
     pixels[offset..offset + 4].copy_from_slice(&color);
 }
 
-fn wrap_caption(text: &str, columns: usize, max_lines: usize) -> Vec<String> {
+fn wrap_caption(text: &str, columns: usize, max_lines: usize) -> Option<Vec<String>> {
+    if columns == 0 || max_lines == 0 {
+        return None;
+    }
     let mut lines = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {
-        if current.len() + usize::from(!current.is_empty()) + word.len() > columns
-            && !current.is_empty()
-        {
+        let word_length = word.chars().count();
+        if !current.is_empty() && current.chars().count() + 1 + word_length > columns {
             lines.push(std::mem::take(&mut current));
             if lines.len() == max_lines {
-                break;
+                return None;
             }
         }
-        if !current.is_empty() {
-            current.push(' ');
+        if word_length <= columns {
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        } else {
+            let mut remaining = word.chars().peekable();
+            while remaining.peek().is_some() {
+                current.extend(remaining.by_ref().take(columns));
+                if remaining.peek().is_none() {
+                    break;
+                }
+                lines.push(std::mem::take(&mut current));
+                if lines.len() == max_lines {
+                    return None;
+                }
+            }
         }
-        current.extend(word.chars().take(columns));
     }
-    if !current.is_empty() && lines.len() < max_lines {
+    if !current.is_empty() {
         lines.push(current);
     }
-    lines
+    (!lines.is_empty() && lines.len() <= max_lines).then_some(lines)
 }
 
 fn recognize_text_at(image: &str, base_url: &str) -> Result<String> {
@@ -1215,7 +1261,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            group_text_boxes(boxes),
+            group_text_boxes(boxes, 320, 240),
             vec![
                 TextRect {
                     x1: 10,
@@ -1231,6 +1277,69 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn text_lines_cannot_chain_into_one_screen_sized_region() {
+        let boxes = (0..12)
+            .map(|line| TextRect {
+                x1: 50,
+                y1: 20 + line * 18,
+                x2: 265,
+                y2: 34 + line * 18,
+            })
+            .collect();
+        let groups = group_text_boxes(boxes, 320, 240);
+        assert!(!groups.is_empty());
+        assert!(groups.iter().all(|rect| rect.height() <= 72));
+        assert!(
+            groups
+                .iter()
+                .all(|rect| text_region_allowed(*rect, 320, 240))
+        );
+        assert!(!text_region_allowed(
+            TextRect {
+                x1: 0,
+                y1: 0,
+                x2: 320,
+                y2: 240,
+            },
+            320,
+            240
+        ));
+    }
+
+    #[test]
+    fn long_translation_cannot_expand_panel_or_truncate_into_a_caption() {
+        let rect = TextRect {
+            x1: 1300,
+            y1: 1530,
+            x2: 2050,
+            y2: 1600,
+        };
+        let region = TranslatedRegion {
+            rect,
+            source: "日本語".to_owned(),
+            english: "The translation must never obscure the game. ".repeat(80),
+            background: [10, 20, 30],
+        };
+        let mut pixels = vec![0; 5120 * 2160 * 4];
+        draw_region(&mut pixels, 5120, 2160, &region);
+        assert!(pixels.chunks_exact(4).all(|pixel| pixel[3] == 0));
+
+        let mut short = region;
+        short.english = "Open the door.".to_owned();
+        draw_region(&mut pixels, 5120, 2160, &short);
+        let panel = rect.padded(5120, 2160, 8);
+        for (index, pixel) in pixels.chunks_exact(4).enumerate() {
+            if pixel[3] != 0 {
+                let x = index as u32 % 5120;
+                let y = index as u32 / 5120;
+                assert!(x >= panel.x1 && x < panel.x2);
+                assert!(y >= panel.y1 && y < panel.y2);
+            }
+        }
+        assert_eq!(pixels[((1565 * 5120 + 1400) * 4 + 3) as usize], 255);
     }
 
     #[test]
