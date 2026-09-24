@@ -272,10 +272,13 @@ fn install_generated_preset(root: &Path, choice: &ShaderPresetChoice) -> Option<
     Some(preset_path)
 }
 
-/// Keep RetroTube's CRT color and pixel treatment without its luminance-driven
-/// zoom or curved-edge crop. The small inset preserves edge text, especially
-/// when the game is fitted into a separate artwork overlay. Koko's own bezel
-/// is disabled only when that external overlay is active.
+/// Keep RetroTube's CRT color and pixel treatment without simulated motion or
+/// curved-edge crop. Koko otherwise shakes the image after resolution changes
+/// and alternates scanline fields on high-resolution frames. Some SNES games
+/// switch video modes during play, so both effects must be disabled for a
+/// stable picture. The small inset preserves edge text, especially when the
+/// game is fitted into a separate artwork overlay. Koko's own bezel is
+/// disabled only when that external overlay is active.
 fn install_retrotube_variant(
     root: &Path,
     base: &Path,
@@ -314,7 +317,7 @@ fn install_retrotube_variant(
     fs::write(
         &path,
         format!(
-            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"0.0\"\nGLOBAL_ZOOM = \"0.96\"\n{bezel}{ambient}"
+            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"0.0\"\nRESSWITCH_SYNC_SPEED = \"1.0\"\nMIN_LINES_INTERLACED = \"0.0\"\nPIXELGRID_INTR_FLICK_MODE = \"0.0\"\nGLOBAL_ZOOM = \"0.96\"\n{bezel}{ambient}"
         ),
     )
     .with_context(|| format!("writing {}", path.display()))?;
@@ -1040,6 +1043,9 @@ mod tests {
             assert!(contents.contains("DO_BEZEL = \"0.0\""));
             assert!(contents.contains("DO_DYNZOOM = \"0.0\""));
             assert!(contents.contains("DO_CURVATURE = \"0.0\""));
+            assert!(contents.contains("RESSWITCH_SYNC_SPEED = \"1.0\""));
+            assert!(contents.contains("MIN_LINES_INTERLACED = \"0.0\""));
+            assert!(contents.contains("PIXELGRID_INTR_FLICK_MODE = \"0.0\""));
             assert!(contents.contains("GLOBAL_ZOOM = \"0.96\""));
             assert!(!contents.contains("DO_AMBILIGHT"));
             assert!(!contents.contains("DO_PIXELGRID = \"0.0\""));
