@@ -22351,7 +22351,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "In a game, press F8 once to start automatic captions; press it again to stop. You can also bind RetroArch's AI Service hotkey to a gamepad button."
+                                text: "In a game, press F10 once to start automatic captions; press it again to stop. F8 remains RetroArch's screenshot key. You can also bind RetroArch's AI Service hotkey to a gamepad button."
                                 color: root.muted
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap

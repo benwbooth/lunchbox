@@ -19,6 +19,8 @@ use sha2::{Digest, Sha256};
 use crate::emulator::{EmulatorExecutable, LaunchPlan};
 
 const OLLAMA_URL: &str = "http://127.0.0.1:11434";
+// RetroArch uses F8 for screenshots by default. Keep that binding intact.
+const TRANSLATION_HOTKEY: &str = "f10";
 const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 128 * 1024;
 
@@ -170,9 +172,7 @@ impl TranslationSession {
         listener.set_nonblocking(true)?;
         let port = listener.local_addr()?.port();
         let secret = uuid::Uuid::new_v4().simple().to_string();
-        let config = format!(
-            "ai_service_enable = \"true\"\nai_service_url = \"http://127.0.0.1:{port}/{secret}\"\nai_service_mode = \"0\"\nai_service_source_lang = \"0\"\nai_service_target_lang = \"1\"\nai_service_pause = \"false\"\nmenu_enable_widgets = \"true\"\ninput_ai_service = \"f8\"\n"
-        );
+        let config = retroarch_session_config(port, &secret);
         let path = crate::display_setup::write_launch_display_config(&config)?;
         crate::controller_launch::attach_config(plan, executable, &path)?;
         let stop = Arc::new(AtomicBool::new(false));
@@ -184,6 +184,12 @@ impl TranslationSession {
             .context("starting local translation bridge")?;
         Ok(Some(Self { stop }))
     }
+}
+
+fn retroarch_session_config(port: u16, secret: &str) -> String {
+    format!(
+        "ai_service_enable = \"true\"\nai_service_url = \"http://127.0.0.1:{port}/{secret}\"\nai_service_mode = \"0\"\nai_service_source_lang = \"0\"\nai_service_target_lang = \"1\"\nai_service_pause = \"false\"\nmenu_enable_widgets = \"true\"\ninput_ai_service = \"{TRANSLATION_HOTKEY}\"\n"
+    )
 }
 
 impl Drop for TranslationSession {
@@ -542,6 +548,14 @@ fn write_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translation_hotkey_preserves_retroarch_screenshots() {
+        let config = retroarch_session_config(41769, "session-token");
+        assert!(config.contains("input_ai_service = \"f10\""));
+        assert!(!config.contains("input_ai_service = \"f8\""));
+        assert!(!config.contains("input_screenshot ="));
+    }
 
     #[test]
     fn translation_defaults_to_disabled_and_validates_local_models() {
