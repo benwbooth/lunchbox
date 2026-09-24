@@ -11,7 +11,7 @@ pub(crate) const ARCADE_MAME_PLAN_KIND: &str = "arcade_mame_laserdisc";
 pub(crate) const ARCADE_HYPSEUS_PLAN_KIND: &str = "arcade_hypseus_bundle";
 pub(crate) const ARCADE_DAPHNE_PLAN_KIND: &str = "arcade_daphne_bundle";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TorrentPlanFile {
     pub index: usize,
     pub filename: String,

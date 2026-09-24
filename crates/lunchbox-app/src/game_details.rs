@@ -9,7 +9,9 @@ use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use lava_torrent::torrent::v1::Torrent;
 use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
+use sha2::Sha256;
 use url::{Host, Url};
 
 use crate::arcade_download::{
@@ -22,11 +24,26 @@ use crate::download_plan::{
 use crate::exo_install::PreparedInstall;
 
 const MAX_TORRENT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_TORRENT_FILE_INDEX_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_FILE_CANDIDATES: usize = 100;
 const TORRENT_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 type TorrentCache = Mutex<Option<(String, Arc<Vec<u8>>)>>;
-type TorrentFileCache = Mutex<Option<(String, Arc<Vec<TorrentPlanFile>>)>>;
+type TorrentFileCache = Mutex<Vec<(String, Arc<Vec<TorrentPlanFile>>)>>;
 type MameRomsetCache = Mutex<HashMap<(PathBuf, u64, u64, String), Vec<String>>>;
+
+#[derive(Deserialize)]
+struct CachedTorrentFileIndex {
+    version: u8,
+    torrent_sha256: String,
+    files: Vec<TorrentPlanFile>,
+}
+
+#[derive(Serialize)]
+struct CachedTorrentFileIndexRef<'a> {
+    version: u8,
+    torrent_sha256: &'a str,
+    files: &'a [TorrentPlanFile],
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GameDetails {
@@ -1908,20 +1925,42 @@ fn lookup_titles<'a>(
 
 fn indexed_torrent_files(url: &str) -> Result<Arc<Vec<TorrentPlanFile>>> {
     static CACHE: OnceLock<TorrentFileCache> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(None));
-    if let Ok(guard) = cache.lock()
-        && let Some((cached_url, files)) = guard.as_ref()
-        && cached_url == url
+    let cache = CACHE.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut guard) = cache.lock()
+        && let Some(index) = guard.iter().position(|(cached_url, _)| cached_url == url)
     {
-        return Ok(Arc::clone(files));
+        let entry = guard.remove(index);
+        let files = Arc::clone(&entry.1);
+        guard.push(entry);
+        return Ok(files);
     }
 
+    if let Some(files) = read_cached_torrent_file_index(url) {
+        let files = Arc::new(files);
+        remember_torrent_file_index(cache, url, &files);
+        return Ok(files);
+    }
     let bytes = fetch_torrent(url)?;
     let files = Arc::new(torrent_plan_files_from_bytes(bytes.as_slice())?);
-    if let Ok(mut guard) = cache.lock() {
-        *guard = Some((url.to_owned(), Arc::clone(&files)));
-    }
+    write_cached_torrent_file_index(url, &bytes, &files);
+    remember_torrent_file_index(cache, url, &files);
     Ok(files)
+}
+
+fn remember_torrent_file_index(
+    cache: &TorrentFileCache,
+    url: &str,
+    files: &Arc<Vec<TorrentPlanFile>>,
+) {
+    if let Ok(mut guard) = cache.lock() {
+        if let Some(index) = guard.iter().position(|(cached_url, _)| cached_url == url) {
+            guard.remove(index);
+        }
+        if guard.len() == 4 {
+            guard.remove(0);
+        }
+        guard.push((url.to_owned(), Arc::clone(files)));
+    }
 }
 
 fn torrent_plan_files_from_bytes(bytes: &[u8]) -> Result<Vec<TorrentPlanFile>> {
@@ -2156,6 +2195,53 @@ fn torrent_cache_path_in(cache_root: &Path, url: &str) -> PathBuf {
         .join(format!("{digest:x}.torrent"))
 }
 
+fn read_cached_torrent_file_index(url: &str) -> Option<Vec<TorrentPlanFile>> {
+    let torrent_path = torrent_cache_path(url)?;
+    read_torrent_file_index_cache(&torrent_path, &torrent_path.with_extension("files.json"))
+}
+
+fn read_torrent_file_index_cache(
+    torrent_path: &Path,
+    index_path: &Path,
+) -> Option<Vec<TorrentPlanFile>> {
+    let torrent_bytes = read_fresh_cache_bytes(torrent_path, MAX_TORRENT_BYTES)?;
+    let index_bytes = read_fresh_cache_bytes(index_path, MAX_TORRENT_FILE_INDEX_BYTES)?;
+    let index: CachedTorrentFileIndex = serde_json::from_slice(&index_bytes).ok()?;
+    if index.version != 1
+        || index.files.is_empty()
+        || index.torrent_sha256 != hex::encode(Sha256::digest(&torrent_bytes))
+        || index
+            .files
+            .iter()
+            .enumerate()
+            .any(|(position, file)| file.index != position || file.filename.is_empty())
+    {
+        return None;
+    }
+    Some(index.files)
+}
+
+fn write_cached_torrent_file_index(url: &str, torrent_bytes: &[u8], files: &[TorrentPlanFile]) {
+    let Some(path) = torrent_cache_path(url).map(|path| path.with_extension("files.json")) else {
+        return;
+    };
+    write_torrent_file_index_cache(&path, torrent_bytes, files);
+}
+
+fn write_torrent_file_index_cache(path: &Path, torrent_bytes: &[u8], files: &[TorrentPlanFile]) {
+    let torrent_sha256 = hex::encode(Sha256::digest(torrent_bytes));
+    let index = CachedTorrentFileIndexRef {
+        version: 1,
+        torrent_sha256: &torrent_sha256,
+        files,
+    };
+    if let Ok(encoded) = serde_json::to_vec(&index)
+        && encoded.len() as u64 <= MAX_TORRENT_FILE_INDEX_BYTES
+    {
+        let _ = write_torrent_cache_file(&path, &encoded);
+    }
+}
+
 fn read_cached_torrent(url: &str) -> Option<Vec<u8>> {
     read_torrent_cache_file(&torrent_cache_path(url)?)
 }
@@ -2196,8 +2282,14 @@ fn magnet_torrent_bytes(url: &str) -> Result<Vec<u8>> {
 }
 
 fn read_torrent_cache_file(path: &Path) -> Option<Vec<u8>> {
+    let bytes = read_fresh_cache_bytes(path, MAX_TORRENT_BYTES)?;
+    Torrent::read_from_bytes(&bytes).ok()?;
+    Some(bytes)
+}
+
+fn read_fresh_cache_bytes(path: &Path, maximum_bytes: u64) -> Option<Vec<u8>> {
     let metadata = path.metadata().ok()?;
-    if metadata.len() == 0 || metadata.len() > MAX_TORRENT_BYTES {
+    if metadata.len() == 0 || metadata.len() > maximum_bytes {
         return None;
     }
     let age = SystemTime::now()
@@ -2207,7 +2299,7 @@ fn read_torrent_cache_file(path: &Path) -> Option<Vec<u8>> {
         return None;
     }
     let bytes = fs::read(path).ok()?;
-    if bytes.len() as u64 != metadata.len() || Torrent::read_from_bytes(&bytes).is_err() {
+    if bytes.len() as u64 != metadata.len() {
         return None;
     }
     Some(bytes)
@@ -2322,33 +2414,57 @@ pub(crate) fn rank_file_candidates_for_platform(
     if queries.is_empty() {
         bail!("game title has no searchable characters");
     }
-    let plan_files = files
+    let query_tokens = queries
         .iter()
-        .map(|file| TorrentPlanFile {
-            index: file.index,
-            filename: file.filename.clone(),
-            byte_size: file.byte_size,
-        })
+        .map(|(_, query)| significant_tokens(query))
+        .collect::<Vec<_>>();
+    let query_content = queries
+        .iter()
+        .map(|(title, _)| special_content_flags(title))
         .collect::<Vec<_>>();
     let mut candidates = files
-        .into_iter()
-        .filter_map(|mut file| {
-            file.match_score = 0.0;
-            file.matched_title.clear();
-            for (title, query) in &queries {
-                if !release_content_matches_request(&file.filename, title) {
-                    continue;
-                }
-                let tokens = significant_tokens(query);
-                let score = file_match_score(&file.filename, query, &tokens);
-                if score > file.match_score {
-                    file.match_score = score;
-                    file.matched_title = (*title).to_owned();
+        .iter()
+        .filter_map(|file| {
+            let stem = Path::new(&file.filename)
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&file.filename);
+            let normalized_candidate = normalized_words(title_without_tags(stem));
+            let mut content_flags = None;
+            let mut match_score = 0.0;
+            let mut matched_title = None;
+            for (index, (title, query)) in queries.iter().enumerate() {
+                let score =
+                    file_match_score_normalized(&normalized_candidate, query, &query_tokens[index]);
+                if score > match_score
+                    && content_flags_match(
+                        *content_flags.get_or_insert_with(|| special_content_flags(stem)),
+                        query_content[index],
+                    )
+                {
+                    match_score = score;
+                    matched_title = Some(*title);
                 }
             }
-            (file.region, file.version) = release_labels(&file.filename);
-            (file.match_score >= 0.35 && platform_payload_tier(platform, &file).is_some())
-                .then_some(file)
+            if match_score < 0.35 || platform_payload_tier(platform, file).is_none() {
+                return None;
+            }
+            let mut candidate = file.clone();
+            candidate.match_score = match_score;
+            candidate.matched_title = matched_title.unwrap_or_default().to_owned();
+            (candidate.region, candidate.version) = release_labels(&candidate.filename);
+            Some(candidate)
+        })
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return Ok(candidates);
+    }
+    let plan_files = files
+        .into_iter()
+        .map(|file| TorrentPlanFile {
+            index: file.index,
+            filename: file.filename,
+            byte_size: file.byte_size,
         })
         .collect::<Vec<_>>();
     let candidate_order = |left: &TorrentFileCandidate, right: &TorrentFileCandidate| {
@@ -2483,6 +2599,10 @@ fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
         .and_then(|name| name.to_str())
         .unwrap_or(filename);
     let candidate = normalized_words(title_without_tags(stem));
+    file_match_score_normalized(&candidate, query, query_tokens)
+}
+
+fn file_match_score_normalized(candidate: &str, query: &str, query_tokens: &[&str]) -> f64 {
     // Sequel numbers are identity-bearing, including normalized Roman numerals.
     // Do not suggest VIII for VII just because both share "Final Fantasy".
     if query.split_whitespace().any(|token| {
@@ -2534,33 +2654,41 @@ pub(crate) fn torrent_file_match_score(filename: &str, game_title: &str) -> f64 
 }
 
 fn release_content_matches_request(filename: &str, game_title: &str) -> bool {
-    // Inspect the filename including release tags, but not its parent folders.
-    // These tags describe different content, not interchangeable regional releases.
-    fn special_content(value: &str) -> [bool; 3] {
-        let normalized = normalized_words(value);
-        let words = normalized.split_whitespace().collect::<Vec<_>>();
-        [
-            words.iter().any(|word| {
-                matches!(
-                    *word,
-                    "demo" | "sample" | "sampler" | "preview" | "previews" | "kiosk"
-                )
-            }),
-            words
-                .iter()
-                .any(|word| matches!(*word, "beta" | "proto" | "prototype")),
-            words
-                .windows(2)
-                .any(|pair| matches!(pair, ["bonus", "disc" | "disk" | "cd"])),
-        ]
-    }
     let stem = Path::new(filename)
         .file_stem()
         .and_then(|name| name.to_str())
         .unwrap_or(filename);
-    special_content(stem)
+    content_flags_match(
+        special_content_flags(stem),
+        special_content_flags(game_title),
+    )
+}
+
+// Inspect the filename including release tags, but not its parent folders.
+// These tags describe different content, not interchangeable regional releases.
+fn special_content_flags(value: &str) -> [bool; 3] {
+    let normalized = normalized_words(value);
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    [
+        words.iter().any(|word| {
+            matches!(
+                *word,
+                "demo" | "sample" | "sampler" | "preview" | "previews" | "kiosk"
+            )
+        }),
+        words
+            .iter()
+            .any(|word| matches!(*word, "beta" | "proto" | "prototype")),
+        words
+            .windows(2)
+            .any(|pair| matches!(pair, ["bonus", "disc" | "disk" | "cd"])),
+    ]
+}
+
+fn content_flags_match(candidate: [bool; 3], requested: [bool; 3]) -> bool {
+    candidate
         .into_iter()
-        .zip(special_content(game_title))
+        .zip(requested)
         .all(|(candidate, requested)| !candidate || requested)
 }
 
@@ -3693,9 +3821,19 @@ mod tests {
         assert_eq!(files[0].filename, "test.bin");
         write_torrent_cache_file(&path, &bytes).unwrap();
         assert_eq!(read_torrent_cache_file(&path).unwrap(), bytes);
+        let index_path = path.with_extension("files.json");
+        write_torrent_file_index_cache(&index_path, &bytes, &files);
+        assert_eq!(
+            read_torrent_file_index_cache(&path, &index_path).unwrap(),
+            files
+        );
+        fs::write(&index_path, b"invalid index").unwrap();
+        assert!(read_torrent_file_index_cache(&path, &index_path).is_none());
+        write_torrent_file_index_cache(&index_path, &bytes, &files);
 
         fs::write(&path, b"not a torrent").unwrap();
         assert!(read_torrent_cache_file(&path).is_none());
+        assert!(read_torrent_file_index_cache(&path, &index_path).is_none());
     }
 
     #[test]
