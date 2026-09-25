@@ -147,6 +147,8 @@ TestCase {
     function test_players_come_before_target_and_unknown_setup() {
         compare(workflow.stage,0)
         verify(!workflow.profile)
+        verify(findChild(workflow,"connectedController-brawler"))
+        compare(findChild(workflow,"connectedController-brawler").assignedPlayer,-1)
         verify(workflow.controllerChoices(0).some(item => item.id === "unknown"))
         workflow.assignPlayer(0,"unknown")
         compare(settings.order.join(","),"unknown")
@@ -156,6 +158,7 @@ TestCase {
         verify(!workflow.controllerChoices(1).some(item => item.id === "unknown"))
         workflow.assignPlayer(1,"brawler")
         compare(settings.order.join(","),"unknown,brawler")
+        compare(findChild(workflow,"connectedController-brawler").assignedPlayer,1)
     }
     function test_native_mapping_is_automatic_and_existing_buttons_survive() {
         workflow.assignPlayer(0,"sc2")
