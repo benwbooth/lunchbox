@@ -39,6 +39,7 @@ const MAX_FRAME_PIXELS: u64 = 16_000_000;
 // RetroArch requests the next frame as soon as it receives `auto: "auto"`.
 // One capture per second is enough for dialogue and limits interruption of the game.
 const AUTO_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
+const RESULT_WAIT_TIMEOUT: Duration = Duration::from_millis(1250);
 const MAX_TRANSLATION_MEMORY: usize = 256;
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
@@ -310,7 +311,13 @@ impl TranslationSession {
             "{}, and the local OCR models are required; download them in Settings",
             settings.model
         );
-        let ocr = load_ocr()?;
+        let mut ocr = load_ocr()?;
+        if ocr.config().inference.execution_provider != ExecutionProvider::Cpu {
+            // Pay the one-time GPU graph initialization before emulation starts,
+            // not on the first dialogue frame while the game is playing.
+            ocr.warm_up_gpu(&OcrCancellationToken::new())
+                .context("warming up local GPU OCR before launch")?;
+        }
         let viewport = overlay_viewport(plan, executable, output_dimensions)?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
             .context("opening local translation bridge")?;
@@ -520,7 +527,7 @@ fn serve(
         retry_after: None,
         last_started_at: None,
         last_response_at: None,
-        status_overlay: None,
+        blank_overlay: None,
     };
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
@@ -557,7 +564,7 @@ struct TranslationBridge {
     retry_after: Option<([u8; 32], Instant)>,
     last_started_at: Option<Instant>,
     last_response_at: Option<Instant>,
-    status_overlay: Option<((u32, u32), &'static str, String)>,
+    blank_overlay: Option<((u32, u32), String)>,
 }
 
 fn pace_auto_response(state: &mut TranslationBridge) {
@@ -739,18 +746,7 @@ fn handle_request(
     };
     let digest: [u8; 32] = Sha256::digest(&decoded).into();
     while let Ok((completed_digest, result)) = state.results.try_recv() {
-        state.in_flight = None;
-        match result {
-            Ok(translation) => {
-                state.cached = Some(translation);
-                state.retry_after = None;
-            }
-            Err(error) => {
-                eprintln!("LUNCHBOX_TRANSLATION_REQUEST_FAILED: {error:#}");
-                state.retry_after =
-                    Some((completed_digest, Instant::now() + Duration::from_secs(10)));
-            }
-        }
+        accept_translation_result(state, completed_digest, result);
     }
     let same_text = state.cached.as_ref().is_some_and(|cached| {
         cached.digest == digest
@@ -783,22 +779,57 @@ fn handle_request(
         state.in_flight = Some(digest);
         state.last_started_at = Some(Instant::now());
     }
-    let label = if can_retry {
-        "Translating…"
-    } else {
-        "Translation failed; retrying…"
-    };
+    // RetroArch's HTTP task is asynchronous. Wait for the worker during this
+    // request so a ready caption is returned with the captured frame, rather
+    // than showing a placeholder and waiting for one more screenshot cycle.
+    if state.in_flight.is_some() {
+        match state.results.recv_timeout(RESULT_WAIT_TIMEOUT) {
+            Ok((completed_digest, result)) => {
+                accept_translation_result(state, completed_digest, result)
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                bail!("translation worker stopped")
+            }
+        }
+    }
     pace_auto_response(state);
-    let overlay = status_overlay(state, viewport, (width, height), label)?;
+    if let Some(cached) = &state.cached
+        && cached.digest == digest
+    {
+        return write_json(
+            stream,
+            200,
+            &json!({"image": cached.overlay, "auto": "auto"}),
+        );
+    }
+    let overlay = blank_overlay(state, viewport, (width, height))?;
     write_json(stream, 200, &json!({"image": overlay, "auto": "auto"}))?;
     Ok(())
 }
 
-fn status_overlay<'a>(
+fn accept_translation_result(
+    state: &mut TranslationBridge,
+    completed_digest: [u8; 32],
+    result: Result<CachedTranslation>,
+) {
+    state.in_flight = None;
+    match result {
+        Ok(translation) => {
+            state.cached = Some(translation);
+            state.retry_after = None;
+        }
+        Err(error) => {
+            eprintln!("LUNCHBOX_TRANSLATION_REQUEST_FAILED: {error:#}");
+            state.retry_after = Some((completed_digest, Instant::now() + Duration::from_secs(10)));
+        }
+    }
+}
+
+fn blank_overlay<'a>(
     state: &'a mut TranslationBridge,
     viewport: Option<OverlayViewport>,
     frame: (u32, u32),
-    label: &'static str,
 ) -> Result<&'a str> {
     let output = viewport.map(overlay_image_dimensions).unwrap_or_else(|| {
         let width = frame.0.min(2048);
@@ -807,32 +838,13 @@ fn status_overlay<'a>(
             (u64::from(width) * u64::from(frame.1) / u64::from(frame.0)) as u32,
         )
     });
-    if state
-        .status_overlay
-        .as_ref()
-        .map(|(size, text, _)| (*size, *text))
-        != Some((output, label))
-    {
-        let rect = TextRect {
-            x1: 24,
-            y1: 24,
-            x2: 260.min(output.0),
-            y2: 62.min(output.1),
-        };
-        let region = TranslatedRegion {
-            rect,
-            source_line_height: 26,
-            source: String::new(),
-            english: label.into(),
-            background: [9, 14, 22],
-        };
-        state.status_overlay = Some((
+    if state.blank_overlay.as_ref().map(|(size, _)| *size) != Some(output) {
+        state.blank_overlay = Some((
             output,
-            label,
-            BASE64.encode(render_regions_png(output.0, output.1, &[region])?),
+            BASE64.encode(render_regions_png(output.0, output.1, &[])?),
         ));
     }
-    Ok(&state.status_overlay.as_ref().unwrap().2)
+    Ok(&state.blank_overlay.as_ref().unwrap().1)
 }
 
 fn read_http_line(reader: &mut impl BufRead) -> Result<String> {
@@ -2442,7 +2454,7 @@ mod tests {
             retry_after: None,
             last_started_at: None,
             last_response_at: None,
-            status_overlay: None,
+            blank_overlay: None,
         };
         handle_request(&mut stream, "secret", None, &mut state).unwrap();
         drop(stream);
@@ -2455,7 +2467,7 @@ mod tests {
     }
 
     #[test]
-    fn first_f10_request_responds_before_translation_finishes() {
+    fn slow_translation_returns_a_blank_overlay_without_a_status_card() {
         let screenshot = render_regions_png(512, 478, &[]).unwrap();
         let digest: [u8; 32] = Sha256::digest(&screenshot).into();
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -2485,7 +2497,7 @@ mod tests {
             retry_after: None,
             last_started_at: None,
             last_response_at: None,
-            status_overlay: None,
+            blank_overlay: None,
         };
         let (mut stream, _) = listener.accept().unwrap();
         let start = Instant::now();
@@ -2495,9 +2507,73 @@ mod tests {
         let response = client.join().unwrap();
         let body: Value = serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(body["auto"], "auto");
-        assert!(body["image"].as_str().is_some());
+        let overlay = BASE64.decode(body["image"].as_str().unwrap()).unwrap();
+        assert!(
+            image::load_from_memory(&overlay)
+                .unwrap()
+                .into_rgba8()
+                .pixels()
+                .all(|pixel| pixel.0[3] == 0)
+        );
         assert_eq!(state.in_flight, Some(digest));
         assert_eq!(pending.try_recv().unwrap().digest, digest);
+    }
+
+    #[test]
+    fn completed_translation_is_returned_on_the_same_capture() {
+        let screenshot = render_regions_png(64, 64, &[]).unwrap();
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = thread::spawn(move || {
+            let mut stream = TcpStream::connect(address).unwrap();
+            let body = serde_json::to_vec(&json!({"image": BASE64.encode(screenshot)})).unwrap();
+            write!(
+                stream,
+                "POST /secret HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(&body).unwrap();
+            stream.flush().unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).unwrap();
+            response
+        });
+        let (jobs, pending) = mpsc::sync_channel(1);
+        let (completed, results) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let job: TranslationJob = pending.recv().unwrap();
+            completed
+                .send((
+                    job.digest,
+                    Ok(CachedTranslation {
+                        digest: job.digest,
+                        regions: vec![],
+                        region_fingerprints: vec![],
+                        dimensions: job.dimensions,
+                        overlay: "ready-overlay".to_owned(),
+                    }),
+                ))
+                .unwrap();
+        });
+        let mut state = TranslationBridge {
+            jobs,
+            results,
+            cached: None,
+            in_flight: None,
+            retry_after: None,
+            last_started_at: None,
+            last_response_at: None,
+            blank_overlay: None,
+        };
+        let (mut stream, _) = listener.accept().unwrap();
+        handle_request(&mut stream, "secret", None, &mut state).unwrap();
+        drop(stream);
+        let response = client.join().unwrap();
+        worker.join().unwrap();
+        let body: Value = serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(body["image"], "ready-overlay");
+        assert_eq!(body["auto"], "auto");
     }
 
     #[test]
@@ -2525,6 +2601,7 @@ mod tests {
             reader.read_exact(&mut body).unwrap();
             let body: Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(body["model"], "translategemma:12b");
+            assert_eq!(body["options"]["num_ctx"], 2048);
             assert!(body["messages"][0]["images"].is_null());
             assert!(
                 body["messages"][0]["content"]
