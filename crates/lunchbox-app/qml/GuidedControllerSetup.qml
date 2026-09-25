@@ -293,38 +293,6 @@ ColumnLayout {
             color: setup.activeDevices[setup.lastPressedDevice] ? "#8ad4b7" : palette.text
         }
         Label { visible: setup.connectedControllers.length === 0; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "No controllers connected. Plug one in or pair it over Bluetooth; it will appear here." }
-        Label {
-            visible: setup.connectedControllers.length > 0
-            Layout.fillWidth: true
-            text: "Connected controllers (" + setup.connectedControllers.length + ")"
-            font.bold: true
-        }
-        Repeater {
-            model: setup.connectedControllers.filter(item => showVirtual.checked
-                || !item.review.steam_virtual || setup.playerDevices.indexOf(item.id) >= 0)
-            delegate: RowLayout {
-                required property var modelData
-                objectName: "connectedController-" + modelData.id
-                readonly property int assignedPlayer: setup.playerDevices.indexOf(modelData.id)
-                Layout.fillWidth: true
-                spacing: 10
-                Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: modelData.name
-                }
-                Label {
-                    text: assignedPlayer >= 0 ? "Player " + (assignedPlayer + 1) : "Unassigned"
-                    color: assignedPlayer >= 0 ? "#8ad4b7" : palette.text
-                }
-                LbButton {
-                    visible: assignedPlayer < 0
-                    text: "Use for Player " + (setup.selectedPlayer + 1)
-                    enabled: !setup.dirty
-                    onClicked: setup.assignPlayer(setup.selectedPlayer, modelData.id)
-                }
-            }
-        }
         Repeater {
             model: setup.playerDevices.length
             delegate: Frame {
@@ -357,7 +325,6 @@ ColumnLayout {
                             onActivated: setup.assignPlayer(playerCard.index, model[currentIndex].id)
                             Accessible.name: "Controller for Player " + (playerCard.index + 1)
                         }
-                        LbButton { text: "Use the controller I pressed"; visible: !playerCard.deviceId && !!setup.lastPressedDevice && setup.playerDevices.indexOf(setup.lastPressedDevice) < 0; onClicked: setup.assignPlayer(playerCard.index, setup.lastPressedDevice) }
                         LbButton {
                             text: "Rename"; visible: !!playerCard.device
                             onClicked: {
