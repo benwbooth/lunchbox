@@ -2009,11 +2009,9 @@ impl qobject::SettingsModel {
                     model_object.as_mut().set_translation_busy(false);
                     let status = match result {
                         Ok(true) => {
-                            format!("GLM-OCR, {model}, and the text placement model are ready.")
+                            format!("Local OCR and {model} are ready.")
                         }
-                        Ok(false) => format!(
-                            "A required model is missing: GLM-OCR, {model}, or text placement."
-                        ),
+                        Ok(false) => format!("A required model is missing: local OCR or {model}."),
                         Err(error) => format!("Local Ollama is unavailable: {error}"),
                     };
                     model_object
@@ -2037,9 +2035,8 @@ impl qobject::SettingsModel {
         self.as_mut().rust_mut().translation_cancel = Some(Arc::clone(&cancel));
         self.as_mut().set_translation_busy(true);
         self.as_mut().set_translation_progress(0);
-        self.as_mut().set_translation_status(qstring(format!(
-            "Downloading GLM-OCR, {model}, and text placement…"
-        )));
+        self.as_mut()
+            .set_translation_status(qstring(format!("Downloading local OCR and {model}…")));
         let qt_thread = self.as_ref().qt_thread();
         let progress_thread = qt_thread.clone();
         let spawn = std::thread::Builder::new()
@@ -2067,7 +2064,7 @@ impl qobject::SettingsModel {
                             model_object
                                 .as_mut()
                                 .set_translation_status(qstring(format!(
-                                    "GLM-OCR, {model}, and text placement are ready."
+                                    "Local OCR and {model} are ready."
                                 )));
                         }
                         Err(error) => {

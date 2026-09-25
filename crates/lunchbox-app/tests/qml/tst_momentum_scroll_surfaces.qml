@@ -31,6 +31,7 @@ TestCase {
     Lunchbox.MomentumFlickable {
         id: flick
         x: 520; y: 0; width: 240; height: 200
+        blockNativeWheel: true
         clip: true
         contentWidth: width; contentHeight: 2000
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
@@ -89,6 +90,39 @@ TestCase {
             Rectangle { width: parent.width; height: 500 }
         }
     }
+    Item {
+        id: gutterFixture
+        x: 590; y: 470; width: 260; height: 120
+        Lunchbox.MomentumFlickable {
+            id: gutterList
+            width: parent.width - 20
+            height: parent.height
+            blockNativeWheel: true
+            contentWidth: width
+            contentHeight: gutterContent.height
+            Column {
+                id: gutterContent
+                width: gutterList.width
+                Repeater {
+                    model: 100
+                    delegate: Rectangle {
+                        width: gutterContent.width
+                        height: 24 + (index % 5) * 17
+                    }
+                }
+            }
+            ScrollBar.vertical: ScrollBar {
+                id: gutterBar
+                parent: gutterFixture
+                x: gutterFixture.width - width
+                y: 0
+                height: gutterFixture.height
+                width: 10
+                policy: ScrollBar.AlwaysOn
+                visible: gutterList.contentHeight > gutterList.height
+            }
+        }
+    }
 
     function test_wheel_momentum_and_scrollbar_gutters() {
         verify(list.verticalScrollBarGutter > 0)
@@ -99,6 +133,14 @@ TestCase {
         verify(flick.verticalScrollBarGutter > 0)
         verify(scrollView.rightPadding >= scrollView.effectiveScrollBarWidth)
         verify(scrollView.availableWidth <= scrollView.width - scrollView.effectiveScrollBarWidth)
+        verify(gutterBar.x >= gutterList.x + gutterList.width + 8)
+        compare(gutterBar.height, gutterList.height)
+        verify(gutterBar.visible)
+        mouseWheel(gutterList, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        const gutterStart = gutterList.contentY
+        verify(gutterStart > 0)
+        wait(100)
+        verify(gutterList.contentY > gutterStart)
         mouseWheel(list, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
         mouseWheel(grid, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
         mouseWheel(flick, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)

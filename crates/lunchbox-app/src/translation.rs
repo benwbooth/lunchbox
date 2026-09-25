@@ -17,8 +17,9 @@ use font8x8::{BASIC_FONTS, UnicodeFonts};
 use fontdb::{Database, Family, Query};
 use fontdue::{Font, FontSettings};
 use image::RgbImage;
-use ocrs_cjk::{ImageSource, OcrEngine, OcrEngineParams};
-use rten::Model;
+use rapidocr_core::RapidOcr;
+use rapidocr_core::config::{InferenceOptions, PipelineConfig};
+use rapidocr_core::model::{ModelCache, ModelDownloadMode, model_set_by_name};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -26,12 +27,7 @@ use sha2::{Digest, Sha256};
 use crate::emulator::{EmulatorExecutable, LaunchPlan};
 
 const OLLAMA_URL: &str = "http://127.0.0.1:11434";
-const OCR_MODEL: &str = "glm-ocr:latest";
-// PaddlePaddle's Apache-2.0 PP-OCRv6 tiny text detector, pinned to this model
-// revision and SHA-256. We download it only when the user installs models.
-const DETECTOR_URL: &str = "https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_onnx/resolve/2ba1506c0380b8f0b03dd142459aac66d4421f6c/inference.onnx";
-const DETECTOR_SHA256: &str = "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8";
-const MAX_DETECTOR_BYTES: u64 = 3 * 1024 * 1024;
+const OCR_MODEL_SET: &str = "ppocrv6-small";
 // RetroArch uses F8 for screenshots by default. Keep that binding intact.
 const TRANSLATION_HOTKEY: &str = "f10";
 // A 5120×2160 24-bit BMP becomes roughly 44 MiB after base64 encoding.
@@ -98,89 +94,67 @@ fn http_agent(timeout: Duration) -> ureq::Agent {
         .into()
 }
 
-fn detector_path() -> Result<PathBuf> {
+fn ocr_model_cache() -> Result<ModelCache> {
     let dirs = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox")
         .context("finding the local model cache")?;
-    Ok(dirs
-        .cache_dir()
-        .join("translation")
-        .join("pp-ocrv6-tiny-det-2ba1506c.onnx"))
+    Ok(ModelCache::new(
+        dirs.cache_dir().join("translation").join(OCR_MODEL_SET),
+    ))
 }
 
-fn detector_available() -> Result<bool> {
-    let path = detector_path()?;
-    if !path.is_file() {
-        return Ok(false);
-    }
-    let bytes = std::fs::read(&path).context("reading local text detector")?;
-    Ok(hex::encode(Sha256::digest(bytes)) == DETECTOR_SHA256)
+fn ocr_model_set() -> Result<&'static rapidocr_core::model::ModelSetSpec> {
+    model_set_by_name(OCR_MODEL_SET).context("PP-OCRv6 small model set is unavailable")
 }
 
-fn download_detector(cancelled: &AtomicBool) -> Result<()> {
-    if detector_available()? {
-        return Ok(());
-    }
+fn ocr_models_available() -> Result<bool> {
+    Ok(ocr_model_cache()?
+        .missing_assets_for_pipeline(ocr_model_set()?, PipelineConfig::without_cls())
+        .is_empty())
+}
+
+fn download_ocr_models(cancelled: &AtomicBool) -> Result<()> {
     ensure!(
         !cancelled.load(Ordering::Relaxed),
-        "text detector download cancelled"
+        "OCR model download cancelled"
     );
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_global(Some(Duration::from_secs(120)))
-        .max_redirects(5)
-        .http_status_as_error(false)
-        .build()
-        .into();
-    let mut response = agent
-        .get(DETECTOR_URL)
-        .call()
-        .context("downloading Apache-licensed text detector")?;
-    ensure!(
-        response.status().as_u16() == 200,
-        "text detector download failed"
-    );
-    let mut bytes = Vec::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(MAX_DETECTOR_BYTES + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() as u64 <= MAX_DETECTOR_BYTES,
-        "text detector download exceeded size limit"
-    );
-    ensure!(
-        hex::encode(Sha256::digest(&bytes)) == DETECTOR_SHA256,
-        "text detector checksum did not match the pinned model"
-    );
+    ocr_model_cache()?
+        .ensure_model_set_for_pipeline(
+            ocr_model_set()?,
+            PipelineConfig::without_cls(),
+            ModelDownloadMode::Missing,
+        )
+        .context("installing Japanese-capable OCR models")?;
     ensure!(
         !cancelled.load(Ordering::Relaxed),
-        "text detector download cancelled"
+        "OCR model download cancelled"
     );
-    let path = detector_path()?;
-    let directory = path
-        .parent()
-        .context("text detector has no cache directory")?;
-    std::fs::create_dir_all(directory)?;
-    let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
-    temporary.write_all(&bytes)?;
-    temporary
-        .persist(&path)
-        .context("installing text detector")?;
     Ok(())
 }
 
-fn load_detector() -> Result<OcrEngine> {
-    ensure!(
-        detector_available()?,
-        "text placement model is not installed; download models in Settings"
-    );
-    let model = Model::load_file(detector_path()?).context("loading local text detector")?;
-    OcrEngine::new(OcrEngineParams {
-        detection_model: Some(model),
-        ..Default::default()
-    })
-    .context("initializing local text detector")
+fn load_ocr() -> Result<RapidOcr> {
+    let cache = ocr_model_cache()?;
+    let model_set = ocr_model_set()?;
+    cache
+        .ensure_model_set_for_pipeline(
+            model_set,
+            PipelineConfig::without_cls(),
+            ModelDownloadMode::Never,
+        )
+        .context("OCR models are not installed; download models in Settings")?;
+    RapidOcr::from_config(
+        cache
+            .config_for(model_set)
+            .with_pipeline(PipelineConfig::without_cls())
+            .with_inference_options(InferenceOptions {
+                intra_threads: std::thread::available_parallelism()
+                    .map(|threads| threads.get())
+                    .unwrap_or(2)
+                    .min(4),
+                enable_cpu_mem_arena: true,
+                ..Default::default()
+            }),
+    )
+    .context("initializing local OCR")
 }
 
 pub fn model_available(model: &str) -> Result<bool> {
@@ -201,12 +175,10 @@ pub fn model_available(model: &str) -> Result<bool> {
         .read_to_string()
         .context("reading Ollama model list")?;
     let body: Value = serde_json::from_str(&body).context("parsing Ollama model list")?;
-    let ollama_ready = body["models"].as_array().is_some_and(|models| {
-        [model, OCR_MODEL]
-            .iter()
-            .all(|required| models.iter().any(|entry| entry["name"] == *required))
-    });
-    Ok(ollama_ready && detector_available()?)
+    let ollama_ready = body["models"]
+        .as_array()
+        .is_some_and(|models| models.iter().any(|entry| entry["name"] == model));
+    Ok(ollama_ready && ocr_models_available()?)
 }
 
 pub fn pull_model(
@@ -218,44 +190,39 @@ pub fn pull_model(
         supported_model(model),
         "unsupported local translation model"
     );
-    for (index, required) in [OCR_MODEL, model].into_iter().enumerate() {
-        let mut response = http_agent(Duration::from_secs(60 * 60))
-            .post(&format!("{OLLAMA_URL}/api/pull"))
-            .send_json(json!({"model": required, "stream": true}))
-            .context("starting local Ollama model download")?;
-        ensure!(
-            response.status().as_u16() == 200,
-            "Ollama refused the model download"
-        );
-        let mut complete = false;
-        for line in BufReader::new(response.body_mut().as_reader()).lines() {
-            if cancelled.load(Ordering::Relaxed) {
-                bail!("translation model download cancelled");
-            }
-            let event: Value = serde_json::from_str(&line.context("reading download progress")?)
-                .context("parsing Ollama download progress")?;
-            if let Some(error) = event["error"].as_str() {
-                bail!("Ollama model download failed: {error}");
-            }
-            let status = event["status"].as_str().unwrap_or("Downloading model");
-            let fraction = match (event["completed"].as_u64(), event["total"].as_u64()) {
-                (Some(done), Some(total)) if total > 0 => (done * 49 / total).min(49) as u8,
-                _ => 0,
-            };
-            progress(index as u8 * 50 + fraction, format!("{required}: {status}"));
-            if status == "success" {
-                complete = true;
-            }
-        }
-        ensure!(complete, "Ollama did not finish downloading {required}");
-    }
-    progress(99, "Installing precise text placement model".to_owned());
-    download_detector(cancelled)?;
-    ensure!(model_available(model)?, "local models are incomplete");
-    progress(
-        100,
-        "OCR, translation, and text placement are ready".to_owned(),
+    let mut response = http_agent(Duration::from_secs(60 * 60))
+        .post(&format!("{OLLAMA_URL}/api/pull"))
+        .send_json(json!({"model": model, "stream": true}))
+        .context("starting local Ollama model download")?;
+    ensure!(
+        response.status().as_u16() == 200,
+        "Ollama refused the model download"
     );
+    let mut complete = false;
+    for line in BufReader::new(response.body_mut().as_reader()).lines() {
+        if cancelled.load(Ordering::Relaxed) {
+            bail!("translation model download cancelled");
+        }
+        let event: Value = serde_json::from_str(&line.context("reading download progress")?)
+            .context("parsing Ollama download progress")?;
+        if let Some(error) = event["error"].as_str() {
+            bail!("Ollama model download failed: {error}");
+        }
+        let status = event["status"].as_str().unwrap_or("Downloading model");
+        let fraction = match (event["completed"].as_u64(), event["total"].as_u64()) {
+            (Some(done), Some(total)) if total > 0 => (done * 89 / total).min(89) as u8,
+            _ => 0,
+        };
+        progress(fraction, format!("{model}: {status}"));
+        if status == "success" {
+            complete = true;
+        }
+    }
+    ensure!(complete, "Ollama did not finish downloading {model}");
+    progress(90, "Installing local Japanese-capable OCR".to_owned());
+    download_ocr_models(cancelled)?;
+    ensure!(model_available(model)?, "local models are incomplete");
+    progress(100, "OCR and translation are ready".to_owned());
     Ok(())
 }
 
@@ -276,10 +243,10 @@ impl TranslationSession {
         settings.validate()?;
         ensure!(
             model_available(&settings.model)?,
-            "{OCR_MODEL}, {}, and the text placement model are required; download them in Settings",
+            "{}, and the local OCR models are required; download them in Settings",
             settings.model
         );
-        let detector = load_detector()?;
+        let ocr = load_ocr()?;
         let viewport = overlay_viewport(plan, executable, output_dimensions)?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
             .context("opening local translation bridge")?;
@@ -294,16 +261,7 @@ impl TranslationSession {
         let settings = settings.clone();
         thread::Builder::new()
             .name("lunchbox-translation-bridge".into())
-            .spawn(move || {
-                serve(
-                    listener,
-                    &secret,
-                    settings,
-                    detector,
-                    viewport,
-                    &worker_stop,
-                )
-            })
+            .spawn(move || serve(listener, &secret, settings, ocr, viewport, &worker_stop))
             .context("starting local translation bridge")?;
         Ok(Some(Self { stop }))
     }
@@ -439,7 +397,7 @@ fn serve(
     listener: TcpListener,
     secret: &str,
     settings: TranslationSettings,
-    detector: OcrEngine,
+    ocr: RapidOcr,
     viewport: Option<OverlayViewport>,
     stop: &AtomicBool,
 ) {
@@ -450,21 +408,31 @@ fn serve(
         .name("lunchbox-translation-worker".into())
         .spawn(move || {
             let mut cached: Option<CachedTranslation> = None;
+            let mut ocr = ocr;
             for job in pending_jobs {
                 let result = render_translation(
                     &worker_settings,
                     &job.image,
                     job.dimensions.0,
                     job.dimensions.1,
-                    &detector,
+                    &mut ocr,
                     viewport,
                     cached.as_ref(),
                 )
-                .map(|(regions, overlay)| CachedTranslation {
-                    digest: job.digest,
-                    regions,
-                    dimensions: job.dimensions,
-                    overlay,
+                .and_then(|(regions, overlay)| {
+                    let screenshot =
+                        image::load_from_memory(&BASE64.decode(&job.image)?)?.into_rgb8();
+                    let region_fingerprints = regions
+                        .iter()
+                        .map(|region| fingerprint_region(&screenshot, region.rect))
+                        .collect();
+                    Ok(CachedTranslation {
+                        digest: job.digest,
+                        regions,
+                        region_fingerprints,
+                        dimensions: job.dimensions,
+                        overlay,
+                    })
                 });
                 if let Ok(translation) = &result {
                     cached = Some(translation.clone());
@@ -528,8 +496,34 @@ struct TranslationBridge {
 struct CachedTranslation {
     digest: [u8; 32],
     regions: Vec<TranslatedRegion>,
+    region_fingerprints: Vec<[u8; 32]>,
     dimensions: (u32, u32),
     overlay: String,
+}
+
+fn fingerprint_region(image: &RgbImage, rect: TextRect) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    for y in rect.y1..rect.y2 {
+        for x in rect.x1..rect.x2 {
+            digest.update(image.get_pixel(x, y).0);
+        }
+    }
+    digest.finalize().into()
+}
+
+fn cached_text_matches(
+    cached: &CachedTranslation,
+    screenshot: &RgbImage,
+    dimensions: (u32, u32),
+) -> bool {
+    cached.dimensions == dimensions
+        && !cached.regions.is_empty()
+        && cached.region_fingerprints.len() == cached.regions.len()
+        && cached
+            .regions
+            .iter()
+            .zip(&cached.region_fingerprints)
+            .all(|(region, old)| fingerprint_region(screenshot, region.rect) == *old)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -648,11 +642,13 @@ fn handle_request(
             }
         }
     }
-    if state
-        .cached
-        .as_ref()
-        .is_some_and(|old| old.digest == digest)
-    {
+    let same_text = state.cached.as_ref().is_some_and(|cached| {
+        cached.digest == digest
+            || image::load_from_memory(&decoded).ok().is_some_and(|image| {
+                cached_text_matches(cached, &image.into_rgb8(), (width, height))
+            })
+    });
+    if same_text {
         return write_json(
             stream,
             200,
@@ -949,56 +945,66 @@ fn dense_grid_start(boxes: &[TextRect], width: u32, height: u32) -> Option<(u32,
     })
 }
 
-fn detect_text_regions(detector: &OcrEngine, image: &RgbImage) -> Result<Vec<TextGroup>> {
+fn detect_text_regions(ocr: &mut RapidOcr, image: &RgbImage) -> Result<Vec<(TextGroup, String)>> {
     let (width, height) = image.dimensions();
-    let source = ImageSource::from_bytes(image.as_raw(), (width, height))?;
-    let prepared = detector.prepare_input(source)?;
-    let boxes = detector.detect_words(&prepared)?;
-    let mut rectangles = Vec::new();
-    for detected in boxes {
-        let corners = detected.corners();
-        let x1 = corners
-            .iter()
-            .map(|point| point.x)
-            .fold(f32::INFINITY, f32::min)
-            .floor()
-            .clamp(0.0, width as f32) as u32;
-        let y1 = corners
-            .iter()
-            .map(|point| point.y)
-            .fold(f32::INFINITY, f32::min)
-            .floor()
-            .clamp(0.0, height as f32) as u32;
-        let x2 = corners
-            .iter()
-            .map(|point| point.x)
-            .fold(f32::NEG_INFINITY, f32::max)
-            .ceil()
-            .clamp(0.0, width as f32) as u32;
-        let y2 = corners
-            .iter()
-            .map(|point| point.y)
-            .fold(f32::NEG_INFINITY, f32::max)
-            .ceil()
-            .clamp(0.0, height as f32) as u32;
-        let rect = TextRect { x1, y1, x2, y2 };
-        if text_region_allowed(rect, width, height) {
-            rectangles.push(rect);
-        }
-    }
-    let regions = group_text_regions(rectangles, width, height);
-    eprintln!("LUNCHBOX_TRANSLATION_DETECTION: frame={width}x{height} regions={regions:?}");
-    Ok(regions)
-}
-
-fn crop_region_png(image: &RgbImage, rect: TextRect) -> Result<String> {
-    let cropped =
-        image::imageops::crop_imm(image, rect.x1, rect.y1, rect.width(), rect.height()).to_image();
-    let mut pixels = Vec::with_capacity((cropped.width() * cropped.height() * 4) as usize);
-    for pixel in cropped.pixels() {
-        pixels.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
-    }
-    Ok(BASE64.encode(encode_rgba_png(cropped.width(), cropped.height(), &pixels)?))
+    let lines = ocr
+        .run_image(image)
+        .context("reading frame with local OCR")?
+        .lines
+        .into_iter()
+        .filter_map(|line| {
+            if line.score < 0.3 || line.text.trim().is_empty() {
+                return None;
+            }
+            let corners = line.bbox.points;
+            let x1 = corners
+                .iter()
+                .map(|point| point[0])
+                .fold(f32::INFINITY, f32::min)
+                .floor()
+                .clamp(0.0, width as f32) as u32;
+            let y1 = corners
+                .iter()
+                .map(|point| point[1])
+                .fold(f32::INFINITY, f32::min)
+                .floor()
+                .clamp(0.0, height as f32) as u32;
+            let x2 = corners
+                .iter()
+                .map(|point| point[0])
+                .fold(f32::NEG_INFINITY, f32::max)
+                .ceil()
+                .clamp(0.0, width as f32) as u32;
+            let y2 = corners
+                .iter()
+                .map(|point| point[1])
+                .fold(f32::NEG_INFINITY, f32::max)
+                .ceil()
+                .clamp(0.0, height as f32) as u32;
+            let rect = TextRect { x1, y1, x2, y2 };
+            text_region_allowed(rect, width, height).then_some((rect, line.text))
+        })
+        .collect::<Vec<_>>();
+    let groups = group_text_regions(lines.iter().map(|(rect, _)| *rect).collect(), width, height);
+    Ok(groups
+        .into_iter()
+        .filter_map(|group| {
+            let source = lines
+                .iter()
+                .filter(|(rect, _)| {
+                    let center_x = (rect.x1 + rect.x2) / 2;
+                    let center_y = (rect.y1 + rect.y2) / 2;
+                    center_x >= group.rect.x1
+                        && center_x <= group.rect.x2
+                        && center_y >= group.rect.y1
+                        && center_y <= group.rect.y2
+                })
+                .map(|(_, text)| text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            (!source.is_empty()).then_some((group, source))
+        })
+        .collect())
 }
 
 fn sample_text_background(image: &RgbImage, rect: TextRect) -> [u8; 3] {
@@ -1030,12 +1036,29 @@ fn sample_text_background(image: &RgbImage, rect: TextRect) -> [u8; 3] {
     ]
 }
 
+fn cached_region<'a>(
+    cached: Option<&'a CachedTranslation>,
+    screenshot: &RgbImage,
+    dimensions: (u32, u32),
+    rect: TextRect,
+) -> Option<&'a TranslatedRegion> {
+    let old = cached.filter(|old| old.dimensions == dimensions)?;
+    let fingerprint = fingerprint_region(screenshot, rect);
+    old.regions
+        .iter()
+        .enumerate()
+        .find(|(index, region)| {
+            region.rect.near(rect) && old.region_fingerprints.get(*index) == Some(&fingerprint)
+        })
+        .map(|(_, region)| region)
+}
+
 fn render_translation(
     settings: &TranslationSettings,
     image: &str,
     width: u32,
     height: u32,
-    detector: &OcrEngine,
+    ocr: &mut RapidOcr,
     viewport: Option<OverlayViewport>,
     cached: Option<&CachedTranslation>,
 ) -> Result<(Vec<TranslatedRegion>, String)> {
@@ -1049,26 +1072,63 @@ fn render_translation(
         screenshot.dimensions() == (width, height),
         "screenshot dimensions changed"
     );
-    let boxes = detect_text_regions(detector, &screenshot)?;
+    let started = Instant::now();
+    let mut boxes = detect_text_regions(ocr, &screenshot)?
+        .into_iter()
+        .filter(|(group, _)| {
+            group.line_height <= (height / 8).max(24)
+                || group.rect.width() >= group.line_height.saturating_mul(2)
+        })
+        .collect::<Vec<_>>();
+    boxes.sort_by_key(|(group, _)| std::cmp::Reverse(group.rect.width()));
+    boxes.truncate(4);
+    boxes.sort_by_key(|(group, _)| (group.rect.y1, group.rect.x1));
+    if std::env::var_os("LUNCHBOX_TRANSLATION_SOURCE_IMAGE").is_some() {
+        eprintln!("LUNCHBOX_TRANSLATION_PROBE_CANDIDATES: {boxes:?}");
+    }
+    let candidate_count = boxes.len();
     let mut regions = Vec::new();
-    for detected in boxes {
-        let rect = detected.rect;
-        let crop = crop_region_png(&screenshot, rect.padded(width, height, 8))?;
-        let source = recognize_text_at(&crop, OLLAMA_URL)?;
-        if source.chars().filter(|ch| ch.is_alphabetic()).count() < 2 {
-            continue;
+    let mut reused = 0;
+    let pending = boxes
+        .iter()
+        .enumerate()
+        .filter(|(_, (detected, source))| {
+            source.chars().filter(|ch| ch.is_alphabetic()).count() >= 2
+                && cached_region(cached, &screenshot, (width, height), detected.rect).is_none()
+        })
+        .map(|(index, (_, source))| (index, source.clone()))
+        .collect::<Vec<_>>();
+    let translated = match translate_texts_at(
+        settings,
+        &pending
+            .iter()
+            .map(|(_, source)| source.clone())
+            .collect::<Vec<_>>(),
+        OLLAMA_URL,
+    ) {
+        Ok(english) => pending
+            .iter()
+            .map(|(index, _)| *index)
+            .zip(english)
+            .collect::<std::collections::HashMap<_, _>>(),
+        Err(error) => {
+            eprintln!("LUNCHBOX_TRANSLATION_MODEL_FAILED: {error:#}");
+            std::collections::HashMap::new()
         }
-        let previous = cached
-            .filter(|old| old.dimensions == (width, height))
-            .and_then(|old| {
-                old.regions
-                    .iter()
-                    .find(|region| region.source == source && region.rect.near(rect))
-            });
-        let english = if let Some(previous) = previous {
-            previous.english.clone()
+    };
+    for (index, (detected, recognized)) in boxes.into_iter().enumerate() {
+        let rect = detected.rect;
+        let previous = cached_region(cached, &screenshot, (width, height), rect);
+        let (source, english) = if let Some(previous) = previous {
+            reused += 1;
+            (previous.source.clone(), previous.english.clone())
         } else {
-            translate_text_at(settings, &source, OLLAMA_URL)?
+            let source = recognized;
+            if source.chars().filter(|ch| ch.is_alphabetic()).count() < 2 {
+                continue;
+            }
+            let english = translated.get(&index).cloned().unwrap_or_default();
+            (source, english)
         };
         if english.is_empty() {
             continue;
@@ -1080,6 +1140,34 @@ fn render_translation(
             english,
             background: sample_text_background(&screenshot, rect),
         });
+    }
+    eprintln!(
+        "LUNCHBOX_TRANSLATION_RENDER elapsed_ms={} candidates={} translated={} reused={}",
+        started.elapsed().as_millis(),
+        candidate_count,
+        regions.len(),
+        reused,
+    );
+    if regions.is_empty() {
+        let output = viewport
+            .map(overlay_image_dimensions)
+            .unwrap_or((width, height));
+        let notice = TranslatedRegion {
+            rect: TextRect {
+                x1: 24,
+                y1: 24,
+                x2: 350.min(output.0),
+                y2: 68.min(output.1),
+            },
+            source_line_height: 24,
+            source: String::new(),
+            english: "No readable text in this frame".to_owned(),
+            background: [9, 14, 22],
+        };
+        return Ok((
+            regions,
+            BASE64.encode(render_regions_png(output.0, output.1, &[notice])?),
+        ));
     }
     let overlay = if let Some(viewport) = viewport {
         let output = overlay_image_dimensions(viewport);
@@ -1440,47 +1528,6 @@ fn wrap_caption_pixels(
     (!lines.is_empty() && lines.len() <= max_lines).then_some(lines)
 }
 
-fn recognize_text_at(image: &str, base_url: &str) -> Result<String> {
-    let raw = ollama_chat(
-        OCR_MODEL,
-        "Text Recognition: Transcribe only text actually visible in this cropped game image. Preserve its original writing system, including Japanese kana and kanji. Do not translate, transliterate, repeat, explain, or guess. Return at most two lines of source text; if it is unreadable, return UNREADABLE.",
-        Some(image),
-        base_url,
-    )?;
-    Ok(clean_ocr_text(&raw))
-}
-
-fn clean_ocr_text(raw: &str) -> String {
-    // GLM-OCR sometimes appends repeated Markdown fences after a correct OCR
-    // result. Never send those hallucinated tokens on to the translator.
-    let before_fence = raw.split("```").next().unwrap_or("");
-    let mut lines = Vec::new();
-    for line in before_fence.lines() {
-        let line = line.trim().trim_matches('"').trim();
-        let line = ["Text:", "OCR:", "Transcription:", "Recognized text:"]
-            .iter()
-            .find_map(|prefix| line.strip_prefix(prefix))
-            .unwrap_or(line)
-            .trim();
-        if line.is_empty() || lines.last().is_some_and(|previous| *previous == line) {
-            continue;
-        }
-        let lower = line.to_ascii_lowercase();
-        if lower.contains("unreadable")
-            || lower.starts_with("wait, let me")
-            || lower.starts_with("i cannot")
-            || lower.contains("abcdefghijklmnopqrstuvwxyz")
-        {
-            break;
-        }
-        lines.push(line);
-        if lines.len() == 2 {
-            break;
-        }
-    }
-    lines.join("\n").chars().take(160).collect()
-}
-
 fn translate_text_at(
     settings: &TranslationSettings,
     source_text: &str,
@@ -1503,8 +1550,69 @@ fn translate_text_at(
     let prompt = format!(
         "You are a professional {source_name} ({source_code}) to English (en) translator. Translate the following game dialogue or menu text accurately into natural English. Preserve names and the order of lines. Return only the exact English text that should replace the source. Do not add labels such as Text or Translation, explanations, extra punctuation, or commentary.\n\n{source_text}"
     );
-    let raw = ollama_chat(&settings.model, &prompt, None, base_url)?;
+    let raw = ollama_chat(&settings.model, &prompt, base_url)?;
     Ok(english_only_translation(&raw))
+}
+
+fn translate_texts_at(
+    settings: &TranslationSettings,
+    sources: &[String],
+    base_url: &str,
+) -> Result<Vec<String>> {
+    if sources.len() <= 1 {
+        return sources
+            .iter()
+            .map(|source| translate_text_at(settings, source, base_url))
+            .collect();
+    }
+    let source_language = if settings.source_language == "auto" {
+        "Detect each item's language"
+    } else {
+        settings.source_language.as_str()
+    };
+    let prompt = format!(
+        "Translate each game dialogue or menu item in this JSON array from {source_language} to natural English. Preserve names, array order, and array length. Return ONLY a valid JSON array of English strings, with no markdown or explanation: {}",
+        serde_json::to_string(sources)?
+    );
+    let raw = ollama_chat(&settings.model, &prompt, base_url)?;
+    if let Some(translated) = parse_translation_array(&raw, sources.len()) {
+        return Ok(translated);
+    }
+    eprintln!("LUNCHBOX_TRANSLATION_BATCH_FALLBACK: model did not return the requested array");
+    Ok(sources
+        .iter()
+        .map(
+            |source| match translate_text_at(settings, source, base_url) {
+                Ok(english) => english,
+                Err(error) => {
+                    eprintln!("LUNCHBOX_TRANSLATION_MODEL_FAILED: {error:#}");
+                    String::new()
+                }
+            },
+        )
+        .collect())
+}
+
+fn parse_translation_array(raw: &str, count: usize) -> Option<Vec<String>> {
+    let body = raw.trim();
+    let body = body
+        .strip_prefix("```json")
+        .or_else(|| body.strip_prefix("```"))
+        .unwrap_or(body)
+        .trim();
+    let body = body.strip_suffix("```").unwrap_or(body).trim();
+    let parsed = serde_json::from_str::<Vec<String>>(body).ok()?;
+    if parsed.len() != count {
+        return None;
+    }
+    let translated = parsed
+        .iter()
+        .map(|text| english_only_translation(text))
+        .collect::<Vec<_>>();
+    translated
+        .iter()
+        .all(|text| !text.is_empty())
+        .then_some(translated)
 }
 
 fn english_only_translation(raw: &str) -> String {
@@ -1516,17 +1624,13 @@ fn english_only_translation(raw: &str) -> String {
     lines.join(" ").chars().take(2000).collect()
 }
 
-fn ollama_chat(model: &str, prompt: &str, image: Option<&str>, base_url: &str) -> Result<String> {
-    let mut message = json!({"role": "user", "content": prompt});
-    if let Some(image) = image {
-        message["images"] = json!([image]);
-    }
+fn ollama_chat(model: &str, prompt: &str, base_url: &str) -> Result<String> {
     let request = json!({
         "model": model,
-        "messages": [message],
+        "messages": [{"role": "user", "content": prompt}],
         "stream": false,
         "keep_alive": "10m",
-        "options": {"temperature": 0, "num_predict": if image.is_some() { 96 } else { 256 }},
+        "options": {"temperature": 0, "num_predict": 256},
     });
     let mut response = http_agent(Duration::from_secs(60))
         .post(&format!("{base_url}/api/chat"))
@@ -1567,6 +1671,34 @@ fn write_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animated_pixels_outside_text_do_not_invalidate_translation() {
+        let mut screenshot = RgbImage::from_pixel(64, 64, image::Rgb([10, 20, 30]));
+        let rect = TextRect {
+            x1: 10,
+            y1: 20,
+            x2: 40,
+            y2: 38,
+        };
+        let cached = CachedTranslation {
+            digest: [0; 32],
+            regions: vec![TranslatedRegion {
+                rect,
+                source_line_height: 18,
+                source: "開く".to_owned(),
+                english: "Open".to_owned(),
+                background: [10, 20, 30],
+            }],
+            region_fingerprints: vec![fingerprint_region(&screenshot, rect)],
+            dimensions: (64, 64),
+            overlay: String::new(),
+        };
+        screenshot.put_pixel(50, 50, image::Rgb([255, 255, 255]));
+        assert!(cached_text_matches(&cached, &screenshot, (64, 64)));
+        screenshot.put_pixel(15, 25, image::Rgb([255, 255, 255]));
+        assert!(!cached_text_matches(&cached, &screenshot, (64, 64)));
+    }
 
     #[test]
     fn flatpak_filesystem_flags_are_not_parsed_as_retroarch_options() {
@@ -2025,19 +2157,12 @@ mod tests {
     }
 
     #[test]
-    fn ocr_strips_repeated_markdown_from_model() {
+    fn batched_translation_accepts_fenced_json_without_losing_box_order() {
         assert_eq!(
-            clean_ocr_text(
-                "ここはマナの聖地です。\n勇者よ、扉を開けてください。\n```markdown\n```"
-            ),
-            "ここはマナの聖地です。\n勇者よ、扉を開けてください。"
+            parse_translation_array("```json\n[\"Normal\", \"Wide\"]\n```", 2),
+            Some(vec!["Normal".to_owned(), "Wide".to_owned()])
         );
-    }
-
-    #[test]
-    fn ocr_strips_model_generated_text_label() {
-        assert_eq!(clean_ocr_text("デュラン\nText: デュラン"), "デュラン");
-        assert_eq!(clean_ocr_text("OCR: ファイター"), "ファイター");
+        assert_eq!(parse_translation_array("[\"Normal\"]", 2), None);
     }
 
     #[test]
@@ -2095,6 +2220,7 @@ mod tests {
         let cached = Some(CachedTranslation {
             digest,
             regions: vec![],
+            region_fingerprints: vec![],
             dimensions: (64, 64),
             overlay: BASE64.encode(overlay),
         });
@@ -2183,49 +2309,6 @@ mod tests {
     }
 
     #[test]
-    fn ollama_chat_sends_image_to_ocr_model() {
-        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut request_line = String::new();
-            reader.read_line(&mut request_line).unwrap();
-            assert!(request_line.starts_with("POST /api/chat HTTP/1.1"));
-            let mut length = None;
-            loop {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                if line == "\r\n" {
-                    break;
-                }
-                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                    length = Some(value.trim().parse::<usize>().unwrap());
-                }
-            }
-            let mut body = vec![0; length.unwrap()];
-            reader.read_exact(&mut body).unwrap();
-            let body: Value = serde_json::from_slice(&body).unwrap();
-            assert_eq!(body["model"], OCR_MODEL);
-            assert_eq!(body["stream"], false);
-            assert_eq!(body["messages"][0]["images"][0], "image-data");
-            write_json(
-                &mut stream,
-                200,
-                &json!({"message": {"content": "扉が開いている。\n```"}}),
-            )
-            .unwrap();
-        });
-        let recognized = recognize_text_at(
-            "image-data",
-            &format!("http://127.0.0.1:{}", address.port()),
-        )
-        .unwrap();
-        assert_eq!(recognized, "扉が開いている。");
-        server.join().unwrap();
-    }
-
-    #[test]
     fn ollama_chat_sends_text_to_translation_model() {
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
         let address = listener.local_addr().unwrap();
@@ -2290,18 +2373,16 @@ mod tests {
             let cropped =
                 image::imageops::crop_imm(&image, values[0], values[1], values[2], values[3])
                     .to_image();
-            let resized =
-                image::imageops::resize(&cropped, 512, 478, image::imageops::FilterType::Triangle);
             let mut encoded = std::io::Cursor::new(Vec::new());
-            image::DynamicImage::ImageRgb8(resized)
+            image::DynamicImage::ImageRgb8(cropped)
                 .write_to(&mut encoded, image::ImageFormat::Png)
                 .unwrap();
             source = encoded.into_inner();
         }
         let (width, height) = png_dimensions(&source).unwrap();
         let image = BASE64.encode(source);
-        download_detector(&AtomicBool::new(false)).unwrap();
-        let detector = load_detector().unwrap();
+        download_ocr_models(&AtomicBool::new(false)).unwrap();
+        let mut ocr = load_ocr().unwrap();
         let viewport =
             std::env::var_os("LUNCHBOX_TRANSLATION_ULTRAWIDE_PROBE").map(|_| OverlayViewport {
                 output: (6656, 2808),
@@ -2318,7 +2399,7 @@ mod tests {
             &image,
             width,
             height,
-            &detector,
+            &mut ocr,
             viewport,
             None,
         )

@@ -5,6 +5,7 @@ Flickable {
     id: view
 
     property bool defaultWheelMomentum: true
+    property bool blockNativeWheel: false
     readonly property real verticalScrollBarGutter:
         ScrollBar.vertical && ScrollBar.vertical.policy !== ScrollBar.AlwaysOff
         ? ScrollBar.vertical.width + 6 : 0
@@ -12,6 +13,7 @@ Flickable {
 
     MomentumWheelHandler {
         scroller: view
+        blocking: view.blockNativeWheel
         enabled: view.defaultWheelMomentum && view.interactive
                  && view.contentHeight > view.height
     }

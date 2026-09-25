@@ -89,7 +89,7 @@
             pkg-config
             qt6.wrapQtAppsHook
           ];
-          buildInputs = qtModules
+          buildInputs = qtModules ++ [ pkgs.onnxruntime ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             dwarfs
             pkgs.systemd
@@ -98,6 +98,8 @@
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
           QMAKE = "${qtEnv}/bin/qmake";
+          ORT_LIB_PATH = "${pkgs.onnxruntime}/lib";
+          ORT_PREFER_DYNAMIC_LINK = "1";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           # Release builds embed the exact flake revision for the UI build
@@ -213,7 +215,7 @@
             rustfmt
             sqlite
             watchexec
-          ]) ++ qtModules
+          ]) ++ qtModules ++ [ pkgs.onnxruntime ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             dwarfs
             pkgs.mold
@@ -221,6 +223,8 @@
           ];
 
           QMAKE = "${qtEnv}/bin/qmake";
+          ORT_LIB_PATH = "${pkgs.onnxruntime}/lib";
+          ORT_PREFER_DYNAMIC_LINK = "1";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";
           # Local dev builds show the real build time; release builds set the

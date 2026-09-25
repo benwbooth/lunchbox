@@ -3631,42 +3631,84 @@ ApplicationWindow {
                     Accessible.name: "Clear notification history"
                 }
             }
-            MomentumListView {
+            Item {
+                id: notificationViewport
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                clip: true
-                spacing: 8
-                model: notificationHistory.entries
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                delegate: Rectangle {
-                    required property var modelData
-                    width: (ListView.view.verticalContentWidth || ListView.view.width)
-                    height: notificationMessage.implicitHeight + 52
-                    radius: 8
-                    color: modelData.good ? "#18372c" : "#2c2a25"
-                    border.color: modelData.good ? "#427c5b" : root.line
-                    Text {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: 12
-                        text: Qt.formatDateTime(new Date(parent.modelData.when),
-                                                "MMM d, yyyy h:mm ap")
-                        color: root.muted
-                        font.pixelSize: 11
+                MomentumFlickable {
+                    id: notificationList
+                    objectName: "notificationList"
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    anchors.rightMargin: 20
+                    blockNativeWheel: true
+                    clip: true
+                    contentWidth: width
+                    contentHeight: notificationItems.height
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {
+                        id: notificationScrollBar
+                        parent: notificationViewport
+                        x: notificationViewport.width - width
+                        y: 0
+                        height: notificationViewport.height
+                        width: 10
+                        policy: ScrollBar.AlwaysOn
+                        visible: notificationList.contentHeight > notificationList.height
+                        leftPadding: 2
+                        rightPadding: 2
+                        topPadding: 2
+                        bottomPadding: 2
+                        background: Rectangle {
+                            radius: width / 2
+                            color: notificationScrollBar.hovered ? "#223143" : "transparent"
+                        }
+                        contentItem: Rectangle {
+                            radius: width / 2
+                            color: notificationScrollBar.pressed ? root.accentCool
+                                   : notificationScrollBar.hovered ? "#a4b4c6" : "#71849a"
+                        }
                     }
-                    Text {
-                        id: notificationMessage
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.topMargin: 32
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
-                        text: parent.modelData.message
-                        color: root.ink
-                        wrapMode: Text.WrapAnywhere
-                        font.pixelSize: 13
+                    Column {
+                        id: notificationItems
+                        width: notificationList.width
+                        spacing: 8
+                        Repeater {
+                            model: notificationHistory.entries
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: notificationItems.width
+                                height: notificationMessage.implicitHeight + 52
+                                radius: 8
+                                color: modelData.good ? "#18372c" : "#2c2a25"
+                                border.color: modelData.good ? "#427c5b" : root.line
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 12
+                                    text: Qt.formatDateTime(new Date(parent.modelData.when),
+                                                            "MMM d, yyyy h:mm ap")
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    id: notificationMessage
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 32
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    text: parent.modelData.message
+                                    color: root.ink
+                                    wrapMode: Text.WrapAnywhere
+                                    font.pixelSize: 13
+                                }
+                            }
+                        }
                     }
                 }
                 Text {
@@ -12518,15 +12560,39 @@ ApplicationWindow {
             defaultWheelMomentum: false
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.rightMargin: 23
             anchors.top: detailHeader.bottom
             anchors.bottom: parent.bottom
             clip: true
-            contentWidth: verticalContentWidth
+            contentWidth: width
             contentHeight: detailContent.height
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: ScrollBar {
+                id: detailScrollBar
+                parent: detailsPane
+                x: detailsPane.width - width - 5
+                y: detailHeader.height
+                height: detailsPane.height - detailHeader.height
+                width: 10
+                policy: ScrollBar.AlwaysOn
+                visible: detailScroll.contentHeight > detailScroll.height
+                leftPadding: 2
+                rightPadding: 2
+                topPadding: 2
+                bottomPadding: 2
+                background: Rectangle {
+                    radius: width / 2
+                    color: detailScrollBar.hovered ? "#223143" : "transparent"
+                }
+                contentItem: Rectangle {
+                    radius: width / 2
+                    color: detailScrollBar.pressed ? root.accentCool
+                           : detailScrollBar.hovered ? "#a4b4c6" : "#71849a"
+                }
+            }
             AcceleratedWheelHandler {
                 scroller: detailScroll
+                blocking: true
                 // The tall details pane only needs to travel its own height,
                 // so halve the per-notch travel and shorten the glide tail.
                 wheelPageFactor: 1.8
@@ -12537,7 +12603,7 @@ ApplicationWindow {
 
             Column {
                 id: detailContent
-                width: detailScroll.verticalContentWidth
+                width: detailScroll.width
                 spacing: 0
 
                 Rectangle {
@@ -22275,7 +22341,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Requires Ollama running on this computer. A small local detector locates text; GLM-OCR reads it and TranslateGemma translates it. Lunchbox covers the original text regions with English. Ollama can use ROCm on supported AMD GPUs; no cloud account is needed."
+                                text: "Requires Ollama running on this computer. Local PP-OCRv6 finds and reads text; TranslateGemma translates it. Lunchbox covers the original text regions with English. OCR runs on the CPU, while Ollama can use ROCm on supported AMD GPUs. No cloud account is needed."
                                 color: root.muted
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap

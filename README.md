@@ -366,21 +366,20 @@ the launch continues without the ultrawide overlay and reports why.
 Local game translation is opt-in under Settings → Game translation. Install and
 start [Ollama](https://ollama.com/download) natively on Linux, macOS, or
 Windows (or provide it through Nix on NixOS), then use Lunchbox to check the
-local service and explicitly download GLM-OCR, a TranslateGemma 4B, 12B, or 27B
-model, and the small PP-OCRv6 text placement model. The latter is downloaded
-from [PaddlePaddle's Apache-2.0 release](https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_onnx)
-at pinned revision `2ba1506c0380b8f0b03dd142459aac66d4421f6c` and verified
-against SHA-256 `193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8`.
-Ollama uses ROCm for OCR and translation on supported AMD GPUs (verified on an
-RX 7900 XTX); the small text detector runs locally in portable Rust.
+local service and explicitly download a TranslateGemma 4B, 12B, or 27B model
+and the Japanese-capable PP-OCRv6 small detection/recognition models. The OCR
+models come from [RapidOCR's model registry](https://github.com/RapidAI/RapidOCRDocs/blob/main/docs/model_list.md),
+are checksum-verified when installed, and run locally through ONNX Runtime on
+the CPU. Ollama can use ROCm for TranslateGemma on supported AMD GPUs; OCR
+does not require a GPU or a separate Python/Docker service.
 For RetroArch launches, Lunchbox starts a session-only loopback bridge for
 RetroArch's [AI Service](https://docs.libretro.com/guides/ai-service/) and
 returns an English image overlay anchored to detected source-text regions,
 covering the original text with a sampled nearby background color rather
 than a fixed lower-screen panel. Complex artwork and original font matching
-remain approximate; when no region is detected, it does not guess a location.
-Press F10
-once in-game to start automatic translation and again to stop; F8 remains
+remain approximate; when no text is detected, a notice appears instead of a
+guessed translation. Press F10 once in-game to start automatic translation and
+again to stop; F8 remains
 RetroArch's screenshot key. RetroArch's AI Service gamepad hotkey
 can also be bound. Screenshots are not persisted or sent to a cloud endpoint.
 The feature does not patch ROMs or affect standalone emulators, and it leaves
