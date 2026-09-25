@@ -5,6 +5,12 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
     }
 
+    unsafe extern "C++" {
+        include!("lunchbox-app/gamepad_keyboard_filter.h");
+        #[namespace = "lunchbox"]
+        fn keyboardNavigationSeenRecently(action: i32, maxAgeMs: i32) -> bool;
+    }
+
     unsafe extern "RustQt" {
         #[qobject]
         #[qml_element]
@@ -39,6 +45,9 @@ pub mod qobject {
         fn button_label(self: &GamepadInput, action: QString) -> QString;
 
         #[qinvokable]
+        fn keyboard_handled_recently(self: &GamepadInput, action: QString) -> bool;
+
+        #[qinvokable]
         fn probe_navigation_action(self: Pin<&mut GamepadInput>, action: QString);
     }
 
@@ -60,6 +69,7 @@ const AXIS_RELEASE: f32 = 0.38;
 const INITIAL_REPEAT_DELAY: Duration = Duration::from_millis(380);
 const REPEAT_INTERVAL: Duration = Duration::from_millis(90);
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(16);
+const DUPLICATE_PRESS_WINDOW: Duration = Duration::from_millis(65);
 
 pub struct GamepadInputRust {
     initialized: bool,
@@ -85,6 +95,7 @@ pub struct GamepadInputRust {
     stop: Arc<AtomicBool>,
     navigation_gate: Arc<AtomicBool>,
     steam_virtual_gilrs: Arc<AtomicBool>,
+    last_navigation: Option<(NavigationAction, Instant)>,
 }
 
 impl Default for GamepadInputRust {
@@ -113,6 +124,7 @@ impl Default for GamepadInputRust {
             stop: Arc::new(AtomicBool::new(false)),
             navigation_gate: Arc::new(AtomicBool::new(true)),
             steam_virtual_gilrs: Arc::new(AtomicBool::new(false)),
+            last_navigation: None,
         }
     }
 }
@@ -187,6 +199,28 @@ impl NavigationAction {
             Self::Up | Self::Down | Self::Left | Self::Right | Self::PageLeft | Self::PageRight
         )
     }
+
+    fn keyboard_code(self) -> i32 {
+        match self {
+            Self::Up => 1,
+            Self::Down => 2,
+            Self::Left => 3,
+            Self::Right => 4,
+            Self::Accept => 5,
+            Self::Back => 6,
+            _ => 0,
+        }
+    }
+}
+
+fn duplicate_navigation_press(
+    previous: Option<(NavigationAction, Instant)>,
+    action: NavigationAction,
+    now: Instant,
+) -> bool {
+    previous.is_some_and(|(last_action, last_at)| {
+        last_action == action && now.duration_since(last_at) < DUPLICATE_PRESS_WINDOW
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -625,6 +659,18 @@ impl qobject::GamepadInput {
         ))
     }
 
+    pub fn keyboard_handled_recently(&self, action: QString) -> bool {
+        // This extra route exists only for the physical SC2's keyboard HID.
+        // Other controllers and normal keyboard navigation stay independent.
+        if self.active_device().to_string() != "Steam Controller 2 (2026)" {
+            return false;
+        }
+        let code = NavigationAction::parse(action.to_string().as_str())
+            .map(NavigationAction::keyboard_code)
+            .unwrap_or(0);
+        qobject::keyboardNavigationSeenRecently(code, 85)
+    }
+
     pub fn probe_navigation_action(mut self: Pin<&mut Self>, action: QString) {
         if !gamepad_ui_probe_enabled() {
             return;
@@ -657,6 +703,11 @@ impl qobject::GamepadInput {
         if !*self.as_ref().navigation_enabled() {
             return;
         }
+        let now = Instant::now();
+        if duplicate_navigation_press(self.as_ref().rust().last_navigation, action, now) {
+            return;
+        }
+        self.as_mut().rust_mut().last_navigation = Some((action, now));
         if !device.is_empty() && self.as_ref().active_device().to_string() != device {
             self.as_mut().set_active_device(qstring(device));
         }
@@ -1096,6 +1147,42 @@ fn gamepad_ui_probe_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coalesces_only_immediate_duplicate_navigation_actions() {
+        let now = Instant::now();
+        let previous = Some((NavigationAction::Accept, now));
+        assert!(duplicate_navigation_press(
+            previous,
+            NavigationAction::Accept,
+            now + Duration::from_millis(20)
+        ));
+        assert!(!duplicate_navigation_press(
+            previous,
+            NavigationAction::Accept,
+            now + REPEAT_INTERVAL
+        ));
+        assert!(!duplicate_navigation_press(
+            previous,
+            NavigationAction::Back,
+            now + Duration::from_millis(20)
+        ));
+    }
+
+    #[test]
+    fn keyboard_equivalents_cover_the_sc2_navigation_controls() {
+        for action in [
+            NavigationAction::Up,
+            NavigationAction::Down,
+            NavigationAction::Left,
+            NavigationAction::Right,
+            NavigationAction::Accept,
+            NavigationAction::Back,
+        ] {
+            assert_ne!(action.keyboard_code(), 0);
+        }
+        assert_eq!(NavigationAction::Menu.keyboard_code(), 0);
+    }
 
     #[test]
     fn steam_virtual_pad_identity_does_not_suppress_other_gamepads() {

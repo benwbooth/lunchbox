@@ -9,6 +9,7 @@ Item {
     property var focusScope: null
     property var overlayItem: null
     property var openCombo: null
+    property var pendingSc2Actions: []
     signal openGame(var item)
     signal backRequested()
     signal menuRequested()
@@ -224,9 +225,34 @@ Item {
         return false
     }
 
+    Timer {
+        id: sc2NavigationDelay
+        interval: 40
+        repeat: false
+        onTriggered: {
+            const action = router.pendingSc2Actions.shift()
+            if (action && !router.gamepad.keyboard_handled_recently(action))
+                router.handle(action)
+            if (router.pendingSc2Actions.length > 0)
+                restart()
+        }
+    }
+
     Connections {
         target: router.gamepad
-        function onNavigation_revisionChanged() { router.handle(router.gamepad.navigation_action) }
+        function onNavigation_revisionChanged() {
+            const action = router.gamepad.navigation_action
+            if (router.gamepad.active_device !== "Steam Controller 2 (2026)") {
+                router.handle(action)
+                return
+            }
+            // The SC2 keyboard HID may deliver the matching Qt key just after
+            // SDL3 publishes its gamepad action. Give that key one frame to
+            // arrive, then dispatch only if Qt did not already handle it.
+            router.pendingSc2Actions.push(action)
+            if (!sc2NavigationDelay.running)
+                sc2NavigationDelay.start()
+        }
     }
 
     Rectangle {

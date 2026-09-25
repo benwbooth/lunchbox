@@ -6,6 +6,7 @@
 #include <QQuickWindow>
 #include <QString>
 #include "text_pixel_alignment.h"
+#include "gamepad_keyboard_filter.h"
 
 namespace lunchbox {
 inline void configureTextRendering()
@@ -15,6 +16,7 @@ inline void configureTextRendering()
     // Install before loading QML so styled controls inherit the same renderer.
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     installTextPixelAlignment();
+    installGamepadKeyboardObserver();
 }
 
 inline void setApplicationWindowIcon(const QString& resourcePath)

@@ -10,6 +10,7 @@ Item {
     required property var gamepad
     required property var downloadQueue
     property bool active: false
+    property var pendingSc2Actions: []
     property int navigationZone: 2
     property int categoryIndex: 0
     property int actionIndex: 0
@@ -3741,11 +3742,32 @@ Item {
         }
     }
 
+    Timer {
+        id: sc2NavigationDelay
+        interval: 40
+        repeat: false
+        onTriggered: {
+            const action = view.pendingSc2Actions.shift()
+            if (action && view.active
+                    && !view.gamepad.keyboard_handled_recently(action))
+                view.handleNavigation(action)
+            if (view.pendingSc2Actions.length > 0)
+                restart()
+        }
+    }
+
     Connections {
         target: view.gamepad
         function onNavigation_revisionChanged() {
-            if (view.active)
-                view.handleNavigation(view.gamepad.navigation_action)
+            if (!view.active) return
+            const action = view.gamepad.navigation_action
+            if (view.gamepad.active_device !== "Steam Controller 2 (2026)") {
+                view.handleNavigation(action)
+                return
+            }
+            view.pendingSc2Actions.push(action)
+            if (!sc2NavigationDelay.running)
+                sc2NavigationDelay.start()
         }
     }
 }
