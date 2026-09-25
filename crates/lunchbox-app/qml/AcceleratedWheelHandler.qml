@@ -12,8 +12,8 @@ WheelHandler {
     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
     // A mouse-wheel notch should cover meaningful ground in a large library.
-    // The velocity model lets quick successive notches accumulate naturally,
-    // while the friction value keeps a single notch predictable.
+    // These bounds shape each surface; the actual travel also follows the
+    // amount of content available to scroll.
     property real wheelPageFactor: 3.2
     // Page travel bounds. Large grids want a big page; a compact sidebar row
     // list wants a short one, so the bounds are configurable per scroller.
@@ -44,6 +44,30 @@ WheelHandler {
     function upperBound() {
         return lowerBound()
                 + Math.max(0, scroller.contentHeight - scroller.height)
+    }
+
+    function scrollableLength() {
+        return upperBound() - lowerBound()
+    }
+
+    function wheelTravelDistance() {
+        const length = scrollableLength()
+        if (length <= 0)
+            return 0
+        const viewport = Math.max(1, scroller.height)
+        const preferred = Math.max(minimumPageDistance,
+                                   Math.min(maximumPageDistance,
+                                            viewport * wheelPageFactor))
+        // Small overflow gets a short glide; large libraries approach the
+        // surface's configured page distance without making one notch jump
+        // across the entire catalog.
+        return Math.min(length, preferred * Math.sqrt(
+                            length / (length + 2 * viewport)))
+    }
+
+    function momentumShare() {
+        const length = scrollableLength()
+        return Math.min(0.7, length / (length + Math.max(1, scroller.height)))
     }
 
     function clampContentY(value) {
@@ -96,18 +120,16 @@ WheelHandler {
         lastNotchAt = now
 
         const acceleration = Math.min(9.0, 1 + burstCount * 0.7)
-        const pageDistance = Math.max(minimumPageDistance,
-                                      Math.min(maximumPageDistance,
-                                               scroller.height * wheelPageFactor))
+        const pageDistance = wheelTravelDistance()
+        const kineticShare = momentumShare()
         // Give each physical notch an immediate response before the kinetic
-        // tail takes over. This keeps a large, image-heavy grid feeling
-        // directly attached to the wheel even at low display refresh rates.
-        moveImmediately(steps * pageDistance * 0.24
+        // tail takes over. Short scroll regions get mostly direct movement;
+        // longer ones retain more glide.
+        moveImmediately(steps * pageDistance * (1 - kineticShare)
                         * Math.min(2.0, acceleration))
         // Under exponential friction the remaining distance is velocity / k.
-        // Multiplying by k therefore makes pageDistance the travel of one
-        // isolated notch, independent of monitor refresh rate.
-        addVelocity(steps * pageDistance * frictionPerSecond * acceleration)
+        addVelocity(steps * pageDistance * kineticShare
+                    * frictionPerSecond * acceleration)
     }
 
     function advanceMomentum() {

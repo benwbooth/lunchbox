@@ -1,8 +1,8 @@
 import QtQuick
 
 AcceleratedWheelHandler {
-    // Opt-in glide for a compact surface. Most forms and short lists now use
-    // Qt's direct wheel scrolling instead.
+    // Shared profile for ordinary surfaces; the handler scales glide from
+    // the actual scrollable length.
     wheelPageFactor: 0.8
     minimumPageDistance: 120
     maximumPageDistance: 1000

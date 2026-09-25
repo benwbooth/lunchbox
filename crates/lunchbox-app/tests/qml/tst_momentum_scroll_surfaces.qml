@@ -9,7 +9,7 @@ TestCase {
     when: windowShown
     visible: true
     width: 900
-    height: 600
+    height: 700
 
     Lunchbox.MomentumListView {
         id: list
@@ -65,6 +65,15 @@ TestCase {
                 model: 100
                 delegate: Rectangle { width: ListView.view.width; height: 30 }
             }
+            Lunchbox.MomentumListView {
+                id: nestedHorizontalList
+                width: parent.width
+                height: 80
+                clip: true
+                orientation: ListView.Horizontal
+                model: 20
+                delegate: Rectangle { width: 80; height: 70 }
+            }
             Rectangle { width: parent.width; height: 500 }
         }
     }
@@ -91,6 +100,22 @@ TestCase {
             }
             Rectangle { width: parent.width; height: 500 }
         }
+    }
+    Lunchbox.MomentumListView {
+        id: horizontalList
+        x: 0; y: 470; width: 260; height: 100
+        orientation: ListView.Horizontal
+        clip: true
+        model: 20
+        delegate: Rectangle { width: 80; height: 90 }
+    }
+    Lunchbox.MomentumFlickable {
+        id: horizontalFlick
+        x: 0; y: 590; width: 260; height: 90
+        clip: true
+        contentWidth: 1500
+        contentHeight: height
+        Rectangle { width: 1500; height: 90 }
     }
     Item {
         id: gutterFixture
@@ -127,9 +152,9 @@ TestCase {
     }
 
     function test_wheel_momentum_and_scrollbar_gutters() {
-        verify(!flick.defaultWheelMomentum)
-        verify(!scrollView.defaultWheelMomentum)
-        verify(!nestedList.defaultWheelMomentum)
+        verify(flick.defaultWheelMomentum)
+        verify(scrollView.defaultWheelMomentum)
+        verify(nestedList.defaultWheelMomentum)
         verify(list.verticalScrollBarGutter > 0)
         verify(list.itemAtIndex(0).width < list.ScrollBar.vertical.x)
         verify(grid.verticalScrollBarGutter > 0)
@@ -187,5 +212,33 @@ TestCase {
         mouseWheel(shortNestedList, 90, 40, 0, -120, Qt.LeftButton, Qt.NoModifier)
         wait(60)
         verify(shortNestedScroll.contentItem.contentY > 0)
+    }
+
+    function test_horizontal_list_inherits_length_scaled_momentum() {
+        mouseWheel(horizontalList, 90, 40, 0, -120,
+                   Qt.LeftButton, Qt.NoModifier)
+        verify(horizontalList.contentX > 0)
+        const immediate = horizontalList.contentX
+        wait(100)
+        verify(horizontalList.contentX > immediate)
+    }
+
+    function test_horizontal_flickable_inherits_length_scaled_momentum() {
+        mouseWheel(horizontalFlick, 90, 40, 0, -120,
+                   Qt.LeftButton, Qt.NoModifier)
+        verify(horizontalFlick.contentX > 0)
+        const immediate = horizontalFlick.contentX
+        wait(100)
+        verify(horizontalFlick.contentX > immediate)
+    }
+
+    function test_horizontal_edge_passes_wheel_to_outer_pane() {
+        nestedHorizontalList.contentX = nestedHorizontalList.contentWidth
+                                        - nestedHorizontalList.width
+        nestedScroll.contentItem.contentY = 0
+        mouseWheel(nestedHorizontalList, 90, 35, 0, -120,
+                   Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(nestedScroll.contentItem.contentY > 0)
     }
 }

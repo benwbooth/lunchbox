@@ -10907,7 +10907,6 @@ ApplicationWindow {
 
     component GameList: MomentumListView {
         id: list
-        defaultWheelMomentum: false
         function startupArtworkReady() {
             let visibleRows = 0
             for (const item of contentItem.children) {
@@ -12621,7 +12620,6 @@ ApplicationWindow {
 
         MomentumFlickable {
             id: detailScroll
-            defaultWheelMomentum: false
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.rightMargin: 23
@@ -13934,7 +13932,6 @@ ApplicationWindow {
                                     border.color: root.line
                                 }
                             }
-                            HorizontalWheelHandler { scroller: releaseVariantList }
 
                             function focusRelease(targetIndex) {
                                 if (count <= 0)
@@ -14202,6 +14199,9 @@ ApplicationWindow {
 
                         MomentumListView {
                             id: relatedGamesList
+                            // Its named handler below also advances keyboard
+                            // navigation, so avoid a second wheel handler.
+                            defaultWheelMomentum: false
                             width: parent.width
                             height: gameDetails.related_game_count > 0 ? 246 : 0
                             visible: gameDetails.related_game_count > 0

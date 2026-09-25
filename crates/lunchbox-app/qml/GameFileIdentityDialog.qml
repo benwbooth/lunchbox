@@ -181,7 +181,6 @@ LbDialog {
                         policy: fileList.contentWidth > fileList.width
                                 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
                     }
-                    HorizontalWheelHandler { scroller: fileList }
 
                     delegate: LbButton {
                         id: fileButton
@@ -319,7 +318,6 @@ LbDialog {
 
             MomentumListView {
                 id: candidateList
-                defaultWheelMomentum: false
                 objectName: "identityCandidateList"
                 anchors.fill: parent
                 anchors.margins: 1

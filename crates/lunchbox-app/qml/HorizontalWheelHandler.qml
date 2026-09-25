@@ -19,7 +19,6 @@ MouseArea {
     property real frictionPerSecond: 5.2
     property real maximumVelocity: 18000
     property real minimumVelocity: 24
-    property real pixelVelocityGain: 38
     readonly property bool momentumRunning: momentumTimer.running
     readonly property real momentumVelocity: velocityX
 
@@ -37,6 +36,26 @@ MouseArea {
     function upperBound() {
         return lowerBound()
                 + Math.max(0, scroller.contentWidth - scroller.width)
+    }
+
+    function scrollableLength() {
+        return upperBound() - lowerBound()
+    }
+
+    function wheelTravelDistance() {
+        const length = scrollableLength()
+        if (length <= 0)
+            return 0
+        const viewport = Math.max(1, scroller.width)
+        const preferred = Math.max(240,
+                                   Math.min(900, viewport * wheelPageFactor))
+        return Math.min(length, preferred * Math.sqrt(
+                            length / (length + 2 * viewport)))
+    }
+
+    function momentumShare() {
+        const length = scrollableLength()
+        return Math.min(0.7, length / (length + Math.max(1, scroller.width)))
     }
 
     function clampContentX(value) {
@@ -72,8 +91,9 @@ MouseArea {
     }
 
     function scrollPixels(distance) {
+        // Touchpads provide their own kinetic tail as pixel packets.
+        stopMomentum()
         moveImmediately(distance)
-        addVelocity(distance * pixelVelocityGain)
     }
 
     function scrollNotches(steps) {
@@ -83,12 +103,12 @@ MouseArea {
                    ? Math.min(8, burstCount + 1) : 0
         lastNotchAt = now
         const acceleration = Math.min(5.5, 1 + burstCount * 0.6)
-        const pageDistance = Math.max(240,
-                                      Math.min(900,
-                                               scroller.width * wheelPageFactor))
-        moveImmediately(steps * pageDistance * 0.32
+        const pageDistance = wheelTravelDistance()
+        const kineticShare = momentumShare()
+        moveImmediately(steps * pageDistance * (1 - kineticShare)
                         * Math.min(1.8, acceleration))
-        addVelocity(steps * pageDistance * frictionPerSecond * acceleration)
+        addVelocity(steps * pageDistance * kineticShare
+                    * frictionPerSecond * acceleration)
     }
 
     function advanceMomentum() {
@@ -139,6 +159,17 @@ MouseArea {
                                  ? -event.pixelDelta.x : -event.pixelDelta.y
         const horizontalAngle = event.angleDelta.x !== 0
                                 ? -event.angleDelta.x : -event.angleDelta.y
+        const direction = Math.abs(horizontalAngle) >= 120
+                          ? horizontalAngle : horizontalPixels !== 0
+                            ? horizontalPixels : horizontalAngle
+        // Let an enclosing vertical pane scroll once the strip reaches its
+        // left or right edge instead of trapping the wheel there.
+        if ((direction < 0 && scroller.contentX <= lowerBound() + 0.5)
+                || (direction > 0 && scroller.contentX >= upperBound() - 0.5)) {
+            stopMomentum()
+            event.accepted = false
+            return
+        }
         if (Math.abs(horizontalAngle) >= 120) {
             scrollNotches(horizontalAngle / 120)
         } else if (horizontalPixels !== 0) {

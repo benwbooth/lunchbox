@@ -222,7 +222,6 @@ LbDialog {
 
             MomentumListView {
                 id: firmwareList
-                defaultWheelMomentum: false
                 anchors.fill: parent
                 anchors.margins: 1
                 clip: true

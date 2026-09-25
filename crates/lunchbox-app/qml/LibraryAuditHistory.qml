@@ -92,7 +92,6 @@ LbDialog {
 
         MomentumListView {
             id: historyList
-            defaultWheelMomentum: false
             objectName: "libraryAuditHistoryList"
             anchors.fill: parent
             anchors.margins: 1

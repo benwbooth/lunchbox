@@ -4,7 +4,7 @@ import QtQuick.Controls
 ScrollView {
     id: view
 
-    property bool defaultWheelMomentum: false
+    property bool defaultWheelMomentum: true
 
     ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
     ScrollBar.horizontal: LbScrollBar { policy: ScrollBar.AsNeeded }

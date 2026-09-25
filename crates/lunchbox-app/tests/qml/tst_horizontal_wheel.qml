@@ -31,6 +31,7 @@ TestCase {
         handler.lastDirection = 0
         handler.lastNotchAt = 0
         handler.burstCount = 0
+        scroller.contentWidth = 6000
         scroller.contentX = 0
     }
 
@@ -48,6 +49,14 @@ TestCase {
         wait(100)
         verify(scroller.contentX > immediate,
                "release strip should retain momentum after the wheel event")
+    }
+
+    function test_horizontal_travel_tracks_available_length() {
+        scroller.contentWidth = scroller.width + 100
+        const shortTravel = handler.wheelTravelDistance()
+        verify(shortTravel > 0 && shortTravel <= 100)
+        scroller.contentWidth = 6000
+        verify(handler.wheelTravelDistance() > shortTravel)
     }
 
     function test_reverse_input_changes_direction_immediately() {
