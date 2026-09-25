@@ -10268,6 +10268,14 @@ ApplicationWindow {
             })
         }
 
+        function clearUnfocusedPreview() {
+            if (activeFocus && root.hoverPreviewTile
+                    && root.hoverPreviewTile !== currentItem)
+                root.disarmGridPreview(root.hoverPreviewTile)
+        }
+        onActiveFocusChanged: clearUnfocusedPreview()
+        onCurrentIndexChanged: clearUnfocusedPreview()
+
         function jumpToAlphabet(label) {
             return gridAlphabetRail.activateLabel(label)
         }
@@ -10344,8 +10352,22 @@ ApplicationWindow {
             readonly property real previewArtworkLayer: coverImage.z
             readonly property real previewStatusLayer: previewStatus.z
             readonly property real previewFavoriteLayer: favoriteButton.z
+            readonly property bool controllerFocusElsewhere: grid.activeFocus
+                                                           && grid.currentIndex !== tile.index
+            // One visual target: controller focus wins over pointer hover,
+            // and pointer hover wins over the game retained in Details.
+            readonly property bool focusedHighlight: grid.activeFocus
+                                                     && grid.currentIndex === tile.index
+            readonly property bool hoverEmphasis: cardHover.hovered
+                                                 && !controllerFocusElsewhere
+            readonly property bool hoverHighlight: !grid.activeFocus
+                                                   && root.hoverPreviewTile === tile
+            readonly property bool selectedHighlight: !grid.activeFocus
+                                                      && !root.hoverPreviewTile
+                                                      && root.selectedGameId === tile.gameId
             readonly property bool previewRequested: root.hoverPreviewTile === tile
                                                      && root.hoverPreviewPendingGameId === gameId
+                                                     && !controllerFocusElsewhere
             readonly property bool previewActive: previewPresentation.videoVisible
             readonly property url previewResolvedVideoUrl: previewPresentation.resolvedUrl
             readonly property string previewResolvedVideoSource:
@@ -10409,7 +10431,7 @@ ApplicationWindow {
                 // delegates while the probe is repositioning the grid.
                 if (root.hoverPreviewUiProbe)
                     return
-                if (cardHover.hovered) {
+                if (hoverEmphasis) {
                     root.armGridPreview(tile)
                 } else {
                     root.disarmGridPreview(tile)
@@ -10461,7 +10483,7 @@ ApplicationWindow {
             onActiveFocusChanged: updatePreviewInterest()
             width: grid.cellWidth
             height: grid.cellHeight
-            z: cardHover.hovered || previewRequested ? 100 : 0
+            z: hoverEmphasis || previewRequested ? 100 : 0
             activeFocusOnTab: true
             readonly property bool providesFocusIndicator: true
 
@@ -10505,7 +10527,7 @@ ApplicationWindow {
 
             Rectangle {
                 id: card
-                readonly property bool expanded: cardHover.hovered
+                readonly property bool expanded: tile.hoverEmphasis
                                                  || tile.previewRequested
                 readonly property real expansion: cardGeometry.expansion
                 x: cardGeometry.localX
@@ -10513,13 +10535,13 @@ ApplicationWindow {
                 width: cardGeometry.cardWidth
                 height: cardGeometry.cardHeight
                 radius: 12 * expansion
-                color: tile.activeFocus ? "#263142" : cardHover.hovered ? "#202a39" : root.panelRaised
-                border.color: tile.previewActive ? root.accentCool
-                              : tile.activeFocus || root.selectedGameId === tile.gameId
-                                ? root.accent
-                              : cardHover.hovered ? "#3a485d" : root.line
-                border.width: tile.previewActive || tile.activeFocus
-                              || root.selectedGameId === tile.gameId ? 2 : 1
+                color: tile.focusedHighlight ? "#263142"
+                       : tile.hoverEmphasis ? "#202a39" : root.panelRaised
+                border.color: tile.focusedHighlight || tile.selectedHighlight
+                              ? root.accent
+                              : tile.hoverHighlight ? root.accentCool : root.line
+                border.width: tile.focusedHighlight || tile.hoverHighlight
+                              || tile.selectedHighlight ? 2 : 1
 
                 ViewportCardGeometry {
                     id: cardGeometry
@@ -10738,7 +10760,7 @@ ApplicationWindow {
                         width: 32 * card.expansion
                         height: 32 * card.expansion
                         visible: tile.favorite || tile.favoriteBusy
-                                 || cardHover.hovered || tile.activeFocus
+                                 || tile.hoverEmphasis || tile.focusedHighlight
                         enabled: !tile.favoriteBusy
                         text: tile.favoriteBusy ? "…" : tile.favorite ? "★" : "☆"
                         flat: true
@@ -10825,7 +10847,7 @@ ApplicationWindow {
                     anchors.top: artwork.bottom
                     anchors.topMargin: 10 * card.expansion
                     text: tile.gameTitle
-                    hovered: cardHover.hovered
+                    hovered: tile.hoverEmphasis
                     color: root.ink
                     font.pixelSize: Math.round(14 * card.expansion)
                     font.weight: Font.DemiBold

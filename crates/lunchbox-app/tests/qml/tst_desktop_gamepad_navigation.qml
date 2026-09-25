@@ -125,6 +125,14 @@ TestCase {
         router.handle("down"); compare(grid.currentIndex, 5)
         router.handle("accept"); compare(testCase.opened, 1)
     }
+    function test_grid_focus_scope_tracks_controller_card() {
+        verify(grid.activeFocus)
+        router.focusViewIndex(grid, 1)
+        verify(grid.activeFocus)
+        compare(grid.currentIndex, 1)
+        button.forceActiveFocus()
+        verify(!grid.activeFocus)
+    }
     function test_existing_focus_borders_suppress_fallback_outline() {
         host.activeFocusItem = grid.itemAtIndex(0)
         const ring = findChild(host.activeFocusItem, "desktopGamepadFocusRing")
