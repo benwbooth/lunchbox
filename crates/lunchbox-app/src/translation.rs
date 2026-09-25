@@ -25,6 +25,7 @@ use rapidocr_core::model::{ModelCache, ModelDownloadMode, model_set_by_name};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use sysinfo::{ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System, UpdateKind};
 
 use crate::emulator::{EmulatorExecutable, LaunchPlan};
 
@@ -43,6 +44,7 @@ const AUTO_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 // next auto-capture picks up the finished overlay without holding RetroArch's
 // HTTP task on a spinner for the full model latency.
 const RESULT_WAIT_TIMEOUT: Duration = Duration::from_millis(150);
+const RESULT_RESPONSE_BUDGET: Duration = Duration::from_millis(1450);
 const MAX_TRANSLATION_MEMORY: usize = 256;
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
@@ -404,6 +406,74 @@ impl TranslationSession {
             .context("starting local translation bridge")?;
         Ok(Some(Self { stop }))
     }
+
+    /// Rebind the URL already embedded in a Lunchbox-owned, still-running
+    /// RetroArch session after the UI process was restarted. The emulator
+    /// keeps its launch config; assigning a new port would never reach it.
+    pub fn recover_running(
+        settings: &TranslationSettings,
+        output_dimensions: Option<(u32, u32)>,
+    ) -> Result<Option<Self>> {
+        if !settings.enabled
+            || !crate::emulator_session::active()?.is_some_and(|session| !session.preparing())
+        {
+            return Ok(None);
+        }
+        let Some(output) = output_dimensions.filter(|(width, height)| *width > 0 && *height > 0)
+        else {
+            return Ok(None);
+        };
+        let mut system = System::new();
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+        );
+        for process in system.processes().values() {
+            if !process
+                .name()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .starts_with("retroarch")
+                || matches!(
+                    process.status(),
+                    ProcessStatus::Zombie | ProcessStatus::Dead
+                )
+            {
+                continue;
+            }
+            let arguments = process.cmd();
+            let Some((port, secret)) = retroarch_translation_endpoint(arguments)? else {
+                continue;
+            };
+            let listener = match TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)) {
+                Ok(listener) => listener,
+                Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => return Ok(None),
+                Err(error) => return Err(error).context("restoring local translation bridge"),
+            };
+            settings.validate()?;
+            ensure!(
+                model_available(&settings.model)?,
+                "translation model is unavailable"
+            );
+            let mut ocr = load_ocr()?;
+            ocr.warm_up_gpu(&OcrCancellationToken::new())
+                .context("warming recovered GPU OCR")?;
+            verify_model_gpu(&settings.model)?;
+            let viewport = overlay_viewport_from_arguments(arguments, output)?;
+            listener.set_nonblocking(true)?;
+            let stop = Arc::new(AtomicBool::new(false));
+            let worker_stop = Arc::clone(&stop);
+            let settings = settings.clone();
+            thread::Builder::new()
+                .name("lunchbox-translation-bridge".into())
+                .spawn(move || serve(listener, &secret, settings, ocr, viewport, &worker_stop))
+                .context("restoring local translation bridge")?;
+            eprintln!("LUNCHBOX_TRANSLATION_RECOVERED port={port}");
+            return Ok(Some(Self { stop }));
+        }
+        Ok(None)
+    }
 }
 
 /// RetroArch 1.22's AI widget stretches the returned PNG over the full video
@@ -432,8 +502,14 @@ fn overlay_viewport(
     output_dimensions: Option<(u32, u32)>,
 ) -> Result<Option<OverlayViewport>> {
     let arguments = retroarch_app_arguments(&plan.arguments, executable)?;
+    let output =
+        crate::display_setup::probe_retroarch_output_dimensions(executable, output_dimensions)?;
+    overlay_viewport_from_arguments(arguments, output)
+}
+
+fn appended_config_paths(arguments: &[OsString]) -> Result<Vec<PathBuf>> {
     let Some(index) = crate::controller_launch_modes::append_config_index(arguments)? else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     let value = if arguments[index] == "--appendconfig" {
         arguments.get(index + 1).and_then(|arg| arg.to_str())
@@ -442,15 +518,60 @@ fn overlay_viewport(
             .to_str()
             .and_then(|arg| arg.strip_prefix("--appendconfig="))
     };
-    let Some(value) = value else {
-        return Ok(None);
-    };
+    Ok(value
+        .map(|value| value.split('|').map(PathBuf::from).collect())
+        .unwrap_or_default())
+}
+
+fn retroarch_translation_endpoint(arguments: &[OsString]) -> Result<Option<(u16, String)>> {
+    for config in appended_config_paths(arguments)? {
+        // Never revive a user-owned AI service or an unrelated RetroArch.
+        if !config
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("retroarch-") && name.ends_with(".cfg"))
+            || !config
+                .parent()
+                .is_some_and(|parent| parent.ends_with("lunchbox/launch-display"))
+        {
+            continue;
+        }
+        let Ok(contents) = std::fs::read_to_string(config) else {
+            continue;
+        };
+        for line in contents.lines() {
+            let Some(value) = line.strip_prefix("ai_service_url = ") else {
+                continue;
+            };
+            let value = value.trim().trim_matches('"');
+            let Some((port, secret)) = value
+                .strip_prefix("http://127.0.0.1:")
+                .and_then(|value| value.split_once('/'))
+            else {
+                continue;
+            };
+            if let Ok(port) = port.parse::<u16>()
+                && port > 0
+                && secret.len() == 32
+                && secret.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Ok(Some((port, secret.to_owned())));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn overlay_viewport_from_arguments(
+    arguments: &[OsString],
+    output: (u32, u32),
+) -> Result<Option<OverlayViewport>> {
     let mut viewport_width = None;
     let mut viewport_height = None;
     let mut viewport_x = 0;
     let mut viewport_y = 0;
-    for config in value.split('|') {
-        let Ok(contents) = std::fs::read_to_string(Path::new(config)) else {
+    for config in appended_config_paths(arguments)? {
+        let Ok(contents) = std::fs::read_to_string(&config) else {
             continue;
         };
         viewport_width = config_u32(&contents, "custom_viewport_width").or(viewport_width);
@@ -461,8 +582,6 @@ fn overlay_viewport(
     let (Some(width), Some(height)) = (viewport_width, viewport_height) else {
         return Ok(None);
     };
-    let output =
-        crate::display_setup::probe_retroarch_output_dimensions(executable, output_dimensions)?;
     ensure!(
         width > 0 && height > 0 && width <= output.0 && height <= output.1,
         "translation game viewport does not fit the video output"
@@ -522,7 +641,7 @@ fn retroarch_app_arguments<'a>(
 
 fn retroarch_session_config(port: u16, secret: &str) -> String {
     format!(
-        "ai_service_enable = \"true\"\nai_service_url = \"http://127.0.0.1:{port}/{secret}\"\nai_service_mode = \"0\"\nai_service_source_lang = \"0\"\nai_service_target_lang = \"1\"\nai_service_pause = \"false\"\nmenu_enable_widgets = \"true\"\ninput_ai_service = \"{TRANSLATION_HOTKEY}\"\n"
+        "ai_service_enable = \"true\"\nai_service_url = \"http://127.0.0.1:{port}/{secret}\"\nai_service_mode = \"0\"\nai_service_source_lang = \"0\"\nai_service_target_lang = \"1\"\nai_service_pause = \"false\"\naudio_latency = \"128\"\nmenu_enable_widgets = \"true\"\ninput_ai_service = \"{TRANSLATION_HOTKEY}\"\n"
     )
 }
 
@@ -585,7 +704,9 @@ fn serve(
                         overlay,
                     })
                 });
-                if let Ok(translation) = &result {
+                if let Ok(translation) = &result
+                    && !translation.regions.is_empty()
+                {
                     cached = Some(translation.clone());
                 }
                 if completed_jobs.send((job.digest, result)).is_err() {
@@ -712,35 +833,37 @@ fn fingerprint_region(image: &RgbImage, rect: TextRect) -> [u8; 32] {
     digest.finalize().into()
 }
 
-fn cached_text_matches(
-    cached: &CachedTranslation,
-    screenshot: &RgbImage,
-    dimensions: (u32, u32),
-) -> bool {
-    cached.dimensions == dimensions
-        && !cached.regions.is_empty()
-        && cached.region_fingerprints.len() == cached.regions.len()
-        && cached
-            .regions
-            .iter()
-            .zip(&cached.region_fingerprints)
-            .all(|(region, old)| fingerprint_region(screenshot, region.rect) == *old)
+fn cached_overlay_matches_frame(cached: &CachedTranslation, digest: [u8; 32]) -> bool {
+    // Matching only the *old* text rectangles hid newly appearing text
+    // elsewhere on a still-animated screen forever. Re-run OCR whenever the
+    // frame changes, but reuse unchanged region translations in the worker.
+    // Empty OCR results remain provisional even on an identical frame.
+    !cached.regions.is_empty() && cached.digest == digest
 }
 
-fn cached_overlay_matches_frame(
+fn cached_overlay_still_visible(
     cached: &CachedTranslation,
-    digest: [u8; 32],
-    decoded: &[u8],
+    screenshot: &[u8],
     dimensions: (u32, u32),
 ) -> bool {
-    // An empty OCR result is provisional. Retry it even when the game is
-    // paused on the exact same pixels; otherwise a single missed detection
-    // can suppress translation indefinitely.
-    !cached.regions.is_empty()
-        && (cached.digest == digest
-            || image::load_from_memory(decoded)
-                .ok()
-                .is_some_and(|image| cached_text_matches(cached, &image.into_rgb8(), dimensions)))
+    if cached.regions.is_empty()
+        || cached.dimensions != dimensions
+        || cached.regions.len() != cached.region_fingerprints.len()
+    {
+        return false;
+    }
+    let Ok(image) = image::load_from_memory(screenshot) else {
+        return false;
+    };
+    let image = image.into_rgb8();
+    if image.dimensions() != dimensions {
+        return false;
+    }
+    cached
+        .regions
+        .iter()
+        .zip(&cached.region_fingerprints)
+        .all(|(region, fingerprint)| fingerprint_region(&image, region.rect) == *fingerprint)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -801,6 +924,7 @@ fn handle_request(
     viewport: Option<OverlayViewport>,
     state: &mut TranslationBridge,
 ) -> Result<()> {
+    let request_started = Instant::now();
     let mut reader = BufReader::new(stream.try_clone()?);
     let request_line = read_http_line(&mut reader)?;
     let expected_path = format!("/{secret}");
@@ -848,9 +972,10 @@ fn handle_request(
     while let Ok((completed_digest, result)) = state.results.try_recv() {
         accept_translation_result(state, completed_digest, result);
     }
-    let same_text = state.cached.as_ref().is_some_and(|cached| {
-        cached_overlay_matches_frame(cached, digest, &decoded, (width, height))
-    });
+    let same_text = state
+        .cached
+        .as_ref()
+        .is_some_and(|cached| cached_overlay_matches_frame(cached, digest));
     if same_text {
         pace_auto_response(state);
         return write_json(
@@ -897,8 +1022,26 @@ fn handle_request(
     while let Ok((completed_digest, result)) = state.results.try_recv() {
         accept_translation_result(state, completed_digest, result);
     }
+    // A warm model often finishes just after the one-second capture interval.
+    // Give this screenshot a bounded chance to receive its own caption instead
+    // of discarding it and waiting for another capture of a changed scene.
+    if state.in_flight.is_some()
+        && let Some(remaining) = RESULT_RESPONSE_BUDGET.checked_sub(request_started.elapsed())
+    {
+        match state.results.recv_timeout(remaining) {
+            Ok((completed_digest, result)) => {
+                accept_translation_result(state, completed_digest, result)
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                bail!("translation worker stopped")
+            }
+        }
+        state.last_response_at = Some(Instant::now());
+    }
     if let Some(cached) = &state.cached
-        && cached_overlay_matches_frame(cached, digest, &decoded, (width, height))
+        && (cached_overlay_matches_frame(cached, digest)
+            || cached_overlay_still_visible(cached, &decoded, (width, height)))
     {
         return write_json(
             stream,
@@ -919,7 +1062,12 @@ fn accept_translation_result(
     state.in_flight = None;
     match result {
         Ok(translation) => {
-            state.cached = Some(translation);
+            // A single OCR miss must not erase a caption whose source pixels
+            // are still visible. Empty reads remain provisional so the next
+            // frame is still sent through OCR.
+            if !translation.regions.is_empty() || state.cached.is_none() {
+                state.cached = Some(translation);
+            }
             state.retry_after = None;
         }
         Err(error) => {
@@ -1086,7 +1234,6 @@ fn nearby_text(a: TextGroup, b: TextGroup, allow_multiline: bool) -> bool {
 }
 
 fn group_text_regions(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextGroup> {
-    let original_count = boxes.len();
     if let Some((grid_top, line_height)) = dense_grid_start(&boxes, width, height) {
         // A character picker or similarly dense menu grid is not dialogue.
         // OCRing its full table produces speculative English and obscures the
@@ -1096,7 +1243,10 @@ fn group_text_regions(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<
                 && !(rect.width() > width / 2 && rect.y2.saturating_add(line_height) >= grid_top)
         });
     }
-    let allow_multiline = original_count <= 4;
+    // Dialogue boxes often have more than four OCR lines. The dense character
+    // grid has already been removed above, so do not split longer dialogue
+    // into isolated lines and discard its lower half.
+    let allow_multiline = true;
     boxes.sort_by_key(|rect| (rect.y1, rect.x1));
     let mut groups: Vec<TextGroup> = Vec::new();
     for rect in boxes {
@@ -1245,29 +1395,41 @@ fn detect_text_regions(ocr: &mut RapidOcr, image: &RgbImage) -> Result<Vec<(Text
 fn sample_text_background(image: &RgbImage, rect: TextRect) -> [u8; 3] {
     let (width, height) = image.dimensions();
     let ring = rect.padded(width, height, 3);
-    let mut channels = [Vec::new(), Vec::new(), Vec::new()];
+    // The old ring-only median could pick scenery just outside a dialogue
+    // panel. Text occupies fewer pixels than its background inside the OCR
+    // box, so choose the dominant quantized color from both areas and give
+    // the interior twice the weight of the surrounding ring.
+    let mut buckets = vec![[0u64; 4]; 16 * 16 * 16];
     for y in ring.y1..ring.y2 {
         for x in ring.x1..ring.x2 {
-            if x >= rect.x1 && x < rect.x2 && y >= rect.y1 && y < rect.y2 {
-                continue;
-            }
-            let color = image.get_pixel(x, y);
-            for (channel, value) in channels.iter_mut().zip(color.0) {
-                channel.push(value);
-            }
+            let [red, green, blue] = image.get_pixel(x, y).0;
+            let index = (usize::from(red >> 4) << 8)
+                | (usize::from(green >> 4) << 4)
+                | usize::from(blue >> 4);
+            let weight = u64::from(
+                if x >= rect.x1 && x < rect.x2 && y >= rect.y1 && y < rect.y2 {
+                    2u8
+                } else {
+                    1u8
+                },
+            );
+            let bucket = &mut buckets[index];
+            bucket[0] += weight;
+            bucket[1] += weight * u64::from(red);
+            bucket[2] += weight * u64::from(green);
+            bucket[3] += weight * u64::from(blue);
         }
     }
-    if channels[0].is_empty() {
+    let Some(bucket) = buckets.iter().max_by_key(|bucket| bucket[0]) else {
+        return [9, 14, 22];
+    };
+    if bucket[0] == 0 {
         return [9, 14, 22];
     }
-    for channel in &mut channels {
-        channel.sort_unstable();
-    }
-    let middle = channels[0].len() / 2;
     [
-        channels[0][middle],
-        channels[1][middle],
-        channels[2][middle],
+        (bucket[1] / bucket[0]) as u8,
+        (bucket[2] / bucket[0]) as u8,
+        (bucket[3] / bucket[0]) as u8,
     ]
 }
 
@@ -1286,6 +1448,20 @@ fn cached_region<'a>(
             region.rect.near(rect) && old.region_fingerprints.get(*index) == Some(&fingerprint)
         })
         .map(|(_, region)| region)
+}
+
+fn is_numeric_hud_label(source: &str) -> bool {
+    let source = source.trim();
+    source.len() <= 12
+        && source.bytes().any(|byte| byte.is_ascii_digit())
+        && source
+            .bytes()
+            .filter(|byte| byte.is_ascii_alphabetic())
+            .count()
+            <= 4
+        && source
+            .bytes()
+            .all(|byte| byte.is_ascii() && !byte.is_ascii_lowercase())
 }
 
 fn render_translation(
@@ -1318,7 +1494,7 @@ fn render_translation(
         .collect::<Vec<_>>();
     let ocr_elapsed = started.elapsed();
     boxes.sort_by_key(|(group, _)| std::cmp::Reverse(group.rect.width()));
-    boxes.truncate(4);
+    boxes.truncate(8);
     boxes.sort_by_key(|(group, _)| (group.rect.y1, group.rect.x1));
     if std::env::var_os("LUNCHBOX_TRANSLATION_SOURCE_IMAGE").is_some() {
         eprintln!("LUNCHBOX_TRANSLATION_PROBE_CANDIDATES: {boxes:?}");
@@ -1332,6 +1508,7 @@ fn render_translation(
         .enumerate()
         .filter(|(_, (detected, source))| {
             source.chars().filter(|ch| ch.is_alphabetic()).count() >= 2
+                && !is_numeric_hud_label(source)
                 && cached_region(cached, &screenshot, (width, height), detected.rect).is_none()
                 && memory.get(source).is_none()
         })
@@ -1364,7 +1541,9 @@ fn render_translation(
             (previous.source.clone(), previous.english.clone())
         } else {
             let source = recognized;
-            if source.chars().filter(|ch| ch.is_alphabetic()).count() < 2 {
+            if source.chars().filter(|ch| ch.is_alphabetic()).count() < 2
+                || is_numeric_hud_label(&source)
+            {
                 continue;
             }
             let english = if let Some(english) = memory.get(&source) {
@@ -1443,6 +1622,18 @@ fn map_overlay_rect(
     viewport: OverlayViewport,
     output: (u32, u32),
 ) -> TextRect {
+    // CRT artwork is outside the game's opening. A zoom correction may move
+    // text toward that edge, but captions must never paint over the bezel.
+    let opening = TextRect {
+        x1: (u64::from(viewport.game.x1) * u64::from(output.0) / u64::from(viewport.output.0))
+            as u32,
+        y1: (u64::from(viewport.game.y1) * u64::from(output.1) / u64::from(viewport.output.1))
+            as u32,
+        x2: (u64::from(viewport.game.x2) * u64::from(output.0) / u64::from(viewport.output.0))
+            as u32,
+        y2: (u64::from(viewport.game.y2) * u64::from(output.1) / u64::from(viewport.output.1))
+            as u32,
+    };
     let center_x = (u64::from(viewport.game.x1 + viewport.game.x2) * u64::from(output.0)
         / (2 * u64::from(viewport.output.0))) as u32;
     let center_y = (u64::from(viewport.game.y1 + viewport.game.y2) * u64::from(output.1)
@@ -1460,10 +1651,10 @@ fn map_overlay_rect(
         zoom_overlay_coordinate(mapped, center_y, viewport.content_zoom_percent, output.1)
     };
     TextRect {
-        x1: map_x(rect.x1),
-        y1: map_y(rect.y1),
-        x2: map_x(rect.x2),
-        y2: map_y(rect.y2),
+        x1: map_x(rect.x1).clamp(opening.x1.saturating_add(12), opening.x2.saturating_sub(12)),
+        y1: map_y(rect.y1).clamp(opening.y1.saturating_add(8), opening.y2.saturating_sub(8)),
+        x2: map_x(rect.x2).clamp(opening.x1.saturating_add(12), opening.x2.saturating_sub(12)),
+        y2: map_y(rect.y2).clamp(opening.y1.saturating_add(8), opening.y2.saturating_sub(8)),
     }
 }
 
@@ -1512,14 +1703,111 @@ fn subtitle_font() -> Option<&'static Font> {
 
 fn render_regions_png(width: u32, height: u32, regions: &[TranslatedRegion]) -> Result<Vec<u8>> {
     let mut pixels = vec![0u8; width as usize * height as usize * 4];
-    for region in regions {
-        draw_region(&mut pixels, width, height, region);
+    for region in merge_colliding_regions(regions, width, height) {
+        draw_region(&mut pixels, width, height, &region);
     }
     encode_rgba_png(width, height, &pixels)
 }
 
+fn region_panel(region: &TranslatedRegion, width: u32, height: u32) -> TextRect {
+    let line_height = region.source_line_height.max(1).min(region.rect.height());
+    let vertical_padding = (line_height / 5).clamp(2, 8);
+    let horizontal_padding = (line_height / 3).clamp(3, 12);
+    TextRect {
+        x1: region.rect.x1.saturating_sub(horizontal_padding),
+        y1: region.rect.y1.saturating_sub(vertical_padding),
+        x2: region.rect.x2.saturating_add(horizontal_padding).min(width),
+        y2: region.rect.y2.saturating_add(vertical_padding).min(height),
+    }
+}
+
+fn regions_collide(a: &TranslatedRegion, b: &TranslatedRegion, width: u32, height: u32) -> bool {
+    let a = region_panel(a, width, height);
+    let b = region_panel(b, width, height);
+    if a.width() == 0 || a.height() == 0 || b.width() == 0 || b.height() == 0 {
+        return false;
+    }
+    let overlap_x = axis_overlap(a.x1, a.x2, b.x1, b.x2);
+    let overlap_y = axis_overlap(a.y1, a.y2, b.y1, b.y2);
+    overlap_x * 4 >= a.width().min(b.width()) && overlap_y * 4 >= a.height().min(b.height())
+}
+
+fn merge_caption_text(first: &str, second: &str) -> String {
+    let left = first.split_whitespace().collect::<Vec<_>>();
+    let right = second.split_whitespace().collect::<Vec<_>>();
+    for shared in (2..=left.len().min(right.len())).rev() {
+        let matches = left[left.len() - shared..]
+            .iter()
+            .zip(&right[..shared])
+            .all(|(a, b)| {
+                a.trim_matches(|ch: char| !ch.is_alphanumeric())
+                    .eq_ignore_ascii_case(b.trim_matches(|ch: char| !ch.is_alphanumeric()))
+            });
+        if matches {
+            return format!("{} {}", first.trim(), right[shared..].join(" "))
+                .trim()
+                .to_owned();
+        }
+    }
+    format!("{} {}", first.trim(), second.trim())
+}
+
+fn merge_colliding_regions(
+    regions: &[TranslatedRegion],
+    width: u32,
+    height: u32,
+) -> Vec<TranslatedRegion> {
+    let mut ordered = regions.to_vec();
+    ordered.sort_by_key(|region| (region.rect.y1, region.rect.x1));
+    let mut merged: Vec<TranslatedRegion> = Vec::new();
+    for mut region in ordered {
+        while let Some(index) = merged
+            .iter()
+            .position(|other| regions_collide(other, &region, width, height))
+        {
+            let other = merged.remove(index);
+            let (earlier, later) =
+                if (other.rect.y1, other.rect.x1) <= (region.rect.y1, region.rect.x1) {
+                    (&other, &region)
+                } else {
+                    (&region, &other)
+                };
+            region = TranslatedRegion {
+                rect: other.rect.union(region.rect),
+                source_line_height: other.source_line_height.min(region.source_line_height),
+                source: format!("{} {}", earlier.source, later.source),
+                english: merge_caption_text(&earlier.english, &later.english),
+                background: if other
+                    .background
+                    .iter()
+                    .map(|value| u32::from(*value))
+                    .sum::<u32>()
+                    <= region
+                        .background
+                        .iter()
+                        .map(|value| u32::from(*value))
+                        .sum::<u32>()
+                {
+                    other.background
+                } else {
+                    region.background
+                },
+            };
+        }
+        merged.push(region);
+    }
+    merged
+}
+
 fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRegion) {
-    if region.english.is_empty() || !text_region_allowed(region.rect, width, height) {
+    if region.english.is_empty()
+        || region.rect.x1 >= region.rect.x2
+        || region.rect.y1 >= region.rect.y2
+        || region.rect.x2 > width
+        || region.rect.y2 > height
+        || u64::from(region.rect.width()) * u64::from(region.rect.height()) * 100
+            > u64::from(width) * u64::from(height) * 40
+    {
         return;
     }
     // Pad by the source glyph height, not the dimensions of a merged dialogue
@@ -1528,12 +1816,7 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
     let source_line_height = region.source_line_height.max(1).min(region.rect.height());
     let vertical_padding = (source_line_height / 5).clamp(2, 8);
     let horizontal_padding = (source_line_height / 3).clamp(3, 12);
-    let panel = TextRect {
-        x1: region.rect.x1.saturating_sub(horizontal_padding),
-        y1: region.rect.y1.saturating_sub(vertical_padding),
-        x2: region.rect.x2.saturating_add(horizontal_padding).min(width),
-        y2: region.rect.y2.saturating_add(vertical_padding).min(height),
-    };
+    let panel = region_panel(region, width, height);
     let usable_width = panel.width().saturating_sub(2 * horizontal_padding);
     let usable_height = panel.height().saturating_sub(vertical_padding);
     let font = subtitle_font();
@@ -1838,7 +2121,13 @@ fn parse_translation_array(raw: &str, count: usize) -> Option<Vec<String>> {
         .unwrap_or(body)
         .trim();
     let body = body.strip_suffix("```").unwrap_or(body).trim();
-    let parsed = serde_json::from_str::<Vec<String>>(body).ok()?;
+    let parsed = serde_json::from_str::<Vec<String>>(body).ok().or_else(|| {
+        // Some local models wrap a correct array in a sentence despite
+        // the prompt. Recover it before paying for serial fallback calls.
+        let start = body.find('[')?;
+        let end = body.rfind(']')?;
+        serde_json::from_str::<Vec<String>>(&body[start..=end]).ok()
+    })?;
     if parsed.len() != count {
         return None;
     }
@@ -1980,8 +2269,9 @@ mod tests {
     }
 
     #[test]
-    fn animated_pixels_outside_text_do_not_invalidate_translation() {
+    fn new_pixels_outside_old_text_trigger_ocr_without_blank_caption() {
         let mut screenshot = RgbImage::from_pixel(64, 64, image::Rgb([10, 20, 30]));
+        let digest: [u8; 32] = Sha256::digest(screenshot.as_raw()).into();
         let rect = TextRect {
             x1: 10,
             y1: 20,
@@ -1989,7 +2279,7 @@ mod tests {
             y2: 38,
         };
         let cached = CachedTranslation {
-            digest: [0; 32],
+            digest,
             regions: vec![TranslatedRegion {
                 rect,
                 source_line_height: 18,
@@ -2001,10 +2291,29 @@ mod tests {
             dimensions: (64, 64),
             overlay: String::new(),
         };
+        assert!(cached_overlay_matches_frame(&cached, digest));
         screenshot.put_pixel(50, 50, image::Rgb([255, 255, 255]));
-        assert!(cached_text_matches(&cached, &screenshot, (64, 64)));
-        screenshot.put_pixel(15, 25, image::Rgb([255, 255, 255]));
-        assert!(!cached_text_matches(&cached, &screenshot, (64, 64)));
+        let changed: [u8; 32] = Sha256::digest(screenshot.as_raw()).into();
+        assert!(!cached_overlay_matches_frame(&cached, changed));
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(screenshot.clone())
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .unwrap();
+        assert!(cached_overlay_still_visible(
+            &cached,
+            encoded.get_ref(),
+            (64, 64)
+        ));
+        screenshot.put_pixel(20, 25, image::Rgb([255, 255, 255]));
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(screenshot)
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .unwrap();
+        assert!(!cached_overlay_still_visible(
+            &cached,
+            encoded.get_ref(),
+            (64, 64)
+        ));
     }
 
     #[test]
@@ -2018,12 +2327,54 @@ mod tests {
             dimensions: (64, 64),
             overlay: BASE64.encode(&screenshot),
         };
-        assert!(!cached_overlay_matches_frame(
-            &cached,
-            digest,
-            &screenshot,
-            (64, 64)
-        ));
+        assert!(!cached_overlay_matches_frame(&cached, digest));
+    }
+
+    #[test]
+    fn one_empty_ocr_read_preserves_the_last_visible_caption() {
+        let (jobs, _pending) = mpsc::sync_channel(1);
+        let (_completed, results) = mpsc::channel();
+        let old = CachedTranslation {
+            digest: [1; 32],
+            regions: vec![TranslatedRegion {
+                rect: TextRect {
+                    x1: 1,
+                    y1: 1,
+                    x2: 10,
+                    y2: 10,
+                },
+                source_line_height: 9,
+                source: "開く".to_owned(),
+                english: "Open".to_owned(),
+                background: [0, 0, 0],
+            }],
+            region_fingerprints: vec![[2; 32]],
+            dimensions: (64, 64),
+            overlay: "old-caption".to_owned(),
+        };
+        let mut state = TranslationBridge {
+            jobs,
+            results,
+            cached: Some(old),
+            in_flight: Some([3; 32]),
+            retry_after: None,
+            last_started_at: None,
+            last_response_at: None,
+            blank_overlay: None,
+        };
+        accept_translation_result(
+            &mut state,
+            [3; 32],
+            Ok(CachedTranslation {
+                digest: [3; 32],
+                regions: vec![],
+                region_fingerprints: vec![],
+                dimensions: (64, 64),
+                overlay: "empty-caption".to_owned(),
+            }),
+        );
+        assert_eq!(state.cached.unwrap().overlay, "old-caption");
+        assert_eq!(state.in_flight, None);
     }
 
     #[test]
@@ -2143,6 +2494,50 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_dialogue_captions_become_one_panel_without_repeating_words() {
+        let first = TranslatedRegion {
+            rect: TextRect {
+                x1: 20,
+                y1: 20,
+                x2: 300,
+                y2: 70,
+            },
+            source_line_height: 20,
+            source: "魔法使い".to_owned(),
+            english: "Do not worry, we can easily".to_owned(),
+            background: [3, 55, 8],
+        };
+        let second = TranslatedRegion {
+            rect: TextRect {
+                x1: 50,
+                y1: 55,
+                x2: 260,
+                y2: 100,
+            },
+            source_line_height: 20,
+            source: "勝てる".to_owned(),
+            english: "We can easily win this battle".to_owned(),
+            background: [3, 70, 8],
+        };
+        let merged = merge_colliding_regions(&[first, second], 320, 240);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0].english,
+            "Do not worry, we can easily win this battle"
+        );
+        assert_eq!(merged[0].rect.y2, 100);
+        assert_eq!(merged[0].background, [3, 55, 8]);
+    }
+
+    #[test]
+    fn numeric_english_hud_labels_are_not_translated() {
+        assert!(is_numeric_hud_label("MP:6"));
+        assert!(is_numeric_hud_label("HP 100/100"));
+        assert!(!is_numeric_hud_label("魔法使い6"));
+        assert!(!is_numeric_hud_label("Kukuku, you made a mess"));
+    }
+
+    #[test]
     fn dialogue_translation_stays_inside_the_text_box_border() {
         let region = TranslatedRegion {
             rect: TextRect {
@@ -2168,7 +2563,7 @@ mod tests {
     }
 
     #[test]
-    fn text_background_comes_from_the_neighboring_game_pixels() {
+    fn text_background_prefers_the_dialogue_panel_over_outer_scenery_and_glyphs() {
         let mut image = RgbImage::from_pixel(64, 64, image::Rgb([21, 35, 49]));
         let rect = TextRect {
             x1: 10,
@@ -2176,9 +2571,14 @@ mod tests {
             x2: 50,
             y2: 40,
         };
-        for y in rect.y1..rect.y2 {
+        for y in rect.y1..rect.y1 + 3 {
             for x in rect.x1..rect.x2 {
                 image.put_pixel(x, y, image::Rgb([255, 255, 255]));
+            }
+        }
+        for y in rect.y1 - 3..rect.y1 {
+            for x in rect.x1 - 3..rect.x2 + 3 {
+                image.put_pixel(x, y, image::Rgb([180, 70, 25]));
             }
         }
         assert_eq!(sample_text_background(&image, rect), [21, 35, 49]);
@@ -2363,12 +2763,6 @@ mod tests {
                 TextRect {
                     x1: 300,
                     y1: 37,
-                    x2: 386,
-                    y2: 66
-                },
-                TextRect {
-                    x1: 300,
-                    y1: 80,
                     x2: 466,
                     y2: 105
                 },
@@ -2460,6 +2854,21 @@ mod tests {
         assert!((130..=150).contains(&fighter.y1));
         let mapped_line_height = map_overlay_line_height(23, (512, 478), viewport, output);
         assert!(mapped_line_height.abs_diff(fighter.height()) <= 2);
+        let full = map_overlay_rect(
+            TextRect {
+                x1: 0,
+                y1: 0,
+                x2: 512,
+                y2: 478,
+            },
+            (512, 478),
+            viewport,
+            output,
+        );
+        let opening_left = viewport.game.x1 * output.0 / viewport.output.0;
+        let opening_right = viewport.game.x2 * output.0 / viewport.output.0;
+        assert!(full.x1 >= opening_left + 12);
+        assert!(full.x2 <= opening_right - 12);
     }
 
     #[test]
@@ -2514,6 +2923,10 @@ mod tests {
     fn batched_translation_accepts_fenced_json_without_losing_box_order() {
         assert_eq!(
             parse_translation_array("```json\n[\"Normal\", \"Wide\"]\n```", 2),
+            Some(vec!["Normal".to_owned(), "Wide".to_owned()])
+        );
+        assert_eq!(
+            parse_translation_array("Translations: [\"Normal\", \"Wide\"]", 2),
             Some(vec!["Normal".to_owned(), "Wide".to_owned()])
         );
         assert_eq!(parse_translation_array("[\"Normal\"]", 2), None);
@@ -2695,6 +3108,9 @@ mod tests {
         let (completed, results) = mpsc::channel();
         let worker = thread::spawn(move || {
             let job: TranslationJob = pending.recv().unwrap();
+            // Finish after the initial short wait, but before the bounded
+            // response deadline, as a warm local model commonly does.
+            thread::sleep(Duration::from_millis(1100));
             let rect = TextRect {
                 x1: 1,
                 y1: 1,

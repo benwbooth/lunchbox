@@ -11,7 +11,7 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_os = "windows"))]
 use sysinfo::Signal;
-use sysinfo::{Pid, ProcessStatus, ProcessesToUpdate, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System, UpdateKind};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProcessIdentity {
@@ -129,7 +129,11 @@ fn owned_retroarch_orphan() -> Option<Session> {
     // Refresh processes once. `new_all()` already refreshes everything, so
     // pairing it with `refresh_processes` doubled the cost of every poll.
     let mut system = System::new();
-    system.refresh_processes(ProcessesToUpdate::All, true);
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+    );
     let process = system.processes().values().find(|process| {
         is_process_leader(process.pid().as_u32())
             && !matches!(

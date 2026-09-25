@@ -865,6 +865,8 @@ pub struct GameDetailsModelRust {
     launch_generation: u64,
     session_generation: u64,
     session_poll_in_flight: bool,
+    translation_recovery_last_attempt: Option<Instant>,
+    recovered_translation: Option<crate::translation::TranslationSession>,
     discovery_cache: std::collections::HashMap<String, EmulatorDiscoveryResult>,
     details_cache: std::collections::HashMap<String, GameDetails>,
     activity_load_generation: u64,
@@ -1120,6 +1122,8 @@ impl Default for GameDetailsModelRust {
             launch_generation: 0,
             session_generation: 0,
             session_poll_in_flight: false,
+            translation_recovery_last_attempt: None,
+            recovered_translation: None,
             discovery_cache: std::collections::HashMap::new(),
             details_cache: std::collections::HashMap::new(),
             activity_load_generation: 0,
@@ -6839,11 +6843,44 @@ impl qobject::GameDetailsModel {
         }
         self.as_mut().rust_mut().session_poll_in_flight = true;
         let generation = self.as_ref().rust().session_generation;
+        let attempt_translation_recovery = self.as_ref().rust().recovered_translation.is_none()
+            && self
+                .as_ref()
+                .rust()
+                .translation_recovery_last_attempt
+                .is_none_or(|last| last.elapsed() >= Duration::from_secs(10));
+        if attempt_translation_recovery {
+            self.as_mut().rust_mut().translation_recovery_last_attempt = Some(Instant::now());
+        }
+        let output_dimensions = match (
+            *self.as_ref().display_output_width(),
+            *self.as_ref().display_output_height(),
+        ) {
+            (width, height) if width > 0 && height > 0 => Some((width as u32, height as u32)),
+            _ => None,
+        };
         let qt_thread = self.as_ref().qt_thread();
         let spawned = std::thread::Builder::new()
             .name("lunchbox-session-poll".into())
             .spawn(move || {
                 let result = crate::emulator_session::active().map_err(|error| error.to_string());
+                let recovered = if attempt_translation_recovery
+                    && result
+                        .as_ref()
+                        .ok()
+                        .and_then(Option::as_ref)
+                        .is_some_and(|session| !session.preparing())
+                {
+                    Some((|| -> anyhow::Result<_> {
+                        let settings = crate::settings::SettingsStore::open_default()?.load()?;
+                        crate::translation::TranslationSession::recover_running(
+                            &settings.translation,
+                            output_dimensions,
+                        )
+                    })())
+                } else {
+                    None
+                };
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().rust_mut().session_poll_in_flight = false;
                     if generation != model.as_ref().rust().session_generation
@@ -6851,8 +6888,25 @@ impl qobject::GameDetailsModel {
                     {
                         return;
                     }
+                    if let Some(recovered) = recovered {
+                        match recovered {
+                            Ok(Some(bridge)) => {
+                                model.as_mut().rust_mut().recovered_translation = Some(bridge);
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                eprintln!("LUNCHBOX_TRANSLATION_RECOVERY_FAILED: {error:#}")
+                            }
+                        }
+                    }
                     match result {
-                        Ok(session) => model.as_mut().apply_emulator_session(session),
+                        Ok(session) => {
+                            if session.is_none() {
+                                model.as_mut().rust_mut().recovered_translation = None;
+                                model.as_mut().rust_mut().translation_recovery_last_attempt = None;
+                            }
+                            model.as_mut().apply_emulator_session(session)
+                        }
                         Err(error) => {
                             eprintln!("LUNCHBOX_EMULATOR_SESSION_REFRESH_FAILED: {error}")
                         }
