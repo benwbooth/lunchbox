@@ -4,7 +4,7 @@ import QtQuick.Controls
 GridView {
     id: view
 
-    property bool defaultWheelMomentum: true
+    property bool defaultWheelMomentum: false
     readonly property real verticalScrollBarGutter:
         ScrollBar.vertical && ScrollBar.vertical.policy !== ScrollBar.AlwaysOff
         ? ScrollBar.vertical.width + 6 : 0

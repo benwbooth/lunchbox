@@ -3650,7 +3650,6 @@ ApplicationWindow {
                     anchors.bottom: parent.bottom
                     anchors.right: parent.right
                     anchors.rightMargin: 20
-                    blockNativeWheel: true
                     clip: true
                     contentWidth: width
                     contentHeight: notificationItems.height
@@ -10234,7 +10233,7 @@ ApplicationWindow {
                 border.color: root.line
             }
         }
-        AcceleratedWheelHandler { scroller: grid }
+        AcceleratedWheelHandler { scroller: grid; blocking: true }
 
         AlphabetRail {
             id: gridAlphabetRail
@@ -10956,7 +10955,6 @@ ApplicationWindow {
             z: 1000
         }
         ScrollBar.horizontal: LbScrollBar { policy: ScrollBar.AsNeeded }
-        AcceleratedWheelHandler { scroller: list }
 
         AlphabetRail {
             id: listAlphabetRail
@@ -11878,6 +11876,7 @@ ApplicationWindow {
             ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
             AcceleratedWheelHandler {
                 scroller: platformList
+                blocking: true
                 // A sidebar row is 43px, so the large-grid page defaults would
                 // fling dozens of rows per notch. Keep a short, light glide.
                 wheelPageFactor: 0.18
@@ -12644,16 +12643,6 @@ ApplicationWindow {
                     color: detailScrollBar.pressed ? root.accentCool
                            : detailScrollBar.hovered ? "#a4b4c6" : "#71849a"
                 }
-            }
-            AcceleratedWheelHandler {
-                scroller: detailScroll
-                blocking: true
-                // The tall details pane only needs to travel its own height,
-                // so halve the per-notch travel and shorten the glide tail.
-                wheelPageFactor: 1.8
-                minimumPageDistance: 600
-                maximumPageDistance: 1400
-                frictionPerSecond: 5.5
             }
 
             Column {
@@ -19997,7 +19986,7 @@ ApplicationWindow {
                 contentHeight: settingsContentColumn.height + 64
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
-                AcceleratedWheelHandler { scroller: settingsScroll }
+                AcceleratedWheelHandler { scroller: settingsScroll; blocking: true }
 
                 ColumnLayout {
                     id: settingsContentColumn

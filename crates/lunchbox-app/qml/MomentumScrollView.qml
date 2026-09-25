@@ -4,6 +4,8 @@ import QtQuick.Controls
 ScrollView {
     id: view
 
+    property bool defaultWheelMomentum: false
+
     ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
     ScrollBar.horizontal: LbScrollBar { policy: ScrollBar.AsNeeded }
 
@@ -13,7 +15,8 @@ ScrollView {
 
     MomentumWheelHandler {
         scroller: view.contentItem
-        enabled: view.contentItem && view.contentItem.contentHeight > view.contentItem.height
+        enabled: view.defaultWheelMomentum && view.contentItem
+                 && view.contentItem.contentHeight > view.contentItem.height
                  && typeof view.contentItem.positionViewAtIndex !== "function"
     }
 }

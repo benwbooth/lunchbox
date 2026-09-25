@@ -22,7 +22,6 @@ WheelHandler {
     property real frictionPerSecond: 3.8
     property real maximumVelocity: 120000
     property real minimumVelocity: 70
-    property real pixelVelocityGain: 72
     readonly property bool momentumRunning: momentumTimer.running
     readonly property real momentumVelocity: velocityY
 
@@ -74,10 +73,11 @@ WheelHandler {
     }
 
     function scrollPixels(distance) {
-        // Pixel deltas come from touchpads and high-resolution wheels. Treat
-        // them as velocity samples so a gesture keeps its momentum after the
-        // last event instead of stopping at the final packet.
-        addVelocity(distance * pixelVelocityGain)
+        // Touchpads already send a stream of pixel deltas, including their
+        // native kinetic tail. Apply each packet now instead of waiting for a
+        // timer and multiplying it into a delayed, oversized jump.
+        stopMomentum()
+        moveImmediately(distance)
     }
 
     function moveImmediately(distance) {
@@ -180,7 +180,12 @@ WheelHandler {
         // delta represents real wheel notches; preferring the tiny synthetic
         // pixel delta was the reason scrolling barely moved on Linux.
         const notchSteps = event.angleDelta.y / 120
-        if (Math.abs(event.angleDelta.y) >= 120) {
+        if (event.device && event.device.type === PointerDevice.TouchPad
+                && event.pixelDelta.y !== 0) {
+            scrollPixels(-event.pixelDelta.y)
+            burstCount = 0
+            lastNotchAt = 0
+        } else if (Math.abs(event.angleDelta.y) >= 120) {
             scrollNotches(-notchSteps)
         } else if (event.pixelDelta.y !== 0) {
             scrollPixels(-event.pixelDelta.y)

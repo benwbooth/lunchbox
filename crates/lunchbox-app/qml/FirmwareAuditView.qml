@@ -239,9 +239,6 @@ LbDialog {
                 ScrollBar.vertical: LbScrollBar {
                     policy: ScrollBar.AlwaysOn
                 }
-                AcceleratedWheelHandler {
-                    scroller: firmwareList
-                }
                 Keys.onPressed: function(event) {
                     if (event.key === Qt.Key_Home) {
                         firmwareList.positionViewAtBeginning()

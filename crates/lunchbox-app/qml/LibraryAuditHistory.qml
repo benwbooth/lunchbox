@@ -104,7 +104,6 @@ LbDialog {
             highlightMoveDuration: 80
             currentIndex: count > 0 ? 0 : -1
             ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AlwaysOn }
-            AcceleratedWheelHandler { scroller: historyList }
 
             function handleNavigation(key) {
                 if (key === Qt.Key_Home) {

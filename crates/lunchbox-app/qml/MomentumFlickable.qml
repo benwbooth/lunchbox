@@ -4,7 +4,7 @@ import QtQuick.Controls
 Flickable {
     id: view
 
-    property bool defaultWheelMomentum: true
+    property bool defaultWheelMomentum: false
     property bool blockNativeWheel: false
     readonly property real verticalScrollBarGutter:
         ScrollBar.vertical && ScrollBar.vertical.policy !== ScrollBar.AlwaysOff

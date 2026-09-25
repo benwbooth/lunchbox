@@ -4,7 +4,9 @@ import QtQuick.Controls
 ListView {
     id: view
 
-    property bool defaultWheelMomentum: true
+    // Most lists are short or nested. Use Qt's direct wheel scrolling unless
+    // a surface explicitly opts in to the kinetic handler.
+    property bool defaultWheelMomentum: false
     readonly property real verticalScrollBarGutter:
         ScrollBar.vertical && ScrollBar.vertical.policy !== ScrollBar.AlwaysOff
         ? ScrollBar.vertical.width + 6 : 0

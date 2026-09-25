@@ -13,6 +13,7 @@ TestCase {
 
     Lunchbox.MomentumListView {
         id: list
+        defaultWheelMomentum: true
         x: 0; y: 0; width: 240; height: 200
         clip: true
         model: 100
@@ -21,6 +22,7 @@ TestCase {
     }
     Lunchbox.MomentumGridView {
         id: grid
+        defaultWheelMomentum: true
         x: 260; y: 0; width: 240; height: 200
         clip: true
         model: 100
@@ -125,6 +127,9 @@ TestCase {
     }
 
     function test_wheel_momentum_and_scrollbar_gutters() {
+        verify(!flick.defaultWheelMomentum)
+        verify(!scrollView.defaultWheelMomentum)
+        verify(!nestedList.defaultWheelMomentum)
         verify(list.verticalScrollBarGutter > 0)
         verify(list.itemAtIndex(0).width < list.ScrollBar.vertical.x)
         verify(grid.verticalScrollBarGutter > 0)
@@ -138,14 +143,14 @@ TestCase {
         verify(gutterBar.visible)
         verify(gutterBar.contentItem.radius > 0)
         mouseWheel(gutterList, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
         const gutterStart = gutterList.contentY
         verify(gutterStart > 0)
-        wait(100)
-        verify(gutterList.contentY > gutterStart)
         mouseWheel(list, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
         mouseWheel(grid, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
         mouseWheel(flick, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
         mouseWheel(scrollView, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
         verify(list.contentY > 0)
         verify(grid.contentY > 0)
         verify(flick.contentY > 0)
@@ -159,6 +164,7 @@ TestCase {
         nestedList.contentY = 0
         nestedScroll.contentItem.contentY = 0
         mouseWheel(nestedList, 90, 60, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
         verify(nestedList.contentY > 0)
         compare(nestedScroll.contentItem.contentY, 0)
     }
@@ -167,16 +173,19 @@ TestCase {
         nestedList.contentY = nestedList.contentHeight - nestedList.height
         nestedScroll.contentItem.contentY = 0
         mouseWheel(nestedList, 90, 60, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
         verify(nestedScroll.contentItem.contentY > 0)
     }
 
-    function test_text_area_scroll_view_keeps_momentum() {
+    function test_text_area_scroll_view_uses_direct_wheel() {
         mouseWheel(longText, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
         verify(textScroll.contentItem.contentY > 0)
     }
 
     function test_short_inner_list_leaves_wheel_to_outer_scroll() {
         mouseWheel(shortNestedList, 90, 40, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
         verify(shortNestedScroll.contentItem.contentY > 0)
     }
 }

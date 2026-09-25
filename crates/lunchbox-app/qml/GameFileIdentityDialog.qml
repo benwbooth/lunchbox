@@ -329,7 +329,6 @@ LbDialog {
                 boundsBehavior: Flickable.StopAtBounds
                 keyNavigationEnabled: true
                 ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AlwaysOn }
-                AcceleratedWheelHandler { scroller: candidateList }
 
                 delegate: LbItemDelegate {
                     id: candidateRow

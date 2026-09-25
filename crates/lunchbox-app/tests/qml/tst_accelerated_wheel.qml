@@ -92,6 +92,18 @@ TestCase {
                "opposite input should reverse instead of fighting old momentum")
     }
 
+    function test_pixel_delta_moves_immediately_without_delayed_jump() {
+        scroller.contentY = 5000
+        handler.scrollNotches(1)
+        const beforePixelPacket = scroller.contentY
+        handler.scrollPixels(-42)
+        compare(scroller.contentY, beforePixelPacket - 42)
+        verify(!handler.momentumRunning)
+        const settled = scroller.contentY
+        wait(80)
+        compare(scroller.contentY, settled)
+    }
+
     function test_momentum_stops_at_bounds() {
         scroller.contentY = scroller.contentHeight - scroller.height
         handler.scrollNotches(1)
