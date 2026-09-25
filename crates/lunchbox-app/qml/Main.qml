@@ -9002,9 +9002,27 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
             }
             LbButton {
-                Layout.preferredWidth: 72
+                id: fullscreenMuteButton
+                Layout.preferredWidth: 48
                 Layout.preferredHeight: 38
-                text: gameVideoAudio.muted ? "UNMUTE" : "MUTE"
+                leftPadding: 0
+                rightPadding: 0
+                topPadding: 0
+                bottomPadding: 0
+                Accessible.name: gameVideoAudio.muted ? "Unmute video" : "Mute video"
+                ToolTip.visible: hovered
+                ToolTip.text: Accessible.name
+                contentItem: Item {
+                    implicitWidth: 20
+                    implicitHeight: 20
+                    SemanticIcon {
+                        anchors.centerIn: parent
+                        width: 20
+                        height: 20
+                        name: gameVideoAudio.muted ? "mute" : "volume"
+                        color: fullscreenMuteButton.enabled ? "#f4f7fb" : root.muted
+                    }
+                }
                 onClicked: gameVideoPlayer.toggleMuted()
             }
             LbButton {
@@ -13389,26 +13407,55 @@ ApplicationWindow {
                                     }
 
                                     LbButton {
+                                        id: detailVideoMuteButton
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 30
-                                        text: gameVideoAudio.muted ? "MUTE" : "SOUND"
+                                        leftPadding: 0
+                                        rightPadding: 0
+                                        topPadding: 0
+                                        bottomPadding: 0
                                         highlighted: !gameVideoAudio.muted
-                                        font.pixelSize: 6
-                                        font.weight: Font.Bold
+                                        Accessible.name: gameVideoAudio.muted ? "Unmute video" : "Mute video"
+                                        contentItem: Item {
+                                            implicitWidth: 18
+                                            implicitHeight: 18
+                                            SemanticIcon {
+                                                anchors.centerIn: parent
+                                                width: 18
+                                                height: 18
+                                                name: gameVideoAudio.muted ? "mute" : "volume"
+                                                color: !detailVideoMuteButton.enabled ? root.muted
+                                                       : detailVideoMuteButton.highlighted ? "#ffcb84" : "#f4f7fb"
+                                            }
+                                        }
                                         onClicked: gameVideoPlayer.toggleMuted()
                                         ToolTip.visible: hovered
-                                        ToolTip.text: gameVideoAudio.muted ? "Turn sound on" : "Mute video"
+                                        ToolTip.text: Accessible.name
                                     }
 
                                     LbButton {
+                                        id: detailVideoFullscreenButton
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 30
-                                        text: "FULL"
-                                        font.pixelSize: 6
-                                        font.weight: Font.Bold
+                                        leftPadding: 0
+                                        rightPadding: 0
+                                        topPadding: 0
+                                        bottomPadding: 0
+                                        Accessible.name: "View fullscreen"
+                                        contentItem: Item {
+                                            implicitWidth: 18
+                                            implicitHeight: 18
+                                            SemanticIcon {
+                                                anchors.centerIn: parent
+                                                width: 18
+                                                height: 18
+                                                name: "fullscreen"
+                                                color: detailVideoFullscreenButton.enabled ? "#f4f7fb" : root.muted
+                                            }
+                                        }
                                         onClicked: mediaFullscreen.open()
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "View fullscreen"
+                                        ToolTip.text: Accessible.name
                                     }
                                 }
                             }

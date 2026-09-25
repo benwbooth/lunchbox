@@ -24,6 +24,9 @@ Item {
         edit: "M4 4 H11 M4 4 V20 H20 V13 M10 14 L11 10 L19 2 L22 5 L14 13 Z M17 4 L20 7",
         firmware: "M6 6 H18 V18 H6 Z M9 9 H15 V15 H9 Z M9 2 V6 M15 2 V6 M9 18 V22 M15 18 V22 M2 9 H6 M2 15 H6 M18 9 H22 M18 15 H22",
         media: "M3 3 H21 V21 H3 Z M3 17 L9 11 L14 16 L17 13 L21 17 M16 7 H17 V8 H16 Z",
+        volume: "M3 9 H7 L12 5 V19 L7 15 H3 Z M15 8 C17 9 18 10 18 12 C18 14 17 15 15 16 M18 5 C21 7 22 9 22 12 C22 15 21 17 18 19",
+        mute: "M3 9 H7 L12 5 V19 L7 15 H3 Z M15 9 L21 15 M21 9 L15 15",
+        fullscreen: "M9 4 H4 V9 M15 4 H20 V9 M20 15 V20 H15 M9 20 H4 V15",
         // Centroid sits at (12, 12), so the triangle reads optically centered.
         play: "M8 4.5 L20 12 L8 19.5 Z"
     })
