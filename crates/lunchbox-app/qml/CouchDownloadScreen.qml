@@ -350,7 +350,7 @@ FocusScope {
                 boundsBehavior: Flickable.StopAtBounds
                 keyNavigationEnabled: false
 
-                ScrollBar.vertical: ScrollBar {
+                ScrollBar.vertical: LbScrollBar {
                     policy: ScrollBar.AsNeeded
                     width: 10
                 }

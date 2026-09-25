@@ -119,7 +119,7 @@ ColumnLayout {
                  && authMode.currentValue === "refresh"
         spacing: 8
 
-        TextField {
+        LbTextField {
             id: clientId
             Layout.fillWidth: true
             placeholderText: "OAuth client ID"
@@ -144,7 +144,7 @@ ColumnLayout {
         visible: provider.currentValue === "local_folder"
         spacing: 8
 
-        TextField {
+        LbTextField {
             id: localFolderRoot
             Layout.fillWidth: true
             text: root.providerModel.local_folder_root

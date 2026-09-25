@@ -17,7 +17,7 @@ TestCase {
         clip: true
         model: 100
         delegate: Rectangle { width: ListView.view.verticalContentWidth; height: 35 }
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
+        ScrollBar.vertical: Lunchbox.LbScrollBar { policy: ScrollBar.AlwaysOn }
     }
     Lunchbox.MomentumGridView {
         id: grid
@@ -26,7 +26,7 @@ TestCase {
         model: 100
         cellWidth: verticalContentWidth / 3; cellHeight: 80
         delegate: Rectangle { width: 70; height: 70 }
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
+        ScrollBar.vertical: Lunchbox.LbScrollBar { policy: ScrollBar.AlwaysOn }
     }
     Lunchbox.MomentumFlickable {
         id: flick
@@ -34,7 +34,7 @@ TestCase {
         blockNativeWheel: true
         clip: true
         contentWidth: width; contentHeight: 2000
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
+        ScrollBar.vertical: Lunchbox.LbScrollBar { policy: ScrollBar.AlwaysOn }
         Rectangle { width: 220; height: 2000 }
     }
     Lunchbox.MomentumScrollView {
@@ -111,7 +111,7 @@ TestCase {
                     }
                 }
             }
-            ScrollBar.vertical: ScrollBar {
+            ScrollBar.vertical: Lunchbox.LbScrollBar {
                 id: gutterBar
                 parent: gutterFixture
                 x: gutterFixture.width - width
@@ -136,6 +136,7 @@ TestCase {
         verify(gutterBar.x >= gutterList.x + gutterList.width + 8)
         compare(gutterBar.height, gutterList.height)
         verify(gutterBar.visible)
+        verify(gutterBar.contentItem.radius > 0)
         mouseWheel(gutterList, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
         const gutterStart = gutterList.contentY
         verify(gutterStart > 0)

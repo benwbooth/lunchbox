@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-TextField {
+LbTextField {
     id: control
 
     signal clearRequested()

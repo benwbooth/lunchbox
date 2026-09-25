@@ -37,7 +37,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 8
 
-        TextField {
+        LbTextField {
             id: developerId
             Layout.fillWidth: true
             placeholderText: root.providerModel.credentials_saved
@@ -72,7 +72,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 8
 
-        TextField {
+        LbTextField {
             id: memberId
             Layout.fillWidth: true
             placeholderText: root.providerModel.credentials_saved

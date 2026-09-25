@@ -23,7 +23,7 @@ ColumnLayout {
         font.weight: Font.Bold
         font.letterSpacing: 0.8
     }
-    TextField {
+    LbTextField {
         id: editor
         Layout.fillWidth: true
         text: field.value
@@ -33,11 +33,11 @@ ColumnLayout {
         selectByMouse: true
         validator: field.fieldValidator
         onTextEdited: field.edited(text)
-        background: Rectangle {
+        background: LbControlBackground {
             implicitHeight: 40
-            radius: 8
-            color: "#101721"
-            border.color: editor.activeFocus ? field.accent : field.line
+            hovered: editor.hovered
+            focused: editor.activeFocus
+            enabled: editor.enabled
         }
     }
 }

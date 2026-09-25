@@ -463,7 +463,7 @@ LbDialog {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: showSetupJson.checked
-            TextArea {
+            LbTextArea {
                 id: editor
                 placeholderText: "Paste complete MAME setup JSON"
                 selectByMouse: true
@@ -916,7 +916,7 @@ LbDialog {
                         text: "This player has no active destination profile for the selected candidate. No visual mapping is established."
                         wrapMode: Text.WordWrap
                     }
-                    TextArea {
+                    LbTextArea {
                         Layout.fillWidth: true
                         text: presetComparison.report
                         textFormat: TextEdit.PlainText
@@ -1401,7 +1401,7 @@ LbDialog {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 140
                         visible: switchEditor.channelPreview.length > 0
-                        TextArea {
+                        LbTextArea {
                             text: switchEditor.channelPreview
                             readOnly: true
                             selectByMouse: true
@@ -1669,12 +1669,12 @@ LbDialog {
                 }
                 RowLayout {
                     Label { text: "Output X %" }
-                    SpinBox { id: relativeGainX; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Per-game output X sensitivity percent" }
+                    LbSpinBox { id: relativeGainX; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Per-game output X sensitivity percent" }
                     CheckBox { id: relativeInvertX; text: "Invert X" }
                 }
                 RowLayout {
                     Label { text: "Output Y %" }
-                    SpinBox { id: relativeGainY; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Per-game output Y sensitivity percent" }
+                    LbSpinBox { id: relativeGainY; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Per-game output Y sensitivity percent" }
                     CheckBox { id: relativeInvertY; text: "Invert Y" }
                 }
                 CheckBox { id: relativeSwap; text: "Swap physical X/Y before scaling" }
@@ -1833,7 +1833,7 @@ LbDialog {
                 LbButton { text: "Apply replacement to draft"; enabled: !relativePreview.stale && !nativeOnly.checked && relativePreview.draftConfiguration.length > 0; onClicked: relativePreview.applyDraft() }
             }
             Label { visible: relativePreview.stale; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Draft or controller settings changed. Close and review again; previous preview data was cleared." }
-            TextArea { Layout.fillWidth: true; Layout.minimumHeight: 160; text: relativePreview.report; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText }
+            LbTextArea { Layout.fillWidth: true; Layout.minimumHeight: 160; text: relativePreview.report; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText }
             }
         }
     }
@@ -2347,7 +2347,7 @@ LbDialog {
                 }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "The diagram shows saved physical-to-frontend assignments. Native field modifiers and detailed calibration errors are available in the technical report. This is not live input verification." }
                 CheckBox { id: technicalReport; text: "Show complete technical report" }
-                TextArea { id: reviewText; visible: technicalReport.checked; Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap }
+                LbTextArea { id: reviewText; visible: technicalReport.checked; Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap }
             }
         }
     }
@@ -2544,14 +2544,14 @@ LbDialog {
             ColumnLayout {
                 width: parent.width
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Create a draft for an exact ZIP/7z arcade set. Use your configured emulator identity and select saved controller calibrations for each player. Inspection is still required; merged sets need advanced editing." }
-                TextField { id: newEmulator; Layout.fillWidth: true; placeholderText: "Configured emulator ID"; Accessible.name: placeholderText }
-                TextField { id: newCore; Layout.fillWidth: true; placeholderText: "Absolute path to MAME libretro core"; Accessible.name: placeholderText }
-                TextField { id: newContent; Layout.fillWidth: true; placeholderText: "Absolute path to ROM ZIP/7z"; Accessible.name: placeholderText }
-                TextField { id: newMachine; Layout.fillWidth: true; placeholderText: "Exact MAME machine shortname (not game title)"; Accessible.name: placeholderText }
-                TextField { id: newLibrary; Layout.fillWidth: true; placeholderText: "Exact RetroArch library configuration name"; Accessible.name: placeholderText }
+                LbTextField { id: newEmulator; Layout.fillWidth: true; placeholderText: "Configured emulator ID"; Accessible.name: placeholderText }
+                LbTextField { id: newCore; Layout.fillWidth: true; placeholderText: "Absolute path to MAME libretro core"; Accessible.name: placeholderText }
+                LbTextField { id: newContent; Layout.fillWidth: true; placeholderText: "Absolute path to ROM ZIP/7z"; Accessible.name: placeholderText }
+                LbTextField { id: newMachine; Layout.fillWidth: true; placeholderText: "Exact MAME machine shortname (not game title)"; Accessible.name: placeholderText }
+                LbTextField { id: newLibrary; Layout.fillWidth: true; placeholderText: "Exact RetroArch library configuration name"; Accessible.name: placeholderText }
                 RowLayout {
                     Label { text: "Players" }
-                    SpinBox { id: newPlayerCount; from: 1; to: 8; value: 1; Accessible.name: "MAME player count" }
+                    LbSpinBox { id: newPlayerCount; from: 1; to: 8; value: 1; Accessible.name: "MAME player count" }
                 }
                 Repeater {
                     model: newPlayerCount.value
@@ -2575,7 +2575,7 @@ LbDialog {
                     }
                 }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: newSetup.controllerChoices.length ? "Saved calibration does not prove a controller is connected. Each player needs a different controller; launch rechecks devices." : "No valid saved calibrations. Calibrate controllers in controller settings before creating a draft." }
-                TextField { id: newStorage; Layout.fillWidth: true; placeholderText: "Absolute dedicated per-game storage directory"; Accessible.name: placeholderText }
+                LbTextField { id: newStorage; Layout.fillWidth: true; placeholderText: "Absolute dedicated per-game storage directory"; Accessible.name: placeholderText }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Storage uses nvram, diff, states, snapshots, recordings, frontend-save and frontend-state subdirectories. No directories are created by this form. Existing game state elsewhere is not imported. The draft starts with Automatic arcade layout." }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: newSetup.errorText }
                 LbButton {
@@ -2633,7 +2633,7 @@ LbDialog {
         contentItem: ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
-                TextField { id: nativeRuntimePath; Layout.fillWidth: true; placeholderText: "Absolute path to trusted native RetroArch"; enabled: !dialog.settingsModel.mame_inspection_busy; onTextChanged: { trustRuntime.checked = false; inspectionRequest.text = "" } }
+                LbTextField { id: nativeRuntimePath; Layout.fillWidth: true; placeholderText: "Absolute path to trusted native RetroArch"; enabled: !dialog.settingsModel.mame_inspection_busy; onTextChanged: { trustRuntime.checked = false; inspectionRequest.text = "" } }
                 LbButton {
                     text: "Generate from setup draft"
                     enabled: !dialog.settingsModel.mame_inspection_busy && nativeRuntimePath.text.trim().length > 0
@@ -2678,7 +2678,7 @@ LbDialog {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 66
-                TextArea {
+                LbTextArea {
                     id: discoveryRoots
                     placeholderText: "Optional ROM search folders: one absolute directory per line. Regenerate the request after changes."
                     selectByMouse: true
@@ -2689,7 +2689,7 @@ LbDialog {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                TextArea { id: inspectionRequest; placeholderText: "Paste complete inspection request JSON"; selectByMouse: true; readOnly: dialog.settingsModel.mame_inspection_busy; font.family: "monospace"; onTextChanged: trustRuntime.checked = false }
+                LbTextArea { id: inspectionRequest; placeholderText: "Paste complete inspection request JSON"; selectByMouse: true; readOnly: dialog.settingsModel.mame_inspection_busy; font.family: "monospace"; onTextChanged: trustRuntime.checked = false }
             }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: dialog.settingsModel.mame_inspection_status }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: inspection.errorText; visible: text.length > 0 }
@@ -2702,7 +2702,7 @@ LbDialog {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                TextArea { text: dialog.settingsModel.mame_inspection_result; readOnly: true; selectByMouse: true; font.family: "monospace" }
+                LbTextArea { text: dialog.settingsModel.mame_inspection_result; readOnly: true; selectByMouse: true; font.family: "monospace" }
             }
             CheckBox { id: trustRuntime; text: "I trust this executable/core and want to run this inspection"; enabled: !dialog.settingsModel.mame_inspection_busy }
             RowLayout {

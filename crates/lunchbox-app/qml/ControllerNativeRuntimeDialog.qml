@@ -369,7 +369,7 @@ LbDialog {
                 onActivated: emulatorId.text = runtime.emulatorChoices[currentIndex].id
                 Accessible.name: "BizHawk catalog entry"
             }
-            TextField { id: emulatorId; Layout.fillWidth: true; readOnly: true; Accessible.name: "Selected BizHawk emulator ID" }
+            LbTextField { id: emulatorId; Layout.fillWidth: true; readOnly: true; Accessible.name: "Selected BizHawk emulator ID" }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -377,11 +377,11 @@ LbDialog {
                 color: "#95a2b6"
             }
             Label { text: "Actual EmuHawk executable directory" }
-            TextField { id: exeDirectory; Layout.fillWidth: true; placeholderText: "Absolute directory containing EmuHawk.exe"; Accessible.name: "EmuHawk directory" }
+            LbTextField { id: exeDirectory; Layout.fillWidth: true; placeholderText: "Absolute directory containing EmuHawk.exe"; Accessible.name: "EmuHawk directory" }
             Label { text: "Trusted controller-probe executable" }
-            TextField { id: probeProgram; Layout.fillWidth: true; placeholderText: "Absolute path to lunchbox-controller-probe"; Accessible.name: "Controller probe executable" }
+            LbTextField { id: probeProgram; Layout.fillWidth: true; placeholderText: "Absolute path to lunchbox-controller-probe"; Accessible.name: "Controller probe executable" }
             Label { text: "This runtime's SDL2 shared library" }
-            TextField { id: sdlLibrary; Layout.fillWidth: true; placeholderText: "Absolute SDL2 library path"; Accessible.name: "SDL2 library" }
+            LbTextField { id: sdlLibrary; Layout.fillWidth: true; placeholderText: "Absolute SDL2 library path"; Accessible.name: "SDL2 library" }
             CheckBox { id: directMono; text: "Invoke Mono directly with a shared probe/emulator environment" }
             Label {
                 Layout.fillWidth: true
@@ -390,42 +390,42 @@ LbDialog {
                 text: "This explicitly bypasses the selected EmuHawk shell wrapper. Supply the real Mono ELF executable and dependency library directories. Split installations can specify their existing native-library directory, writable data directory and source configuration below. Assets must already be installed; wrapper asset copying and theme setup are not reproduced automatically."
                 color: "#ffb454"
             }
-            TextField {
+            LbTextField {
                 id: monoProgram
                 Layout.fillWidth: true
                 visible: directMono.checked
                 placeholderText: "Absolute path to the real Mono executable (not a wrapper)"
                 Accessible.name: "Direct Mono executable"
             }
-            TextArea {
+            LbTextArea {
                 id: libraryDirectories
                 Layout.fillWidth: true
                 visible: directMono.checked
                 placeholderText: "Additional native dependency directories, one absolute path per line"
                 Accessible.name: "Native dependency library directories"
             }
-            TextField {
+            LbTextField {
                 id: unmanagedDirectory
                 Layout.fillWidth: true
                 visible: directMono.checked
                 placeholderText: "Optional native BizHawk library directory (default: installation/dll)"
                 Accessible.name: "Native BizHawk library directory"
             }
-            TextArea {
+            LbTextArea {
                 id: managedDirectories
                 Layout.fillWidth: true
                 visible: directMono.checked
                 placeholderText: "Additional managed assembly directories, one absolute path per line (optional)"
                 Accessible.name: "Managed assembly search directories"
             }
-            TextField {
+            LbTextField {
                 id: dataDirectory
                 Layout.fillWidth: true
                 visible: directMono.checked
                 placeholderText: "Optional existing data/working directory (default: installation)"
                 Accessible.name: "BizHawk data directory"
             }
-            TextField {
+            LbTextField {
                 id: baseConfig
                 Layout.fillWidth: true
                 visible: directMono.checked
@@ -669,7 +669,7 @@ LbDialog {
                         anchors.fill: parent
                         RowLayout {
                             Label { text: runtime.isGpgx ? "GPGX socket" : runtime.isNintendo ? "Logical player" : "Virtual port" }
-                            SpinBox {
+                            LbSpinBox {
                                 visible: !runtime.isGpgx
                                 from: 1; to: Math.max(1, runtime.portCapacity)
                                 enabled: runtime.portCapacity > 0
@@ -724,7 +724,7 @@ LbDialog {
                                 onToggled: runtime.editPlayer(playerRow.index, "rumble", checked)
                             }
                             Label { text: "Deadzone (%)" }
-                            SpinBox {
+                            LbSpinBox {
                                 from: 0; to: 99
                                 value: Math.round(playerRow.modelData.deadzone_basis_points / 100)
                                 enabled: playerRow.modelData.dualshock || !!playerRow.modelData.dualanalog || !!playerRow.modelData.analog_joystick || !!playerRow.modelData.negcon || !!playerRow.modelData.pointer
@@ -749,7 +749,7 @@ LbDialog {
                         RowLayout {
                             visible: !runtime.isDigitalCore && playerRow.modelData.pointer === "mouse"
                             Label { text: "Mouse motion gain (%)" }
-                            SpinBox {
+                            LbSpinBox {
                                 from: 1; to: 400
                                 value: Math.round((playerRow.modelData.mouse_speed_basis_points === undefined ? 10000 : playerRow.modelData.mouse_speed_basis_points) / 100)
                                 onValueModified: runtime.editPlayer(playerRow.index, "mouse_speed_basis_points", value * 100)

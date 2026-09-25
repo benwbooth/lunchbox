@@ -325,7 +325,7 @@ LbDialog {
                      && dialog.activeModel.selected_game_name.length === 0
             model: dialog.activeModel ? dialog.activeModel.game_count : 0
             spacing: 7
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
             delegate: LbButton {
                 required property int index
                 width: candidateList.verticalContentWidth
@@ -407,7 +407,7 @@ LbDialog {
                 clip: true
                 model: fieldModel
                 spacing: 7
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                 delegate: Rectangle {
                     required property int index
                     required property string key

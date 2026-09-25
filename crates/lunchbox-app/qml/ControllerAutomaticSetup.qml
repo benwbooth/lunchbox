@@ -25,7 +25,7 @@ ColumnLayout {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 240
-                TextArea { id: mameNativeText; wrapMode: TextEdit.Wrap; selectByMouse: true; onTextChanged: mameNativeEditor.reviews = [] }
+                LbTextArea { id: mameNativeText; wrapMode: TextEdit.Wrap; selectByMouse: true; onTextChanged: mameNativeEditor.reviews = [] }
             }
             Label {
                 Layout.fillWidth: true
@@ -83,7 +83,7 @@ ColumnLayout {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 180
-                TextArea { id: mameNativeResult; readOnly: true; wrapMode: TextEdit.Wrap; selectByMouse: true }
+                LbTextArea { id: mameNativeResult; readOnly: true; wrapMode: TextEdit.Wrap; selectByMouse: true }
             }
         }
     }
@@ -951,7 +951,7 @@ ColumnLayout {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 190
-                TextArea {
+                LbTextArea {
                     id: duckstationEditor
                     font.family: "monospace"
                     wrapMode: TextEdit.Wrap
@@ -1652,7 +1652,7 @@ ColumnLayout {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                TextArea { id: relativeEditor; selectByMouse: true; font.family: "monospace"; wrapMode: TextEdit.NoWrap }
+                LbTextArea { id: relativeEditor; selectByMouse: true; font.family: "monospace"; wrapMode: TextEdit.NoWrap }
             }
             Label { id: relativeStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             RowLayout {
@@ -2074,7 +2074,7 @@ ColumnLayout {
                     return setup.settingsModel.controller_receives_input(device.index, setup.gamepad.last_device_key)
                 }
             }
-            TextField {
+            LbTextField {
                 Layout.fillWidth: true
                 text: { setup.revision; return setup.settingsModel.controller_alias_at(device.index) }
                 placeholderText: "Name this controller (e.g. N30 or Retro Fighters)"

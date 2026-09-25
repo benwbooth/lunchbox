@@ -19,9 +19,9 @@ LbDialog {
             width: scroll.availableWidth
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Enter the exact event path and physical input identity. This form does not discover or open hardware. Select only controls the device provides." }
             Label { text: "Event path" }
-            TextField { id: eventPath; Layout.fillWidth: true; placeholderText: "/dev/input/event…"; Accessible.name: "Relative device event path" }
+            LbTextField { id: eventPath; Layout.fillWidth: true; placeholderText: "/dev/input/event…"; Accessible.name: "Relative device event path" }
             Label { text: "Physical input identity path" }
-            TextField { id: identity; Layout.fillWidth: true; placeholderText: "Exact absolute physical input identity"; Accessible.name: "Relative device physical input identity" }
+            LbTextField { id: identity; Layout.fillWidth: true; placeholderText: "Exact absolute physical input identity"; Accessible.name: "Relative device physical input identity" }
             RowLayout {
                 CheckBox { id: axisX; text: "X"; checked: true }
                 CheckBox { id: axisY; text: "Y"; checked: true }
@@ -37,9 +37,9 @@ LbDialog {
             }
             RowLayout {
                 Label { text: "X" }
-                SpinBox { id: gainX; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Output X sensitivity percent" }
+                LbSpinBox { id: gainX; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Output X sensitivity percent" }
                 Label { text: "Y" }
-                SpinBox { id: gainY; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Output Y sensitivity percent" }
+                LbSpinBox { id: gainY; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Output Y sensitivity percent" }
             }
             RowLayout {
                 CheckBox { id: swap; text: "Swap X/Y first" }

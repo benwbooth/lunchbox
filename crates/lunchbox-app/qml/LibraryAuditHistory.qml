@@ -103,7 +103,7 @@ LbDialog {
             keyNavigationEnabled: true
             highlightMoveDuration: 80
             currentIndex: count > 0 ? 0 : -1
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AlwaysOn }
             AcceleratedWheelHandler { scroller: historyList }
 
             function handleNavigation(key) {

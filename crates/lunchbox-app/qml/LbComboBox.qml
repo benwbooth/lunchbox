@@ -10,7 +10,7 @@ T.ComboBox {
     bottomPadding: 6
     implicitWidth: Math.max(82, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(34, implicitContentHeight + topPadding + bottomPadding)
-    font.pixelSize: 12
+    font.pixelSize: 14
 
     background: LbControlBackground {
         pressed: control.down
@@ -21,13 +21,22 @@ T.ComboBox {
     }
 
     contentItem: Text {
-        leftPadding: 0
-        rightPadding: 0
+        anchors.fill: parent
+        anchors.leftMargin: control.leftPadding
+        anchors.rightMargin: control.rightPadding
+        anchors.topMargin: control.topPadding
+        anchors.bottomMargin: control.bottomPadding
         text: control.displayText
-        font: control.font
+        font.family: control.font.family
+        font.weight: control.font.weight
+        font.italic: control.font.italic
+        font.letterSpacing: control.font.letterSpacing
+        font.pixelSize: Math.max(14, control.font.pixelSize)
         color: control.enabled ? "#f4f7fb" : "#8d99aa"
         verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: 8
+        elide: Text.ElideNone
     }
 
     indicator: Canvas {

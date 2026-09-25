@@ -236,7 +236,7 @@ LbDialog {
                     color: "#202938"
                     border.color: view.line
                 }
-                ScrollBar.vertical: ScrollBar {
+                ScrollBar.vertical: LbScrollBar {
                     policy: ScrollBar.AlwaysOn
                 }
                 AcceleratedWheelHandler {

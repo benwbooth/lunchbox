@@ -124,7 +124,7 @@ LbDialog {
             font.weight: Font.Bold
             font.letterSpacing: 1.2
         }
-        TextField {
+        LbTextField {
             id: titleField
             Layout.fillWidth: true
             maximumLength: 500

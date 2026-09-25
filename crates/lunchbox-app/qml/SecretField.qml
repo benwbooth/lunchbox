@@ -28,7 +28,7 @@ Item {
             editor.forceActiveFocus()
     }
 
-    TextField {
+    LbTextField {
         id: editor
         anchors.fill: parent
         rightPadding: revealButton.width + 10
@@ -38,11 +38,11 @@ Item {
         echoMode: control.revealed ? TextInput.Normal : TextInput.Password
         onTextEdited: control.textEdited(text)
         onAccepted: control.accepted()
-        background: Rectangle {
+        background: LbControlBackground {
             implicitHeight: 40
-            radius: 8
-            color: "#101721"
-            border.color: editor.activeFocus ? control.accent : control.line
+            hovered: editor.hovered
+            focused: editor.activeFocus
+            enabled: editor.enabled
         }
     }
 

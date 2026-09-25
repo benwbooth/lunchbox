@@ -54,7 +54,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         spacing: 8
-        TextField {
+        LbTextField {
             Layout.fillWidth: true
             readOnly: true
             placeholderText: "No watched inbox configured"
@@ -86,7 +86,7 @@ ColumnLayout {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            TextField {
+            LbTextField {
                 Layout.fillWidth: true
                 readOnly: true
                 placeholderText: "Keep registered .torrent files in the inbox"
@@ -179,7 +179,7 @@ ColumnLayout {
                 root.inboxModel.revision
                 return root.inboxModel.entry_count
             }
-            ScrollBar.vertical: ScrollBar { }
+            ScrollBar.vertical: LbScrollBar { }
 
             delegate: Rectangle {
                 id: inboxRow

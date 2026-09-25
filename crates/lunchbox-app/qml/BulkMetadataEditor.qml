@@ -222,7 +222,7 @@ LbDialog {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.1
             }
-            TextField {
+            LbTextField {
                 id: valueField
                 objectName: "bulkEditValue"
                 visible: root.tagMode || !root.restoreMode

@@ -364,7 +364,7 @@ LbDialog {
                     text: "Controller: " + wizard.deviceName
                     wrapMode: Text.WordWrap; elide: Text.ElideNone
                 }
-                TextField { id: layoutSearch; Layout.fillWidth: true; placeholderText: "Find a layout (Xbox, PlayStation, arcade…)" }
+                LbTextField { id: layoutSearch; Layout.fillWidth: true; placeholderText: "Find a layout (Xbox, PlayStation, arcade…)" }
                 LbComboBox {
                     id: physicalLayout
                     objectName: "physicalLayout"

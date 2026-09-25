@@ -10,7 +10,6 @@ Rectangle {
 
     radius: 7
     color: !enabled ? "#151c27"
-           : pressed ? positive ? "#1b5937" : "#34445a"
            : selected ? positive ? "#237a4d" : "#2d3440"
            : hovered ? positive ? "#245e40" : "#293648"
            : flat ? "transparent" : "#202a39"

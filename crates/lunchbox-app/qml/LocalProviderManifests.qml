@@ -106,7 +106,7 @@ ColumnLayout {
                 root.manifestModel.revision
                 return root.manifestModel.entry_count
             }
-            ScrollBar.vertical: ScrollBar { }
+            ScrollBar.vertical: LbScrollBar { }
 
             delegate: Rectangle {
                 id: providerRow

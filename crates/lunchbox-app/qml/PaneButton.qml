@@ -1,9 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-// Keep the entire native control, including text painting. KDE's desktop
-// style draws its button label in the background QStyle item, so replacing
-// contentItem would draw the label a second time.
+// Keep pane actions on the same themed surface and show long labels on hover.
 LbButton {
     clip: true
     ToolTip.visible: hovered

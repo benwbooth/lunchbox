@@ -105,15 +105,15 @@ LbDialog {
                         wrapMode: Text.WordWrap
                         text: "Enter the exact event node and canonical sysfs device identity, and explicitly choose physical ABS axis codes. Point at each intended calibrated edge and confirm it. This does not identify screen bounds, correct perspective or infer offscreen shots. Capture is non-exclusive and stops on close, focus loss or timeout."
                     }
-                    TextField { id: capturePath; Layout.fillWidth: true; enabled: !dialog.captureActive; placeholderText: "/dev/input/eventN"; Accessible.name: "Exact absolute event node" }
-                    TextField { id: captureIdentity; Layout.fillWidth: true; enabled: !dialog.captureActive; placeholderText: "Canonical /sys/devices/… input identity"; Accessible.name: "Absolute device sysfs identity" }
+                    LbTextField { id: capturePath; Layout.fillWidth: true; enabled: !dialog.captureActive; placeholderText: "/dev/input/eventN"; Accessible.name: "Exact absolute event node" }
+                    LbTextField { id: captureIdentity; Layout.fillWidth: true; enabled: !dialog.captureActive; placeholderText: "Canonical /sys/devices/… input identity"; Accessible.name: "Absolute device sysfs identity" }
                     Flow {
                         Layout.fillWidth: true
                         spacing: 8
                         Label { text: "Physical X code" }
-                        SpinBox { id: captureX; from: 0; to: 40; enabled: !dialog.captureActive; Accessible.name: "Physical X ABS code" }
+                        LbSpinBox { id: captureX; from: 0; to: 40; enabled: !dialog.captureActive; Accessible.name: "Physical X ABS code" }
                         Label { text: "Physical Y code" }
-                        SpinBox { id: captureY; from: 0; to: 40; value: 1; enabled: !dialog.captureActive; Accessible.name: "Physical Y ABS code" }
+                        LbSpinBox { id: captureY; from: 0; to: 40; value: 1; enabled: !dialog.captureActive; Accessible.name: "Physical Y ABS code" }
                         CheckBox { id: captureSwap; text: "Swap X/Y"; enabled: !dialog.captureActive }
                     }
                     Flow {
@@ -150,7 +150,7 @@ LbDialog {
                     }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: dialog.sampleMessage }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: dialog.captureMessage }
-                    TextArea {
+                    LbTextArea {
                         Layout.fillWidth: true
                         visible: dialog.capturedDraft !== null
                         readOnly: true
@@ -185,7 +185,7 @@ LbDialog {
             MomentumScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 210
-                TextArea {
+                LbTextArea {
                     id: editor
                     selectByMouse: true
                     font.family: "monospace"
@@ -198,13 +198,13 @@ LbDialog {
                 Layout.fillWidth: true
                 spacing: 8
                 Label { text: "Record index" }
-                SpinBox {
+                LbSpinBox {
                     id: recordIndex
                     from: 0; to: 15
                     Accessible.name: "Zero-based record index"
                     onValueChanged: { dialog.projection = null; status.text = "" }
                 }
-                TextField {
+                LbTextField {
                     id: rawX
                     width: 155
                     placeholderText: "Physical X reading"
@@ -212,7 +212,7 @@ LbDialog {
                     validator: IntValidator { bottom: -2147483648; top: 2147483647 }
                     onTextChanged: { dialog.projection = null; status.text = "" }
                 }
-                TextField {
+                LbTextField {
                     id: rawY
                     width: 155
                     placeholderText: "Physical Y reading"

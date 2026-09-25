@@ -554,7 +554,7 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: 12
             Label { text: "Look for the model printed on the controller or its packaging. This chooses its shape and, where available, its known buttons."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-            TextField { id: modelSearch; Layout.fillWidth: true; placeholderText: "Search, e.g. Brawler64, 8BitDo, Steam"; onTextChanged: modelDialog.refresh() }
+            LbTextField { id: modelSearch; Layout.fillWidth: true; placeholderText: "Search, e.g. Brawler64, 8BitDo, Steam"; onTextChanged: modelDialog.refresh() }
             LbComboBox { id: modelChoice; Layout.fillWidth: true; model: modelDialog.models; textRole: "name"; currentIndex: -1; displayText: currentIndex < 0 ? "Select your controller model" : currentText }
             Label { text: modelDialog.models.length ? "If a model lists USB/Bluetooth or an input mode, match the one you’re using." : "No match found. You can choose a layout and record its buttons instead."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             Label { id: modelError; color: "#ffb454"; visible: !!text; Layout.fillWidth: true; wrapMode: Text.WordWrap }
@@ -573,7 +573,7 @@ ColumnLayout {
         width: Math.min(460, parent ? parent.width - 40 : 460)
         padding: 24; title: "Name this controller"; modal: true
         contentItem: ColumnLayout {
-            TextField { id: controllerName; Layout.fillWidth: true; maximumLength: 80; placeholderText: "e.g. Blue controller" }
+            LbTextField { id: controllerName; Layout.fillWidth: true; maximumLength: 80; placeholderText: "e.g. Blue controller" }
             Label { text: "Use a name that helps you tell your controllers apart."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             Label { id: renameError; Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: !!text }
         }

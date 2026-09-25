@@ -177,7 +177,7 @@ LbDialog {
                     model: dialog.identityModel.file_count
                     currentIndex: dialog.identityModel.selected_file
                     boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.horizontal: ScrollBar {
+                    ScrollBar.horizontal: LbScrollBar {
                         policy: fileList.contentWidth > fileList.width
                                 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
                     }
@@ -328,7 +328,7 @@ LbDialog {
                 currentIndex: dialog.identityModel.selected_candidate
                 boundsBehavior: Flickable.StopAtBounds
                 keyNavigationEnabled: true
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AlwaysOn }
                 AcceleratedWheelHandler { scroller: candidateList }
 
                 delegate: LbItemDelegate {
@@ -490,12 +490,18 @@ LbDialog {
             flat: true
             onClicked: dialog.historyExpanded = !dialog.historyExpanded
             contentItem: Text {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
                 text: parent.text
                 color: "#f4f7fb"
-                font: parent.font
+                font.pixelSize: 14
+                font.weight: Font.Bold
                 horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignVCenter
-                leftPadding: 12
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: 8
+                elide: Text.ElideNone
             }
         }
 
@@ -510,7 +516,7 @@ LbDialog {
             model: dialog.identityModel.history_count
             spacing: 4
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
             delegate: Rectangle {
                 id: historyRow

@@ -267,7 +267,7 @@ LbDialog {
         MomentumScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            TextArea {
+            LbTextArea {
                 id: editor
                 textFormat: TextEdit.PlainText
                 wrapMode: TextEdit.NoWrap
@@ -699,7 +699,7 @@ LbDialog {
                 Layout.fillHeight: true
                 currentIndex: importTabs.currentIndex
                 MomentumScrollView {
-                    TextArea {
+                    LbTextArea {
                         id: importRequest
                         textFormat: TextEdit.PlainText
                         wrapMode: TextEdit.NoWrap
@@ -711,7 +711,7 @@ LbDialog {
                     }
                 }
                 MomentumScrollView {
-                    TextArea {
+                    LbTextArea {
                         id: importReport
                         textFormat: TextEdit.PlainText
                         wrapMode: TextEdit.NoWrap
@@ -731,7 +731,7 @@ LbDialog {
                     RowLayout {
                         Layout.fillWidth: true
                         Label { text: "Port (0-based)" }
-                        SpinBox {
+                        LbSpinBox {
                             id: contextPort
                             from: 0
                             to: 5
@@ -759,7 +759,7 @@ LbDialog {
                     MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        TextArea {
+                        LbTextArea {
                             id: importContext
                             textFormat: TextEdit.PlainText
                             wrapMode: TextEdit.NoWrap
@@ -781,7 +781,7 @@ LbDialog {
                     MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        TextArea {
+                        LbTextArea {
                             id: dependencyContent
                             textFormat: TextEdit.PlainText
                             wrapMode: TextEdit.NoWrap
@@ -794,7 +794,7 @@ LbDialog {
                     MomentumScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        TextArea {
+                        LbTextArea {
                             id: dependencySystem
                             textFormat: TextEdit.PlainText
                             wrapMode: TextEdit.NoWrap
@@ -848,7 +848,7 @@ LbDialog {
                         clip: true
                         spacing: 10
                         model: reportImport.devicePorts
-                        ScrollBar.vertical: ScrollBar {}
+                        ScrollBar.vertical: LbScrollBar {}
                         delegate: RowLayout {
                             id: deviceRow
                             required property var modelData
@@ -1167,7 +1167,7 @@ LbDialog {
             RowLayout {
                 Layout.fillWidth: true
                 CheckBox { id: attentionOnly; text: "Needs attention only" }
-                TextField {
+                LbTextField {
                     id: assignmentSearch
                     Layout.fillWidth: true
                     placeholderText: "Find action or native input ID…"
@@ -1208,7 +1208,7 @@ LbDialog {
                     const query = assignmentSearch.text.trim().toLowerCase()
                     return !query || (row.target.descriptions.join(" / ") + " " + row.target.id).toLowerCase().indexOf(query) >= 0
                 })
-                ScrollBar.vertical: ScrollBar {}
+                ScrollBar.vertical: LbScrollBar {}
                 delegate: ColumnLayout {
                     id: targetRow
                     required property var modelData

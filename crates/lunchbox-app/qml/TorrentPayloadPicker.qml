@@ -163,7 +163,7 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             flickDeceleration: 4500
             maximumFlickVelocity: 8500
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
             delegate: LbItemDelegate {
                 id: payloadRow

@@ -100,7 +100,7 @@ LbDialog {
         RowLayout {
             visible: tabs.currentIndex === 0
             Layout.fillWidth: true
-            TextField {
+            LbTextField {
                 id: search
                 Layout.fillWidth: true
                 placeholderText: "Find a core, emulator or platform…"
@@ -126,7 +126,7 @@ LbDialog {
             clip: true
             spacing: 12
             model: coverage.filteredRows
-            ScrollBar.vertical: ScrollBar { }
+            ScrollBar.vertical: LbScrollBar { }
             delegate: Column {
                 id: delegateRoot
                 required property var modelData
@@ -248,7 +248,7 @@ LbDialog {
             clip: true
             spacing: 16
             model: coverage.report.profiles || []
-            ScrollBar.vertical: ScrollBar { }
+            ScrollBar.vertical: LbScrollBar { }
             delegate: Column {
                 required property var modelData
                 readonly property var capability: modelData.layouts[sourceLayout.currentIndex]

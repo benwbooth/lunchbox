@@ -24,6 +24,18 @@ TestCase {
         id: positiveRoundButtonComponent
         Lunchbox.LbRoundButton { text: "▶"; highlighted: true; positive: true }
     }
+    Component {
+        id: textFieldComponent
+        Lunchbox.LbTextField { text: "Player one" }
+    }
+    Component {
+        id: textAreaComponent
+        Lunchbox.LbTextArea { text: "Notes" }
+    }
+    Component {
+        id: spinBoxComponent
+        Lunchbox.LbSpinBox { from: 1; to: 8; value: 2 }
+    }
 
     Lunchbox.LbDialog {
         id: dialog
@@ -40,6 +52,19 @@ TestCase {
             id: button
             text: "Launch"
             onClicked: testCase.buttonClicks += 1
+        }
+        Lunchbox.LbButton {
+            id: fixedHeightButton
+            width: 180
+            height: 48
+            text: "THIS PLATFORM"
+            font.pixelSize: 8
+        }
+        Lunchbox.LbButton {
+            id: narrowButton
+            width: 145
+            height: 34
+            text: "THIS PLATFORM DEFAULT"
         }
         Lunchbox.LbComboBox {
             id: combo
@@ -80,6 +105,41 @@ TestCase {
         mouseClick(button)
         compare(buttonClicks, 1)
         verify(toolButton.background !== null)
+    }
+
+    function test_fixed_height_button_label_is_centered_and_readable() {
+        verify(fixedHeightButton.contentItem.font.pixelSize >= 14)
+        compare(fixedHeightButton.contentItem.fontInfo.pixelSize, 14)
+        verify(Math.abs(fixedHeightButton.contentItem.y
+                        + fixedHeightButton.contentItem.height / 2
+                        - fixedHeightButton.height / 2) <= 1)
+    }
+
+    function test_button_press_does_not_depress_surface() {
+        mouseMove(fixedHeightButton)
+        const resting = fixedHeightButton.background.color.toString()
+        mousePress(fixedHeightButton)
+        compare(fixedHeightButton.background.color.toString(), resting)
+        mouseRelease(fixedHeightButton)
+    }
+
+    function test_button_label_shrinks_to_fit_without_ellipsis() {
+        compare(narrowButton.contentItem.elide, Text.ElideNone)
+        verify(narrowButton.contentItem.fontInfo.pixelSize < 14)
+        verify(narrowButton.contentItem.contentWidth <= narrowButton.contentItem.width)
+    }
+
+    function test_settings_inputs_match_dropdown_surface() {
+        const field = createTemporaryObject(textFieldComponent, testCase)
+        const area = createTemporaryObject(textAreaComponent, testCase)
+        const spin = createTemporaryObject(spinBoxComponent, testCase)
+        verify(field && area && spin)
+        compare(field.background.color, combo.background.color)
+        compare(area.background.color, combo.background.color)
+        compare(spin.background.color, combo.background.color)
+        compare(field.background.radius, combo.background.radius)
+        compare(spin.value, 2)
+        verify(spin.up.indicator !== null)
     }
 
     function test_play_buttons_are_green_without_recoloring_other_buttons() {

@@ -239,7 +239,7 @@ LbDialog {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
             Text {
                 width: memberScroll.availableWidth

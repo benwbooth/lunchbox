@@ -9,7 +9,7 @@ T.ItemDelegate {
     topPadding: 7
     bottomPadding: 7
     implicitHeight: Math.max(32, implicitContentHeight + topPadding + bottomPadding)
-    font.pixelSize: 12
+    font.pixelSize: 14
 
     background: LbControlBackground {
         pressed: control.down
@@ -21,10 +21,21 @@ T.ItemDelegate {
     }
 
     contentItem: Text {
+        anchors.fill: parent
+        anchors.leftMargin: control.leftPadding
+        anchors.rightMargin: control.rightPadding
+        anchors.topMargin: control.topPadding
+        anchors.bottomMargin: control.bottomPadding
         text: control.text
-        font: control.font
+        font.family: control.font.family
+        font.weight: control.font.weight
+        font.italic: control.font.italic
+        font.letterSpacing: control.font.letterSpacing
+        font.pixelSize: Math.max(14, control.font.pixelSize)
         color: control.enabled ? "#f4f7fb" : "#8d99aa"
         verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: 8
+        elide: Text.ElideNone
     }
 }

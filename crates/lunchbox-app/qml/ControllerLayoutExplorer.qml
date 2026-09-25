@@ -34,7 +34,7 @@ LbDialog {
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         // A transient scrollbar changes availableWidth, which changes the
         // diagram height and flips the scrollbar again at the threshold.
-        ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+        ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AlwaysOn }
         GuidedControllerSetup {
             id: workflow
             objectName: "controllerSetupWorkflow"

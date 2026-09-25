@@ -3648,7 +3648,7 @@ ApplicationWindow {
                     contentWidth: width
                     contentHeight: notificationItems.height
                     boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
+                    ScrollBar.vertical: LbScrollBar {
                         id: notificationScrollBar
                         parent: notificationViewport
                         x: notificationViewport.width - width
@@ -3845,7 +3845,7 @@ ApplicationWindow {
                 clip: true
                 spacing: 8
                 model: saveSync.remote_device_count
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                 delegate: LbButton {
                     required property int index
                     property int syncRevision: saveSync.revision
@@ -3914,7 +3914,7 @@ ApplicationWindow {
                 clip: true
                 spacing: 8
                 model: saveSync.conflict_count
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                 delegate: Rectangle {
                     id: conflictRow
                     required property int index
@@ -9661,7 +9661,7 @@ ApplicationWindow {
                     clip: true
                     spacing: 6
                     model: listColumnsDialog.draftColumns
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                     delegate: Rectangle {
                         required property int index
@@ -9762,7 +9762,7 @@ ApplicationWindow {
                     clip: true
                     spacing: 6
                     model: root.listColumnChoices
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                     delegate: Rectangle {
                         required property var modelData
@@ -10020,7 +10020,7 @@ ApplicationWindow {
                         clip: true
                         spacing: 2
                         model: library.list_filter_value_count
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                         delegate: LbItemDelegate {
                             id: facetValueDelegate
@@ -10187,7 +10187,7 @@ ApplicationWindow {
         cellHeight: Math.round(cellWidth * 1.36)
         model: library
         rightMargin: gridScrollBar.width + gridAlphabetRail.width + 16
-        ScrollBar.vertical: ScrollBar {
+        ScrollBar.vertical: LbScrollBar {
             id: gridScrollBar
             policy: ScrollBar.AlwaysOn
             active: true
@@ -10899,7 +10899,7 @@ ApplicationWindow {
 
         rightMargin: listVerticalScrollBar.width + listAlphabetRail.width + 16
         contentWidth: Math.max(width - rightMargin, tableWidth)
-        ScrollBar.vertical: ScrollBar {
+        ScrollBar.vertical: LbScrollBar {
             id: listVerticalScrollBar
             policy: ScrollBar.AlwaysOn
             active: true
@@ -10908,7 +10908,7 @@ ApplicationWindow {
             width: 15
             z: 1000
         }
-        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.horizontal: LbScrollBar { policy: ScrollBar.AsNeeded }
         AcceleratedWheelHandler { scroller: list }
 
         AlphabetRail {
@@ -11014,14 +11014,21 @@ ApplicationWindow {
                                          + root.listColumnDefinition(
                                              headerColumn.modelData).label
                         contentItem: Text {
+                            anchors.fill: parent
+                            anchors.leftMargin: columnSortButton.leftPadding
+                            anchors.rightMargin: columnSortButton.rightPadding
+                            anchors.topMargin: columnSortButton.topPadding
+                            anchors.bottomMargin: columnSortButton.bottomPadding
                             text: parent.text
                             color: library.sort_field === headerColumn.modelData
                                    ? root.accent : root.muted
-                            font.pixelSize: 9
+                            font.pixelSize: 14
                             font.weight: Font.Bold
                             font.letterSpacing: 1.0
                             verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
+                            fontSizeMode: Text.HorizontalFit
+                            minimumPixelSize: 8
+                            elide: Text.ElideNone
                         }
                     }
                     LbButton {
@@ -11041,10 +11048,11 @@ ApplicationWindow {
                                       ? "Edit active exact-value filter"
                                       : "Filter by exact values"
                         contentItem: Text {
+                            anchors.fill: parent
                             text: parent.text
                             color: headerColumn.columnFiltered
                                    ? root.accentCool : root.muted
-                            font.pixelSize: headerColumn.columnFiltered ? 9 : 14
+                            font.pixelSize: 14
                             font.weight: Font.Bold
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
@@ -11709,7 +11717,7 @@ ApplicationWindow {
             reuseItems: true
             spacing: 3
             model: library.collection_count
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
             delegate: SidebarNavButton {
                 required property int index
                 property int revision: library.collection_revision
@@ -11820,7 +11828,7 @@ ApplicationWindow {
             reuseItems: true
             spacing: 3
             model: library.filtered_platform_count
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
             AcceleratedWheelHandler {
                 scroller: platformList
                 // A sidebar row is 43px, so the large-grid page defaults would
@@ -12135,7 +12143,7 @@ ApplicationWindow {
                         contentHeight: height
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.horizontal: ScrollBar {
+                        ScrollBar.horizontal: LbScrollBar {
                             policy: collectionMetricRow.width > parent.width
                                     ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                         }
@@ -12514,7 +12522,7 @@ ApplicationWindow {
                     clip: true
                     spacing: 3
                     model: library.collection_count
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                     delegate: CheckDelegate {
                         id: membershipDelegate
                         required property int index
@@ -12567,7 +12575,7 @@ ApplicationWindow {
             contentWidth: width
             contentHeight: detailContent.height
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {
+            ScrollBar.vertical: LbScrollBar {
                 id: detailScrollBar
                 parent: detailsPane
                 x: detailsPane.width - width - 5
@@ -13819,7 +13827,7 @@ ApplicationWindow {
                             highlightFollowsCurrentItem: true
                             reuseItems: true
                             model: gameDetails.variant_count
-                            ScrollBar.horizontal: ScrollBar {
+                            ScrollBar.horizontal: LbScrollBar {
                                 id: releaseHorizontalScrollBar
                                 policy: ScrollBar.AlwaysOn
                                 active: true
@@ -14126,7 +14134,7 @@ ApplicationWindow {
                             activeFocusOnTab: true
                             highlightFollowsCurrentItem: true
                             model: gameDetails.related_game_count
-                            ScrollBar.horizontal: ScrollBar {
+                            ScrollBar.horizontal: LbScrollBar {
                                 id: relatedHorizontalScrollBar
                                 policy: ScrollBar.AlwaysOn
                                 active: true
@@ -14828,7 +14836,7 @@ ApplicationWindow {
                         font.weight: Font.Bold
                         font.letterSpacing: 1.2
                     }
-                    TextField {
+                    LbTextField {
                         id: collectionNameField
                         Layout.fillWidth: true
                         maximumLength: 100
@@ -14894,7 +14902,7 @@ ApplicationWindow {
                         font.weight: Font.Bold
                         font.letterSpacing: 1.2
                     }
-                    TextField {
+                    LbTextField {
                         id: collectionTitleRule
                         Layout.fillWidth: true
                         maximumLength: 200
@@ -15156,7 +15164,7 @@ ApplicationWindow {
                         spacing: 5
                         model: library.collection_count
                         currentIndex: library.collection_count > 0 ? 0 : -1
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: Rectangle {
                             id: managedCollectionRow
                             required property int index
@@ -15371,7 +15379,7 @@ ApplicationWindow {
                                        ? library.collection_game_count_at(
                                              collectionInspector.selectedIndex) : 0
                             }
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                             delegate: Rectangle {
                                 id: memberRow
                                 required property int index
@@ -15839,7 +15847,7 @@ ApplicationWindow {
                         color: "#202938"
                         border.color: root.line
                     }
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: LbScrollBar {}
                     Keys.onSpacePressed: {
                         if (currentIndex >= 0)
                             libraryAudit.toggle_missing_selected(currentIndex)
@@ -16351,7 +16359,7 @@ ApplicationWindow {
                         color: "#202938"
                         border.color: root.line
                     }
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: LbScrollBar {}
                     Keys.onSpacePressed: {
                         if (currentIndex >= 0)
                             mediaAudit.toggle_selected(currentIndex)
@@ -16806,10 +16814,17 @@ ApplicationWindow {
                                               ? root.accent : root.line
                             }
                             contentItem: Text {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
                                 text: parent.text
                                 color: externalTorrentDialog.sourceMode === parent.index
                                        ? root.ink : root.muted
-                                font: parent.font
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                                fontSizeMode: Text.HorizontalFit
+                                minimumPixelSize: 8
+                                elide: Text.ElideNone
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -17401,7 +17416,7 @@ ApplicationWindow {
                 clip: true
                 model: downloadQueue.history_count
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
+                ScrollBar.vertical: LbScrollBar {}
                 delegate: Rectangle {
                     id: recoveryEventRow
                     required property int index
@@ -17875,7 +17890,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 9
-                    TextField {
+                    LbTextField {
                         Layout.fillWidth: true
                         text: localImport.directory
                         readOnly: true
@@ -17898,7 +17913,7 @@ ApplicationWindow {
                         }
                         onActivated: localImport.clear_active_profile()
                     }
-                    TextField {
+                    LbTextField {
                         id: importExtensions
                         Layout.preferredWidth: 150
                         placeholderText: "All extensions"
@@ -18037,7 +18052,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 visible: localImport.total_files > 0 && !localImport.batch_scanning
                 spacing: 8
-                TextField {
+                LbTextField {
                     id: importSearch
                     Layout.fillWidth: true
                     placeholderText: "Filter scan results"
@@ -18123,7 +18138,7 @@ ApplicationWindow {
                 reuseItems: true
                 spacing: 3
                 model: localImport.result_count
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                 delegate: Rectangle {
                     id: importRow
                     required property int index
@@ -18367,7 +18382,7 @@ ApplicationWindow {
                             reuseItems: true
                             spacing: 7
                             model: localImport.history_count
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                             delegate: Rectangle {
                                 id: scanHistoryRow
                                 required property int index
@@ -18592,7 +18607,7 @@ ApplicationWindow {
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
                     }
-                    TextField {
+                    LbTextField {
                         id: importProfileName
                         Layout.fillWidth: true
                         placeholderText: "Profile name"
@@ -18863,7 +18878,7 @@ ApplicationWindow {
                 reuseItems: true
                 spacing: 3
                 model: localImport.match_candidate_count
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                 delegate: Rectangle {
                     id: manualCandidateRow
                     required property int index
@@ -19280,7 +19295,7 @@ ApplicationWindow {
                             root.artworkProviderModel.revision
                             return root.artworkProviderModel.game_count
                         }
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: Rectangle {
                             id: steamGridDbGameRow
                             required property int index
@@ -19363,7 +19378,7 @@ ApplicationWindow {
                             root.artworkProviderModel.revision
                             return root.artworkProviderModel.artwork_count
                         }
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: Item {
                             id: steamGridDbArtworkCard
                             required property int index
@@ -19522,7 +19537,7 @@ ApplicationWindow {
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                             }
-                            TextField {
+                            LbTextField {
                                 id: webArtworkUrl
                                 Layout.fillWidth: true
                                 placeholderText: "https://…/exact-artwork.png"
@@ -19905,7 +19920,7 @@ ApplicationWindow {
                 contentWidth: width
                 contentHeight: settingsContentColumn.height + 64
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                 AcceleratedWheelHandler { scroller: settingsScroll }
 
                 ColumnLayout {
@@ -20040,7 +20055,7 @@ ApplicationWindow {
                         reuseItems: true
                         model: library.couch_theme_count
                         boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.horizontal: LbScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: Rectangle {
                             id: couchThemeCard
                             required property int index
@@ -20305,7 +20320,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 9
-                    TextField {
+                    LbTextField {
                         Layout.fillWidth: true
                         placeholderText: "Host"
                         text: appSettings.qbittorrent_host
@@ -20314,7 +20329,7 @@ ApplicationWindow {
                             appSettings.invalidate_qbittorrent_test()
                         }
                     }
-                    SpinBox {
+                    LbSpinBox {
                         Layout.preferredWidth: 125
                         from: 1
                         to: 65535
@@ -20337,7 +20352,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 9
-                    TextField {
+                    LbTextField {
                         Layout.fillWidth: true
                         placeholderText: "Username"
                         text: appSettings.qbittorrent_username
@@ -20410,7 +20425,7 @@ ApplicationWindow {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    TextField {
+                    LbTextField {
                         Layout.fillWidth: true
                         placeholderText: "Native ROM library"
                         text: appSettings.rom_directory
@@ -20421,7 +20436,7 @@ ApplicationWindow {
                         onClicked: appSettings.choose_native_directory("rom")
                     }
                 }
-                TextField {
+                LbTextField {
                     Layout.fillWidth: true
                     placeholderText: "qBittorrent/container ROM path (for emulator workflows)"
                     text: appSettings.qbittorrent_container_rom_directory
@@ -20429,7 +20444,7 @@ ApplicationWindow {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    TextField {
+                    LbTextField {
                         Layout.fillWidth: true
                         placeholderText: "Download folder on this computer"
                         text: appSettings.torrent_library_directory
@@ -20440,7 +20455,7 @@ ApplicationWindow {
                         onClicked: appSettings.choose_native_directory("torrent")
                     }
                 }
-                TextField {
+                LbTextField {
                     Layout.fillWidth: true
                     placeholderText: "qBittorrent default save folder (detected when tested)"
                     text: appSettings.qbittorrent_container_torrent_library_directory
@@ -20649,7 +20664,7 @@ ApplicationWindow {
                                 appSettings.region_revision
                                 return appSettings.region_count()
                             }
-                            ScrollBar.vertical: ScrollBar { }
+                            ScrollBar.vertical: LbScrollBar { }
 
                             delegate: Rectangle {
                                 id: regionRow
@@ -20795,7 +20810,7 @@ ApplicationWindow {
                                 appSettings.media_provider_revision
                                 return appSettings.media_provider_count()
                             }
-                            ScrollBar.vertical: ScrollBar { }
+                            ScrollBar.vertical: LbScrollBar { }
 
                             delegate: Rectangle {
                                 id: mediaProviderRow
@@ -20995,7 +21010,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        TextField {
+                        LbTextField {
                             id: igdbClientId
                             Layout.fillWidth: true
                             placeholderText: igdb.credentials_saved
@@ -21112,7 +21127,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        TextField {
+                        LbTextField {
                             id: emuMoviesUsername
                             Layout.fillWidth: true
                             placeholderText: emuMovies.credentials_saved
@@ -21376,7 +21391,7 @@ ApplicationWindow {
                                 appSettings.controller_revision
                                 return appSettings.controller_count()
                             }
-                            ScrollBar.vertical: ScrollBar { }
+                            ScrollBar.vertical: LbScrollBar { }
 
                             delegate: Rectangle {
                                 id: controllerRow
@@ -21658,7 +21673,7 @@ ApplicationWindow {
                                 appSettings.controller_profile_revision
                                 return appSettings.custom_controller_profile_count()
                             }
-                            ScrollBar.vertical: ScrollBar { }
+                            ScrollBar.vertical: LbScrollBar { }
 
                             delegate: Rectangle {
                                 id: customProfileRow
@@ -21784,7 +21799,7 @@ ApplicationWindow {
                                         color: root.muted
                                         font.pixelSize: 9
                                     }
-                                    TextField {
+                                    LbTextField {
                                         id: controllerProfileName
                                         Layout.fillWidth: true
                                         text: appSettings.controller_profile_editor_name
@@ -21923,7 +21938,9 @@ ApplicationWindow {
                                                 font: parent.font
                                                 horizontalAlignment: Text.AlignHCenter
                                                 verticalAlignment: Text.AlignVCenter
-                                                elide: Text.ElideRight
+                                                fontSizeMode: Text.HorizontalFit
+                                                minimumPixelSize: 6
+                                                elide: Text.ElideNone
                                             }
                                         }
                                     }
@@ -22389,7 +22406,7 @@ ApplicationWindow {
                                     color: root.ink
                                     font.pixelSize: 11
                                 }
-                                TextField {
+                                LbTextField {
                                     Layout.fillWidth: true
                                     text: appSettings.translation_source_language
                                     placeholderText: "auto, ja, fr, de…"
@@ -23103,7 +23120,7 @@ ApplicationWindow {
                     spacing: 7
                     reuseItems: true
                     model: emulatorManager.row_count
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                     delegate: EmulatorManagerRow {
                         required property int index
@@ -23413,7 +23430,7 @@ ApplicationWindow {
                         spacing: 8
                         reuseItems: true
                         model: emulatorUpdates.row_count
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                         delegate: Rectangle {
                             id: emulatorUpdateRow
@@ -23950,7 +23967,7 @@ ApplicationWindow {
                             reuseItems: true
                             spacing: 1
                             model: launchProfileManager.row_count
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                             delegate: Rectangle {
                                 id: launchProfileRow
@@ -24132,7 +24149,7 @@ ApplicationWindow {
                             font.pixelSize: 8
                             font.weight: Font.Bold
                         }
-                        TextField {
+                        LbTextField {
                             id: launchProfileManagerExtraArguments
                             Layout.fillWidth: true
                             placeholderText: "Example: --fullscreen --latency 1"
@@ -25061,13 +25078,19 @@ ApplicationWindow {
                             onClicked: activityHistoryDialog.outcomeFilter = modelData.key
                             contentItem: Text {
                                 id: historyFilterLabel
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
                                 text: historyFilterButton.text
                                 color: historyFilterButton.checked
                                        ? "#102229" : root.muted
-                                font.pixelSize: 10
+                                font.pixelSize: 14
                                 font.weight: Font.DemiBold
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
+                                fontSizeMode: Text.HorizontalFit
+                                minimumPixelSize: 8
+                                elide: Text.ElideNone
                             }
                             background: Rectangle {
                                 radius: 9
@@ -25096,7 +25119,7 @@ ApplicationWindow {
                     spacing: 8
                     boundsBehavior: Flickable.StopAtBounds
                     model: activityHistoryDialog.filteredRows
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                     delegate: Rectangle {
                         id: sessionHistoryRow
                         required property int modelData
@@ -25418,7 +25441,7 @@ ApplicationWindow {
                     id: metadataOverviewScroll
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                     ColumnLayout {
                         width: metadataOverviewScroll.availableWidth
                         spacing: 15
@@ -25506,7 +25529,7 @@ ApplicationWindow {
                                     font.weight: Font.Bold
                                     font.letterSpacing: 0.8
                                 }
-                                TextField {
+                                LbTextField {
                                     id: metadataTagsField
                                     Layout.fillWidth: true
                                     text: gameDetails.metadata_tags
@@ -25540,7 +25563,7 @@ ApplicationWindow {
                     id: metadataDetailsScroll
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                     GridLayout {
                         width: metadataDetailsScroll.availableWidth
                         columns: 2
@@ -25787,7 +25810,7 @@ ApplicationWindow {
                     id: metadataCustomFieldsScroll
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                    ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
                     ColumnLayout {
                         width: metadataCustomFieldsScroll.availableWidth
                         spacing: 12
@@ -25886,7 +25909,7 @@ ApplicationWindow {
                                             font.weight: Font.Bold
                                             font.letterSpacing: 0.7
                                         }
-                                        TextField {
+                                        LbTextField {
                                             id: customFieldName
                                             Layout.fillWidth: true
                                             maximumLength: 80
@@ -25915,7 +25938,7 @@ ApplicationWindow {
                                             font.weight: Font.Bold
                                             font.letterSpacing: 0.7
                                         }
-                                        TextField {
+                                        LbTextField {
                                             id: customFieldValue
                                             Layout.fillWidth: true
                                             maximumLength: 4096

@@ -13,10 +13,10 @@ FocusScope {
     property color placeholderTextColor: "#637085"
     property color selectionColor: "#ffb454"
     property color selectedTextColor: "#101318"
-    property color backgroundColor: "#101721"
-    property color line: "#283244"
+    property color backgroundColor: "#202a39"
+    property color line: "#3a495f"
     property color accent: "#ffb454"
-    property real radius: 8
+    property real radius: 7
     property int wrapMode: TextEdit.Wrap
 
     implicitWidth: 240
@@ -46,7 +46,7 @@ FocusScope {
         contentWidth: verticalContentWidth
         contentHeight: Math.max(height, editor.contentHeight)
         flickableDirection: Flickable.VerticalFlick
-        ScrollBar.vertical: ScrollBar {
+        ScrollBar.vertical: LbScrollBar {
             policy: editorFlick.contentHeight > editorFlick.height
                     ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
         }

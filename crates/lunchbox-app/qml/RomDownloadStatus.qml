@@ -231,7 +231,7 @@ Item {
                 clip: true
                 spacing: 8
                 model: status.jobCount
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
 
                 delegate: Rectangle {
                     id: downloadRow

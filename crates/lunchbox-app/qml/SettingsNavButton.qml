@@ -15,17 +15,27 @@ LbButton {
     rightPadding: 12
     flat: true
     highlighted: active
-    font.pixelSize: 12
+    font.pixelSize: 14
     font.weight: active ? Font.DemiBold : Font.Normal
 
     contentItem: Text {
-        width: control.availableWidth
+        anchors.fill: parent
+        anchors.leftMargin: control.leftPadding
+        anchors.rightMargin: control.rightPadding
+        anchors.topMargin: control.topPadding
+        anchors.bottomMargin: control.bottomPadding
         text: control.text
         color: control.active ? control.accent : control.muted
-        font: control.font
+        font.family: control.font.family
+        font.weight: control.font.weight
+        font.italic: control.font.italic
+        font.letterSpacing: control.font.letterSpacing
+        font.pixelSize: Math.max(14, control.font.pixelSize)
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignLeft
-        elide: Text.ElideRight
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: 8
+        elide: Text.ElideNone
         maximumLineCount: 1
         clip: true
     }
