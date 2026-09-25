@@ -84,6 +84,10 @@ TestCase {
         compare(hero.emulatorOptionCount, 2)
         compare(hero.emulatorLabelAt(1), "Mesen")
         verify(hero.implicitHeight > 100)
+        const action = findChild(hero, "launchAction")
+        verify(action)
+        verify(action.positive)
+        compare(action.background.color, "#237a4d")
     }
 
     function test_emulator_picker_splits_standalone_and_core_sections() {
@@ -438,6 +442,7 @@ TestCase {
         compare(action.text, "■  STOP EMULATOR")
         verify(action.enabled)
         verify(!action.highlighted)
+        verify(!action.positive)
         let stopped = false
         let played = false
         hero.stopEmulatorRequested.connect(function() { stopped = true })

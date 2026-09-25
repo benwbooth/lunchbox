@@ -49,6 +49,7 @@ Item {
     readonly property color muted: library.couch_theme_muted
     readonly property color accent: library.couch_theme_accent
     readonly property color accentCool: library.couch_theme_accent_cool
+    readonly property color playGreen: "#5ee391"
     readonly property color danger: library.couch_theme_danger
     readonly property int cardRadius: library.couch_theme_card_radius
     readonly property real heroScrimOpacity: library.couch_theme_hero_scrim_percent / 100.0
@@ -1493,16 +1494,19 @@ Item {
                     required property int index
                     property bool selected: view.navigationZone === 1
                                             && view.actionIndex === index
+                    readonly property bool playAction: index === 0
+                                                       && view.primaryAction === "PLAY"
                     width: index === 0 ? 190 : index === 1 ? 170 : 52
                     height: 50
                     radius: Math.max(8, view.cardRadius - 4)
                     color: index === 0
-                           ? (selected ? Qt.lighter(view.accent, 1.12)
-                                       : view.withAlpha(view.accent, 0.9))
+                           ? (selected ? Qt.lighter(playAction ? view.playGreen : view.accent, 1.12)
+                                       : view.withAlpha(playAction ? view.playGreen : view.accent, 0.9))
                            : selected ? view.withAlpha(view.muted, 0.82)
                                       : view.withAlpha(view.panelRaised, 0.76)
                     border.color: selected ? view.ink : index === 0
-                                  ? view.accent : view.withAlpha(view.muted, 0.62)
+                                  ? (playAction ? view.playGreen : view.accent)
+                                  : view.withAlpha(view.muted, 0.62)
                     border.width: selected ? 2 : 1
                     opacity: index === 2 && view.favoriteBusy ? 0.55 : 1
                     scale: selected ? 1.035 : actionHover.hovered ? 1.018 : 1
@@ -1958,10 +1962,12 @@ Item {
                     width: attractStateLabel.implicitWidth + 22
                     height: 30
                     radius: Math.max(8, view.cardRadius - 6)
-                    color: view.selectedLocal ? view.withAlpha(view.accentCool, 0.24)
+                    color: view.details.can_launch ? view.withAlpha(view.playGreen, 0.24)
+                           : view.selectedLocal ? view.withAlpha(view.accentCool, 0.24)
                            : view.selectedDownloadable ? view.withAlpha(view.accent, 0.24)
                                                        : view.withAlpha(view.panelRaised, 0.76)
-                    border.color: view.selectedLocal ? view.accentCool
+                    border.color: view.details.can_launch ? view.playGreen
+                                  : view.selectedLocal ? view.accentCool
                                   : view.selectedDownloadable ? view.accent
                                                               : view.withAlpha(view.muted, 0.58)
                     Text {
@@ -1971,8 +1977,8 @@ Item {
                               : view.selectedLocal ? "SETUP REQUIRED"
                               : view.selectedDownloadable ? "MINERVA AVAILABLE"
                                 : "CATALOG"
-                        color: view.details.can_launch || view.selectedLocal
-                               ? view.accentCool
+                        color: view.details.can_launch ? view.playGreen
+                               : view.selectedLocal ? view.accentCool
                                : view.selectedDownloadable ? view.accent : view.muted
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -3133,10 +3139,12 @@ Item {
                         width: overlayStateText.implicitWidth + 20
                         height: 28
                         radius: Math.max(7, view.cardRadius - 7)
-                        color: view.selectedLocal ? view.withAlpha(view.accentCool, 0.22)
+                        color: view.details.can_launch ? view.withAlpha(view.playGreen, 0.22)
+                               : view.selectedLocal ? view.withAlpha(view.accentCool, 0.22)
                                : view.selectedDownloadable ? view.withAlpha(view.accent, 0.22)
                                                            : view.withAlpha(view.panelRaised, 0.66)
-                        border.color: view.selectedLocal ? view.accentCool
+                        border.color: view.details.can_launch ? view.playGreen
+                                      : view.selectedLocal ? view.accentCool
                                       : view.selectedDownloadable ? view.accent
                                                                   : view.withAlpha(view.muted, 0.54)
                         Text {
@@ -3146,8 +3154,8 @@ Item {
                                   : view.selectedLocal ? "SETUP REQUIRED"
                                   : view.selectedDownloadable ? "MINERVA AVAILABLE"
                                     : "CATALOG RECORD"
-                            color: view.details.can_launch || view.selectedLocal
-                                   ? view.accentCool
+                            color: view.details.can_launch ? view.playGreen
+                                   : view.selectedLocal ? view.accentCool
                                    : view.selectedDownloadable ? view.accent : view.muted
                             font.pixelSize: 9
                             font.weight: Font.Bold
@@ -3515,14 +3523,16 @@ Item {
                                 id: menuAction
                                 required property int index
                                 property bool selected: view.menuActionIndex === index
+                                readonly property bool playAction: index === 0
+                                                                   && view.primaryAction === "PLAY"
                                 width: gameMenu.width
                                 height: 88
                                 radius: Math.max(9, view.cardRadius - 2)
-                                color: selected ? view.withAlpha(view.accent, 0.2)
+                                color: selected ? view.withAlpha(playAction ? view.playGreen : view.accent, 0.2)
                                        : menuHover.hovered
                                          ? view.withAlpha(view.panelRaised, 0.72)
                                          : view.withAlpha(view.panelRaised, 0.4)
-                                border.color: selected ? view.accent
+                                border.color: selected ? (playAction ? view.playGreen : view.accent)
                                                        : view.withAlpha(view.muted, 0.35)
                                 border.width: selected ? 2 : 1
                                 opacity: view.menuActionEnabled(menuAction.index) ? 1 : 0.46
@@ -3540,7 +3550,8 @@ Item {
                                     Text {
                                         width: parent.width
                                         text: view.menuActionLabel(menuAction.index)
-                                        color: menuAction.index === 0 ? view.accent : view.ink
+                                        color: menuAction.playAction ? view.playGreen
+                                               : menuAction.index === 0 ? view.accent : view.ink
                                         font.pixelSize: 13
                                         font.weight: Font.Bold
                                         font.letterSpacing: 0.6
@@ -3567,7 +3578,9 @@ Item {
                                           : menuAction.index === 4 ? "◌"
                                           : menuAction.index === 5 ? "▦"
                                           : menuAction.index === 6 ? "♪" : "×"
-                                    color: menuAction.selected ? view.accent : view.muted
+                                    color: menuAction.selected
+                                           ? (menuAction.playAction ? view.playGreen : view.accent)
+                                           : view.muted
                                     font.pixelSize: menuAction.index === 1 ? 24 : 18
                                     font.weight: Font.Bold
                                 }

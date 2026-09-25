@@ -62,6 +62,7 @@ ApplicationWindow {
     readonly property color panelRaised: "#1a2230"
     readonly property color line: "#283244"
     readonly property color accent: "#ffb454"
+    readonly property color playGreen: "#5ee391"
     readonly property color accentCool: "#62d6c6"
     readonly property int detailsPaneMinimumWidth: 340
     readonly property int detailsPaneContentReserve: 480
@@ -10692,6 +10693,7 @@ ApplicationWindow {
                                  && !gameDetails.launch_busy
                                  && !gameDetails.game_running
                         highlighted: enabled
+                        positive: true
                         font.pixelSize: 17 * card.expansion
                         Accessible.name: "Play " + tile.gameTitle
                         onClicked: root.requestCardLaunch(
@@ -10707,7 +10709,7 @@ ApplicationWindow {
                                 height: parent.height
                                 name: "play"
                                 filled: true
-                                color: cardPlayButton.enabled ? "#ffcb84" : root.muted
+                                color: cardPlayButton.enabled ? "#f4fff7" : root.muted
                                 visible: !cardPendingText.visible
                             }
                             Text {
@@ -10715,7 +10717,7 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 visible: root.pendingCardLaunchGameId === tile.gameId
                                 text: "…"
-                                color: cardPlayButton.enabled ? "#ffcb84" : root.muted
+                                color: cardPlayButton.enabled ? "#f4fff7" : root.muted
                                 font: cardPlayButton.font
                             }
                         }
@@ -11107,7 +11109,7 @@ ApplicationWindow {
             function columnColor(key) {
                 if (key !== "availability")
                     return key === "title" ? root.ink : root.muted
-                return gameLocal ? root.accentCool
+                return gameLocal ? root.playGreen
                        : gameDownloadable ? root.accent : root.muted
             }
             Component.onCompleted: requestVisibleArtwork()
@@ -14258,17 +14260,17 @@ ApplicationWindow {
                                         width: relatedAvailabilityText.implicitWidth + 12
                                         height: 19
                                         radius: 6
-                                        color: relatedCard.relatedLocal ? "#264835"
+                                        color: relatedCard.relatedLocal ? "#173c2a"
                                                : relatedCard.relatedDownloadable ? "#513a20"
                                                : "#293544"
-                                        border.color: relatedCard.relatedLocal ? "#42745a"
+                                        border.color: relatedCard.relatedLocal ? root.playGreen
                                                       : relatedCard.relatedDownloadable ? "#745328"
                                                       : "#3d4d60"
                                         Text {
                                             id: relatedAvailabilityText
                                             anchors.centerIn: parent
                                             text: relatedCard.availabilityLabel
-                                            color: relatedCard.relatedLocal ? "#9be2bd"
+                                            color: relatedCard.relatedLocal ? root.playGreen
                                                    : relatedCard.relatedDownloadable ? root.accent
                                                    : "#aab8c8"
                                             font.pixelSize: 7
@@ -14563,7 +14565,10 @@ ApplicationWindow {
                                 width: parent.width
                                 height: 42
                                 visible: gameDetails.prepared
-                                highlighted: !gameDetails.launch_busy && !gameDetails.game_running
+                                highlighted: gameDetails.can_launch
+                                             && !gameDetails.launch_busy
+                                             && !gameDetails.game_running
+                                positive: highlighted
                                 text: gameDetails.launch_busy ? "CANCEL PREPARATION"
                                       : gameDetails.session_stopping ? "STOPPING EMULATOR…"
                                       : gameDetails.game_running ? "■  STOP EMULATOR"

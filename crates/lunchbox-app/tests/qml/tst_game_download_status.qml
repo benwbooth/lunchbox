@@ -68,6 +68,13 @@ TestCase {
         compare(host.status.badge, "READY")
         compare(host.status.jobState, "IMPORTED")
         compare(host.status.alternativesExpanded, false)
+        const pill = findChild(host.status, "statePill")
+        const play = findChild(host.status, "downloadPlayAction")
+        verify(pill)
+        verify(play)
+        compare(pill.border.color, "#5ee391")
+        verify(play.positive)
+        compare(play.background.color, "#237a4d")
     }
 
     function test_unmanaged_game_has_no_download_status_card() {

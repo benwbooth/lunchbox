@@ -15,6 +15,7 @@ Rectangle {
     required property color line
     required property color accent
     required property color accentCool
+    readonly property color playGreen: "#5ee391"
     property bool alternativesAvailable: false
     property bool alternativesExpanded: false
 
@@ -43,7 +44,7 @@ Rectangle {
     radius: 11
     color: panel
     border.color: jobState === "FAILED" ? "#8f3f50"
-                  : jobState === "IMPORTED" ? accentCool : accent
+                  : jobState === "IMPORTED" ? playGreen : accent
 
     Column {
         id: contents
@@ -69,19 +70,20 @@ Rectangle {
             }
             Rectangle {
                 id: statePill
+                objectName: "statePill"
                 width: stateLabel.implicitWidth + 16
                 height: 24
                 radius: 7
                 color: card.jobState === "FAILED" ? "#2a1a22"
                        : card.jobState === "IMPORTED" ? "#17342f" : "#30291d"
                 border.color: card.jobState === "FAILED" ? "#8f3f50"
-                              : card.jobState === "IMPORTED" ? card.accentCool : card.accent
+                              : card.jobState === "IMPORTED" ? card.playGreen : card.accent
                 Text {
                     id: stateLabel
                     anchors.centerIn: parent
                     text: card.badge
                     color: card.jobState === "FAILED" ? "#ff8b9a"
-                           : card.jobState === "IMPORTED" ? card.accentCool : card.accent
+                           : card.jobState === "IMPORTED" ? card.playGreen : card.accent
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     font.letterSpacing: 0.6
@@ -110,8 +112,11 @@ Rectangle {
             width: parent.width
             spacing: 8
             HeaderButton {
+                objectName: "downloadPlayAction"
                 visible: card.jobState === "IMPORTED"
                 text: "PLAY"
+                active: card.jobState === "IMPORTED"
+                positive: true
                 implicitHeight: 34
                 onClicked: card.playRequested()
             }

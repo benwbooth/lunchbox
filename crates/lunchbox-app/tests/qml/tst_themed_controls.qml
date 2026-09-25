@@ -15,6 +15,16 @@ TestCase {
     property int comboActivations: 0
     property int dialogAccepts: 0
 
+    Component {
+        id: positiveButtonComponent
+        Lunchbox.LbButton { text: "PLAY"; highlighted: true; positive: true }
+    }
+
+    Component {
+        id: positiveRoundButtonComponent
+        Lunchbox.LbRoundButton { text: "▶"; highlighted: true; positive: true }
+    }
+
     Lunchbox.LbDialog {
         id: dialog
         standardButtons: Controls.Dialog.Ok | Controls.Dialog.Cancel
@@ -70,6 +80,18 @@ TestCase {
         mouseClick(button)
         compare(buttonClicks, 1)
         verify(toolButton.background !== null)
+    }
+
+    function test_play_buttons_are_green_without_recoloring_other_buttons() {
+        const play = createTemporaryObject(positiveButtonComponent, testCase)
+        const playBadge = createTemporaryObject(positiveRoundButtonComponent, testCase)
+        verify(play)
+        verify(playBadge)
+        compare(play.background.color, "#237a4d")
+        compare(play.background.border.color, "#5ee391")
+        compare(playBadge.background.color, "#237a4d")
+        compare(playBadge.background.border.color, "#5ee391")
+        compare(button.background.color, "#202a39")
     }
 
     function test_dropdown_is_themed_and_keeps_selection_semantics() {

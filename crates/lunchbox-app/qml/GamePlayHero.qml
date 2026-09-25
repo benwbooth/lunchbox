@@ -706,6 +706,7 @@ Rectangle {
             font.pixelSize: 12
             font.weight: Font.Bold
             highlighted: hero.canLaunch && !hero.launchBusy && !hero.gameRunning
+            positive: highlighted
             onClicked: {
                 if (hero.launchBusy)
                     hero.cancelLaunchRequested()

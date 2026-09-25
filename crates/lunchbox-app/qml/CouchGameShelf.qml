@@ -13,6 +13,7 @@ MomentumListView {
     required property color muted
     required property color accent
     required property color accentCool
+    readonly property color playGreen: "#5ee391"
     required property int cardRadius
     property bool cinematic: false
     property bool navigationActive: false
@@ -151,7 +152,7 @@ MomentumListView {
                 height: 10
                 radius: 5
                 visible: gameTile.gameLocal || gameTile.gameDownloadable
-                color: gameTile.gameLocal ? shelf.accentCool : shelf.accent
+                color: gameTile.gameLocal ? shelf.playGreen : shelf.accent
             }
             Text {
                 anchors.centerIn: parent
@@ -274,7 +275,7 @@ MomentumListView {
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
                 text: "▶"
-                color: shelf.accentCool
+                color: shelf.playGreen
                 font.pixelSize: gameTile.current ? 20 : 16
                 font.weight: Font.Bold
                 Accessible.ignored: true
