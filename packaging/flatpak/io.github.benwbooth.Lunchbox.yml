@@ -47,17 +47,17 @@ modules:
         LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE: /run/build/lunchbox/chdman/libchdman_rs-x86_64-linux.a
         # The Flatpak sandbox has no build-time network access. Link against
         # the declared CPU ONNX Runtime instead of ort-sys downloading one.
-        ORT_LIB_PATH: /run/build/lunchbox/onnxruntime/onnxruntime-linux-x64-1.28.0/lib
+        ORT_LIB_PATH: /run/build/lunchbox/onnxruntime/lib
         ORT_PREFER_DYNAMIC_LINK: '1'
     build-commands:
       - cargo build --locked --offline --release --no-default-features --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database
       - install -Dm0755 target/release/lunchbox /app/bin/lunchbox
       - install -Dm0755 target/release/lunchbox-controller-probe /app/bin/lunchbox-controller-probe
-      - install -Dm0755 onnxruntime/onnxruntime-linux-x64-1.28.0/lib/libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1.28.0
+      - install -Dm0755 onnxruntime/lib/libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1.28.0
       - ln -s libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1
       - ln -s libonnxruntime.so.1 /app/lib/libonnxruntime.so
-      - install -Dm0755 onnxruntime/onnxruntime-linux-x64-1.28.0/lib/libonnxruntime_providers_shared.so /app/lib/libonnxruntime_providers_shared.so
+      - install -Dm0755 onnxruntime/lib/libonnxruntime_providers_shared.so /app/lib/libonnxruntime_providers_shared.so
       - install -Dm0644 database/lunchbox.db /app/share/lunchbox/lunchbox.db
       - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.desktop /app/share/applications/io.github.benwbooth.Lunchbox.desktop
       - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.metainfo.xml /app/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml
