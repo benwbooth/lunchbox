@@ -19,6 +19,10 @@ TestCase {
         id: positiveButtonComponent
         Lunchbox.LbButton { text: "PLAY"; highlighted: true; positive: true }
     }
+    Component {
+        id: longButtonComponent
+        Lunchbox.LbButton { text: "SAVE PLAYER 1 MAPPING FOR THIS SYSTEM" }
+    }
 
     Component {
         id: positiveRoundButtonComponent
@@ -107,9 +111,9 @@ TestCase {
         verify(toolButton.background !== null)
     }
 
-    function test_fixed_height_button_label_is_centered_and_readable() {
-        verify(fixedHeightButton.contentItem.font.pixelSize >= 14)
-        compare(fixedHeightButton.contentItem.fontInfo.pixelSize, 14)
+    function test_fixed_height_button_honors_requested_label_size() {
+        compare(fixedHeightButton.contentItem.font.pixelSize, 8)
+        compare(fixedHeightButton.contentItem.fontInfo.pixelSize, 8)
         verify(Math.abs(fixedHeightButton.contentItem.y
                         + fixedHeightButton.contentItem.height / 2
                         - fixedHeightButton.height / 2) <= 1)
@@ -125,8 +129,12 @@ TestCase {
 
     function test_button_label_shrinks_to_fit_without_ellipsis() {
         compare(narrowButton.contentItem.elide, Text.ElideNone)
-        verify(narrowButton.contentItem.fontInfo.pixelSize < 14)
+        verify(narrowButton.contentItem.fontInfo.pixelSize < 12)
         verify(narrowButton.contentItem.contentWidth <= narrowButton.contentItem.width)
+        const longButton = createTemporaryObject(longButtonComponent, testCase)
+        verify(longButton)
+        verify(longButton.implicitWidth <= longButton.maximumImplicitWidth)
+        verify(longButton.contentItem.contentWidth <= longButton.contentItem.width)
     }
 
     function test_settings_inputs_match_dropdown_surface() {
