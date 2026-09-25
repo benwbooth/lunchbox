@@ -13,6 +13,8 @@
     flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        onnxruntimeRocm = pkgs.onnxruntime.override { rocmSupport = true; };
+        onnxruntimeForHost = if system == "x86_64-linux" then onnxruntimeRocm else pkgs.onnxruntime;
         dwarfsPkgs = import nixpkgs-dwarfs { inherit system; };
         dwarfs = dwarfsPkgs.dwarfs;
         # MAME's CHD core, linked so compressed disc images (CHD) work on every
@@ -89,7 +91,7 @@
             pkg-config
             qt6.wrapQtAppsHook
           ];
-          buildInputs = qtModules ++ [ pkgs.onnxruntime ]
+          buildInputs = qtModules ++ [ onnxruntimeForHost ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             dwarfs
             pkgs.systemd
@@ -98,7 +100,8 @@
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
           QMAKE = "${qtEnv}/bin/qmake";
-          ORT_LIB_PATH = "${pkgs.onnxruntime}/lib";
+          ORT_LIB_PATH = "${onnxruntimeForHost}/lib";
+          ORT_DYLIB_PATH = "${onnxruntimeForHost}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libonnxruntime.dylib" else "libonnxruntime.so"}";
           ORT_PREFER_DYNAMIC_LINK = "1";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
@@ -145,6 +148,7 @@
           '';
           preFixup = ''
             qtWrapperArgs+=(--set LUNCHBOX_DATABASE "$out/share/lunchbox/lunchbox.db")
+            qtWrapperArgs+=(--set ORT_DYLIB_PATH "${onnxruntimeForHost}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libonnxruntime.dylib" else "libonnxruntime.so"}")
           '' + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             qtWrapperArgs+=(--prefix PATH : "${pkgs.lib.makeBinPath [ dwarfs ]}")
           '';
@@ -179,6 +183,8 @@
           simcoupe-controller = pkgs.callPackage ./packaging/simcoupe-controller.nix { };
           retroarch-relative-routing = pkgs.callPackage ./packaging/retroarch-relative-routing.nix { };
           mame-game-mouse-only = pkgs.callPackage ./packaging/mame-game-mouse-only.nix { };
+        } // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          onnxruntime-rocm = onnxruntimeRocm;
         };
 
         apps.default = {
@@ -215,7 +221,7 @@
             rustfmt
             sqlite
             watchexec
-          ]) ++ qtModules ++ [ pkgs.onnxruntime ]
+          ]) ++ qtModules ++ [ onnxruntimeForHost ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             dwarfs
             pkgs.mold
@@ -223,7 +229,8 @@
           ];
 
           QMAKE = "${qtEnv}/bin/qmake";
-          ORT_LIB_PATH = "${pkgs.onnxruntime}/lib";
+          ORT_LIB_PATH = "${onnxruntimeForHost}/lib";
+          ORT_DYLIB_PATH = "${onnxruntimeForHost}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libonnxruntime.dylib" else "libonnxruntime.so"}";
           ORT_PREFER_DYNAMIC_LINK = "1";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";

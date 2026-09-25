@@ -1,0 +1,6 @@
+rapidocr-core 0.2.2 from https://github.com/White-NX/rapidocr-rs
+License: Apache-2.0 (see LICENSE).
+
+Lunchbox extensions add MIGraphX and CoreML provider selection, fixed-shape
+MIGraphX inference and warm-up support, plus a provider probe example. The
+remaining source is from the published rapidocr-core 0.2.2 crate.

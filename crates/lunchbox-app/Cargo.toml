@@ -23,7 +23,6 @@ font8x8 = "0.3"
 fontdb = { version = "0.24", features = ["fontconfig"] }
 fontdue = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
-rapidocr-core = "0.2.2"
 png = "0.18"
 fs2.workspace = true
 gilrs.workspace = true
@@ -61,6 +60,15 @@ lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rapidocr-core = { version = "0.2.2", features = ["migraphx"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rapidocr-core = { version = "0.2.2", features = ["coreml"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+rapidocr-core = { version = "0.2.2", features = ["directml"] }
 
 [build-dependencies]
 cxx-qt-build.workspace = true

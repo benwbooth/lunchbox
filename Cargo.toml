@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lunchbox-app", "crates/lunchbox-db", "crates/lunchbox-controller-probe"]
+members = ["crates/lunchbox-app", "crates/lunchbox-db", "crates/lunchbox-controller-probe", "vendor/rapidocr-core"]
 
 [workspace.package]
 version = "0.1.1"
@@ -81,3 +81,8 @@ opt-level = 3
 
 [profile.dev.package.imageproc]
 opt-level = 3
+
+[patch.crates-io]
+# rapidocr-core 0.2.2 only exposes CPU and Windows DirectML. Keep a small
+# local extension for AMD MIGraphX and Apple CoreML inference.
+rapidocr-core = { path = "vendor/rapidocr-core" }

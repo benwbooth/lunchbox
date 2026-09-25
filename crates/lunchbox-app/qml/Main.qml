@@ -22365,7 +22365,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Requires Ollama running on this computer. Local PP-OCRv6 finds and reads text; TranslateGemma translates it. Lunchbox covers the original text regions with English. OCR runs on the CPU, while Ollama can use ROCm on supported AMD GPUs. No cloud account is needed."
+                                text: "Requires Ollama running on this computer. Local PP-OCRv6 finds and reads text; TranslateGemma translates it. Lunchbox covers the original text regions with English. On supported GPUs, both models use GPU acceleration. GPU OCR is experimental and may miss some text; it falls back to CPU when unavailable. Initial GPU OCR setup can take a few minutes. No cloud account is needed."
                                 color: root.muted
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap

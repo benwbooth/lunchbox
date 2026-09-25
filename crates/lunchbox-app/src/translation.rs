@@ -18,7 +18,8 @@ use fontdb::{Database, Family, Query};
 use fontdue::{Font, FontSettings};
 use image::RgbImage;
 use rapidocr_core::RapidOcr;
-use rapidocr_core::config::{InferenceOptions, PipelineConfig};
+use rapidocr_core::cancellation::OcrCancellationToken;
+use rapidocr_core::config::{ExecutionProvider, InferenceOptions, PipelineConfig};
 use rapidocr_core::model::{ModelCache, ModelDownloadMode, model_set_by_name};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -106,6 +107,23 @@ fn ocr_model_set() -> Result<&'static rapidocr_core::model::ModelSetSpec> {
     model_set_by_name(OCR_MODEL_SET).context("PP-OCRv6 small model set is unavailable")
 }
 
+#[cfg(target_os = "linux")]
+pub fn configure_gpu_cache() -> Result<()> {
+    if std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH").is_some() {
+        return Ok(());
+    }
+    let dirs = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox")
+        .context("finding the local model cache")?;
+    let path = dirs
+        .cache_dir()
+        .join("translation")
+        .join("migraphx-fixed-v1");
+    std::fs::create_dir_all(&path).context("creating the MIGraphX model cache")?;
+    // SAFETY: run() calls this before starting Qt, OCR, or any worker threads.
+    unsafe { std::env::set_var("ORT_MIGRAPHX_MODEL_CACHE_PATH", &path) };
+    Ok(())
+}
+
 fn ocr_models_available() -> Result<bool> {
     Ok(ocr_model_cache()?
         .missing_assets_for_pipeline(ocr_model_set()?, PipelineConfig::without_cls())
@@ -141,20 +159,48 @@ fn load_ocr() -> Result<RapidOcr> {
             ModelDownloadMode::Never,
         )
         .context("OCR models are not installed; download models in Settings")?;
-    RapidOcr::from_config(
-        cache
-            .config_for(model_set)
-            .with_pipeline(PipelineConfig::without_cls())
-            .with_inference_options(InferenceOptions {
-                intra_threads: std::thread::available_parallelism()
-                    .map(|threads| threads.get())
-                    .unwrap_or(2)
-                    .min(4),
-                enable_cpu_mem_arena: true,
-                ..Default::default()
-            }),
-    )
-    .context("initializing local OCR")
+    let config = cache
+        .config_for(model_set)
+        .with_pipeline(PipelineConfig::without_cls());
+    let options = InferenceOptions {
+        intra_threads: std::thread::available_parallelism()
+            .map(|threads| threads.get())
+            .unwrap_or(2)
+            .min(4),
+        enable_cpu_mem_arena: true,
+        ..Default::default()
+    };
+    #[cfg(target_os = "linux")]
+    let gpu_provider = std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH")
+        .filter(|path| Path::new(path).is_dir())
+        .map(|_| ExecutionProvider::Migraphx);
+    #[cfg(target_os = "macos")]
+    let gpu_provider = Some(ExecutionProvider::CoreMl);
+    #[cfg(target_os = "windows")]
+    let gpu_provider = Some(ExecutionProvider::DirectMl);
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    let gpu_provider: Option<ExecutionProvider> = None;
+    if let Some(provider) = gpu_provider {
+        if std::env::var_os("LUNCHBOX_OCR_CPU_ONLY").is_none() {
+            match RapidOcr::from_config(config.clone().with_inference_options(InferenceOptions {
+                execution_provider: provider,
+                enable_cpu_mem_arena: false,
+                ..options
+            })) {
+                Ok(ocr) => {
+                    eprintln!("LUNCHBOX_TRANSLATION_OCR_PROVIDER={provider:?}");
+                    return Ok(ocr);
+                }
+                Err(error) => eprintln!(
+                    "LUNCHBOX_TRANSLATION_OCR_GPU_UNAVAILABLE provider={provider:?}: {error:#}"
+                ),
+            }
+        }
+    }
+    let ocr = RapidOcr::from_config(config.with_inference_options(options))
+        .context("initializing local OCR")?;
+    eprintln!("LUNCHBOX_TRANSLATION_OCR_PROVIDER=Cpu");
+    Ok(ocr)
 }
 
 pub fn model_available(model: &str) -> Result<bool> {
@@ -221,6 +267,19 @@ pub fn pull_model(
     ensure!(complete, "Ollama did not finish downloading {model}");
     progress(90, "Installing local Japanese-capable OCR".to_owned());
     download_ocr_models(cancelled)?;
+    let mut ocr = load_ocr()?;
+    if ocr.config().inference.execution_provider != ExecutionProvider::Cpu {
+        progress(
+            95,
+            "Compiling local GPU OCR (first setup may take a few minutes)".to_owned(),
+        );
+        ocr.warm_up_gpu(&OcrCancellationToken::new())
+            .context("compiling local GPU OCR")?;
+    }
+    ensure!(
+        !cancelled.load(Ordering::Relaxed),
+        "OCR model setup cancelled"
+    );
     ensure!(model_available(model)?, "local models are incomplete");
     progress(100, "OCR and translation are ready".to_owned());
     Ok(())
@@ -652,7 +711,7 @@ fn handle_request(
         return write_json(
             stream,
             200,
-            &json!({"image": state.cached.as_ref().unwrap().overlay, "auto": "auto"}),
+            &json!({"image": state.cached.as_ref().unwrap().overlay, "auto": "continue"}),
         );
     }
     let can_retry = !state
@@ -2258,7 +2317,7 @@ mod tests {
         let response = client.join().unwrap();
         let body = response.split("\r\n\r\n").nth(1).unwrap();
         let body: Value = serde_json::from_str(body).unwrap();
-        assert_eq!(body["auto"], "auto");
+        assert_eq!(body["auto"], "continue");
         let image = BASE64.decode(body["image"].as_str().unwrap()).unwrap();
         assert_eq!(png_dimensions(&image).unwrap(), (64, 64));
     }

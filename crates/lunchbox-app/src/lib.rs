@@ -388,6 +388,10 @@ fn needs_widget_application(
 }
 
 pub fn run() -> i32 {
+    #[cfg(target_os = "linux")]
+    if let Err(error) = translation::configure_gpu_cache() {
+        eprintln!("LUNCHBOX_TRANSLATION_OCR_GPU_CACHE_UNAVAILABLE: {error:#}");
+    }
     if std::env::args().any(|arg| arg == "--sdl3-display-inspect") {
         return match lunchbox_controller_probe::live_sdl3::primary_display_metrics(
             &controller_sdl3::runtime_path(),
