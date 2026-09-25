@@ -39,7 +39,10 @@ const MAX_FRAME_PIXELS: u64 = 16_000_000;
 // RetroArch requests the next frame as soon as it receives `auto: "auto"`.
 // One capture per second is enough for dialogue and limits interruption of the game.
 const AUTO_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
-const RESULT_WAIT_TIMEOUT: Duration = Duration::from_millis(1250);
+// Return a transparent frame promptly when inference is still running. The
+// next auto-capture picks up the finished overlay without holding RetroArch's
+// HTTP task on a spinner for the full model latency.
+const RESULT_WAIT_TIMEOUT: Duration = Duration::from_millis(150);
 const MAX_TRANSLATION_MEMORY: usize = 256;
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
@@ -212,11 +215,13 @@ fn load_ocr() -> Result<RapidOcr> {
     Ok(ocr)
 }
 
-fn loaded_model_gpu_fraction(body: &Value, model: &str) -> Result<u64> {
+fn loaded_model_gpu_fraction(body: &Value, model: &str) -> Result<Option<u64>> {
     let entry = body["models"]
         .as_array()
-        .and_then(|models| models.iter().find(|entry| entry["name"] == model))
-        .context("translation model was not loaded")?;
+        .and_then(|models| models.iter().find(|entry| entry["name"] == model));
+    let Some(entry) = entry else {
+        return Ok(None);
+    };
     let size = entry["size"]
         .as_u64()
         .context("Ollama did not report model size")?;
@@ -224,10 +229,10 @@ fn loaded_model_gpu_fraction(body: &Value, model: &str) -> Result<u64> {
         .as_u64()
         .context("Ollama did not report GPU allocation")?;
     ensure!(size > 0, "Ollama reported an empty model");
-    Ok(gpu.saturating_mul(100) / size)
+    Ok(Some(gpu.saturating_mul(100) / size))
 }
 
-fn active_model_gpu_percent(model: &str) -> Result<u64> {
+fn active_model_gpu_percent(model: &str) -> Result<Option<u64>> {
     let mut response = http_agent(Duration::from_secs(5))
         .get(&format!("{OLLAMA_URL}/api/ps"))
         .call()
@@ -253,7 +258,7 @@ fn verify_model_gpu(model: &str) -> Result<()> {
     );
     // Drain the response before querying /api/ps, including on keep-alive HTTP.
     let _ = load.body_mut().read_to_string()?;
-    let percent = active_model_gpu_percent(model)?;
+    let percent = active_model_gpu_percent(model)?.context("translation model did not load")?;
     ensure!(
         percent >= 95,
         "{model} is only {percent}% on GPU; CPU or partial-CPU inference is disabled. Free GPU memory or choose a smaller model."
@@ -544,6 +549,16 @@ fn serve(
             let mut cached: Option<CachedTranslation> = None;
             let mut memory = TranslationMemory::default();
             let mut ocr = ocr;
+            // Empty-prompt loading primes the weights but not first-token
+            // generation. Warm inference alongside RetroArch startup rather
+            // than blocking the game launch or the first F10 capture.
+            if let Err(error) = ollama_chat(
+                &worker_settings.model,
+                "Translate Japanese to English. Return only English: ありがとう",
+                OLLAMA_URL,
+            ) {
+                eprintln!("LUNCHBOX_TRANSLATION_WARMUP_FAILED: {error:#}");
+            }
             for job in pending_jobs {
                 let result = render_translation(
                     &worker_settings,
@@ -599,7 +614,13 @@ fn serve(
                 let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
                 if let Err(error) = handle_request(&mut stream, secret, viewport, &mut state) {
                     eprintln!("LUNCHBOX_TRANSLATION_REQUEST_FAILED: {error:#}");
-                    let _ = write_json(&mut stream, 200, &json!({"error": error.to_string()}));
+                    // Keep RetroArch's automatic capture loop alive after a
+                    // transient worker or socket error.
+                    let _ = write_json(
+                        &mut stream,
+                        200,
+                        &json!({"error": error.to_string(), "auto": "auto"}),
+                    );
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -704,6 +725,22 @@ fn cached_text_matches(
             .iter()
             .zip(&cached.region_fingerprints)
             .all(|(region, old)| fingerprint_region(screenshot, region.rect) == *old)
+}
+
+fn cached_overlay_matches_frame(
+    cached: &CachedTranslation,
+    digest: [u8; 32],
+    decoded: &[u8],
+    dimensions: (u32, u32),
+) -> bool {
+    // An empty OCR result is provisional. Retry it even when the game is
+    // paused on the exact same pixels; otherwise a single missed detection
+    // can suppress translation indefinitely.
+    !cached.regions.is_empty()
+        && (cached.digest == digest
+            || image::load_from_memory(decoded)
+                .ok()
+                .is_some_and(|image| cached_text_matches(cached, &image.into_rgb8(), dimensions)))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -812,10 +849,7 @@ fn handle_request(
         accept_translation_result(state, completed_digest, result);
     }
     let same_text = state.cached.as_ref().is_some_and(|cached| {
-        cached.digest == digest
-            || image::load_from_memory(&decoded).ok().is_some_and(|image| {
-                cached_text_matches(cached, &image.into_rgb8(), (width, height))
-            })
+        cached_overlay_matches_frame(cached, digest, &decoded, (width, height))
     });
     if same_text {
         pace_auto_response(state);
@@ -857,8 +891,14 @@ fn handle_request(
         }
     }
     pace_auto_response(state);
+    // Inference may have finished during the one-second pacing interval.
+    // Pick it up before replying instead of making RetroArch wait for another
+    // entire capture cycle to see the caption.
+    while let Ok((completed_digest, result)) = state.results.try_recv() {
+        accept_translation_result(state, completed_digest, result);
+    }
     if let Some(cached) = &state.cached
-        && cached.digest == digest
+        && cached_overlay_matches_frame(cached, digest, &decoded, (width, height))
     {
         return write_json(
             stream,
@@ -884,7 +924,7 @@ fn accept_translation_result(
         }
         Err(error) => {
             eprintln!("LUNCHBOX_TRANSLATION_REQUEST_FAILED: {error:#}");
-            state.retry_after = Some((completed_digest, Instant::now() + Duration::from_secs(10)));
+            state.retry_after = Some((completed_digest, Instant::now() + Duration::from_secs(2)));
         }
     }
 }
@@ -1361,21 +1401,9 @@ fn render_translation(
         let output = viewport
             .map(overlay_image_dimensions)
             .unwrap_or((width, height));
-        let notice = TranslatedRegion {
-            rect: TextRect {
-                x1: 24,
-                y1: 24,
-                x2: 350.min(output.0),
-                y2: 68.min(output.1),
-            },
-            source_line_height: 24,
-            source: String::new(),
-            english: "No readable text in this frame".to_owned(),
-            background: [9, 14, 22],
-        };
         return Ok((
             regions,
-            BASE64.encode(render_regions_png(output.0, output.1, &[notice])?),
+            BASE64.encode(render_regions_png(output.0, output.1, &[])?),
         ));
     }
     let overlay = if let Some(viewport) = viewport {
@@ -1835,11 +1863,16 @@ fn english_only_translation(raw: &str) -> String {
 
 fn ollama_chat(model: &str, prompt: &str, base_url: &str) -> Result<String> {
     if base_url == OLLAMA_URL {
-        let percent = active_model_gpu_percent(model)?;
-        ensure!(
-            percent >= 95,
-            "{model} is no longer fully on the GPU ({percent}% in VRAM)"
-        );
+        match active_model_gpu_percent(model)? {
+            Some(percent) => ensure!(
+                percent >= 95,
+                "{model} is no longer fully on the GPU ({percent}% in VRAM)"
+            ),
+            // Ollama may unload an idle model after its keep-alive expires.
+            // Reload it with an empty prompt, then verify placement *before*
+            // submitting text, rather than permanently rejecting requests.
+            None => verify_model_gpu(model)?,
+        }
     }
     let request = json!({
         "model": model,
@@ -1875,7 +1908,8 @@ fn ollama_chat(model: &str, prompt: &str, base_url: &str) -> Result<String> {
     // GPU memory pressure can make a previously GPU-loaded model reload after
     // the game has started. Detect and reject the result if that happened.
     if base_url == OLLAMA_URL {
-        let percent = active_model_gpu_percent(model)?;
+        let percent = active_model_gpu_percent(model)?
+            .context("translation model unloaded during inference")?;
         ensure!(
             percent >= 95,
             "{model} left the GPU ({percent}% in VRAM); translation stopped"
@@ -1907,13 +1941,16 @@ mod tests {
         ]});
         assert_eq!(
             loaded_model_gpu_fraction(&status, "translategemma:4b").unwrap(),
-            99
+            Some(99)
         );
         assert_eq!(
             loaded_model_gpu_fraction(&status, "translategemma:12b").unwrap(),
-            2
+            Some(2)
         );
-        assert!(loaded_model_gpu_fraction(&status, "translategemma:27b").is_err());
+        assert_eq!(
+            loaded_model_gpu_fraction(&status, "translategemma:27b").unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -1968,6 +2005,25 @@ mod tests {
         assert!(cached_text_matches(&cached, &screenshot, (64, 64)));
         screenshot.put_pixel(15, 25, image::Rgb([255, 255, 255]));
         assert!(!cached_text_matches(&cached, &screenshot, (64, 64)));
+    }
+
+    #[test]
+    fn empty_ocr_result_does_not_freeze_an_unchanged_frame() {
+        let screenshot = render_regions_png(64, 64, &[]).unwrap();
+        let digest: [u8; 32] = Sha256::digest(&screenshot).into();
+        let cached = CachedTranslation {
+            digest,
+            regions: Vec::new(),
+            region_fingerprints: Vec::new(),
+            dimensions: (64, 64),
+            overlay: BASE64.encode(&screenshot),
+        };
+        assert!(!cached_overlay_matches_frame(
+            &cached,
+            digest,
+            &screenshot,
+            (64, 64)
+        ));
     }
 
     #[test]
@@ -2639,13 +2695,28 @@ mod tests {
         let (completed, results) = mpsc::channel();
         let worker = thread::spawn(move || {
             let job: TranslationJob = pending.recv().unwrap();
+            let rect = TextRect {
+                x1: 1,
+                y1: 1,
+                x2: 10,
+                y2: 10,
+            };
+            let screenshot = image::load_from_memory(&BASE64.decode(&job.image).unwrap())
+                .unwrap()
+                .into_rgb8();
             completed
                 .send((
                     job.digest,
                     Ok(CachedTranslation {
                         digest: job.digest,
-                        regions: vec![],
-                        region_fingerprints: vec![],
+                        regions: vec![TranslatedRegion {
+                            rect,
+                            source_line_height: 9,
+                            source: "開く".to_owned(),
+                            english: "Open".to_owned(),
+                            background: [0, 0, 0],
+                        }],
+                        region_fingerprints: vec![fingerprint_region(&screenshot, rect)],
                         dimensions: job.dimensions,
                         overlay: "ready-overlay".to_owned(),
                     }),

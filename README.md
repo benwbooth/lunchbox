@@ -390,8 +390,8 @@ RetroArch's [AI Service](https://docs.libretro.com/guides/ai-service/) and
 returns an English image overlay anchored to detected source-text regions,
 covering the original text with a sampled nearby background color rather
 than a fixed lower-screen panel. Complex artwork and original font matching
-remain approximate; when no text is detected, a notice appears instead of a
-guessed translation. Press F10 once in-game to start automatic translation and
+remain approximate; when no text is detected, the overlay stays transparent
+and the next automatic capture retries OCR. Press F10 once in-game to start automatic translation and
 again to stop; F8 remains
 RetroArch's screenshot key. RetroArch's AI Service gamepad hotkey
 can also be bound. Screenshots are not persisted or sent to a cloud endpoint.
