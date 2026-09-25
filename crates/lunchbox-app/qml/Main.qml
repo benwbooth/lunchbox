@@ -12863,6 +12863,15 @@ ApplicationWindow {
                         font.weight: Font.Bold
                         wrapMode: Text.WordWrap
                     }
+                    Text {
+                        width: parent.width
+                        visible: gameDetails.description.length > 0
+                        text: gameDetails.description
+                        color: "#c0c8d4"
+                        font.pixelSize: 12
+                        lineHeight: 1.35
+                        wrapMode: Text.WordWrap
+                    }
                     Row {
                         width: parent.width
                         spacing: 8
@@ -14517,16 +14526,6 @@ ApplicationWindow {
                             font.pixelSize: 9
                             wrapMode: Text.WordWrap
                         }
-                    }
-
-                    Text {
-                        width: parent.width
-                        visible: gameDetails.description.length > 0
-                        text: gameDetails.description
-                        color: "#c0c8d4"
-                        font.pixelSize: 12
-                        lineHeight: 1.35
-                        wrapMode: Text.WordWrap
                     }
 
                     Text {
