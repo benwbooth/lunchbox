@@ -7,6 +7,11 @@ authors.workspace = true
 repository.workspace = true
 build = "build.rs"
 
+[features]
+# Nix/ROCm builds opt into MIGraphX against their matching ONNX Runtime.
+# Portable bundles use the available CPU ONNX Runtime distribution.
+rocm-ocr = ["rapidocr-core/migraphx"]
+
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
@@ -62,7 +67,7 @@ lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rapidocr-core = { version = "0.2.2", features = ["migraphx"] }
+rapidocr-core = { version = "0.2.2" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rapidocr-core = { version = "0.2.2", features = ["coreml"] }

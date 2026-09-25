@@ -70,6 +70,14 @@ TestCase {
             height: 34
             text: "THIS PLATFORM DEFAULT"
         }
+        Lunchbox.LbButton {
+            id: asymmetricButton
+            width: 180
+            height: 40
+            leftPadding: 28
+            rightPadding: 8
+            text: "Centered label"
+        }
         Lunchbox.LbComboBox {
             id: combo
             width: 240
@@ -89,16 +97,26 @@ TestCase {
         }
         Lunchbox.LbRoundButton {
             id: roundButton
+            width: 48
             text: "?"
+            leftPadding: 20
+            rightPadding: 4
         }
         Lunchbox.LbToolButton {
             id: toolButton
+            width: 74
             text: "More"
+            leftPadding: 20
+            rightPadding: 4
         }
         Controls.TabBar {
             id: tabs
             width: 240
-            Lunchbox.LbTabButton { text: "Overview" }
+            Lunchbox.LbTabButton {
+                text: "Overview"
+                leftPadding: 20
+                rightPadding: 4
+            }
             Lunchbox.LbTabButton { text: "Details" }
         }
     }
@@ -117,6 +135,18 @@ TestCase {
         verify(Math.abs(fixedHeightButton.contentItem.y
                         + fixedHeightButton.contentItem.height / 2
                         - fixedHeightButton.height / 2) <= 1)
+    }
+
+    function test_button_labels_stay_centered_with_asymmetric_padding() {
+        const controls = [asymmetricButton, roundButton, toolButton,
+                          tabs.itemAt(0)]
+        for (const control of controls) {
+            const label = control.contentItem
+            verify(Math.abs(label.x + label.width / 2
+                            - control.width / 2) <= 1,
+                   control.text + " content center=" + (label.x + label.width / 2)
+                   + " button center=" + control.width / 2)
+        }
     }
 
     function test_button_press_does_not_depress_surface() {

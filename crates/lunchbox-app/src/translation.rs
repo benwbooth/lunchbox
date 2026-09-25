@@ -113,7 +113,7 @@ fn ocr_model_set() -> Result<&'static rapidocr_core::model::ModelSetSpec> {
     model_set_by_name(OCR_MODEL_SET).context("PP-OCRv6 small model set is unavailable")
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
 pub fn configure_gpu_cache() -> Result<()> {
     if std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH").is_some() {
         return Ok(());
@@ -176,10 +176,12 @@ fn load_ocr() -> Result<RapidOcr> {
         enable_cpu_mem_arena: true,
         ..Default::default()
     };
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
     let gpu_provider = std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH")
         .filter(|path| Path::new(path).is_dir())
         .map(|_| ExecutionProvider::Migraphx);
+    #[cfg(all(target_os = "linux", not(feature = "rocm-ocr")))]
+    let gpu_provider: Option<ExecutionProvider> = None;
     #[cfg(target_os = "macos")]
     let gpu_provider = Some(ExecutionProvider::CoreMl);
     #[cfg(target_os = "windows")]

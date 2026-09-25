@@ -46,7 +46,7 @@ modules:
         # below), so no target downloads anything at build time.
         LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE: /run/build/lunchbox/chdman/libchdman_rs-x86_64-linux.a
     build-commands:
-      - cargo build --locked --offline --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
+      - cargo build --locked --offline --release --no-default-features --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database
       - install -Dm0755 target/release/lunchbox /app/bin/lunchbox
       - install -Dm0755 target/release/lunchbox-controller-probe /app/bin/lunchbox-controller-probe

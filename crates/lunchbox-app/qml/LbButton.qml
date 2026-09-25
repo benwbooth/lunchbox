@@ -28,10 +28,10 @@ T.Button {
 
     contentItem: Text {
         anchors.fill: parent
-        anchors.leftMargin: control.leftPadding
-        anchors.rightMargin: control.rightPadding
-        anchors.topMargin: control.topPadding
-        anchors.bottomMargin: control.bottomPadding
+        anchors.leftMargin: Math.max(control.leftPadding, control.rightPadding)
+        anchors.rightMargin: anchors.leftMargin
+        anchors.topMargin: Math.max(control.topPadding, control.bottomPadding)
+        anchors.bottomMargin: anchors.topMargin
         text: control.text
         font.family: control.font.family
         font.weight: control.font.weight

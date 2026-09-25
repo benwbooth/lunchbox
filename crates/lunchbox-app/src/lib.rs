@@ -388,7 +388,7 @@ fn needs_widget_application(
 }
 
 pub fn run() -> i32 {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
     if let Err(error) = translation::configure_gpu_cache() {
         eprintln!("LUNCHBOX_TRANSLATION_OCR_GPU_CACHE_UNAVAILABLE: {error:#}");
     }

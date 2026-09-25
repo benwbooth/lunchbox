@@ -118,7 +118,8 @@
             # existing build; a source change produces the new timestamp.
             export LUNCHBOX_BUILT_UNIX="$(date +%s)"
           '';
-          cargoBuildFlags = [ "--package" "lunchbox-app" "--package" "lunchbox-controller-probe" "--bin" "lunchbox" "--bin" "lunchbox-controller-probe" ];
+          cargoBuildFlags = [ "--package" "lunchbox-app" "--package" "lunchbox-controller-probe" "--bin" "lunchbox" "--bin" "lunchbox-controller-probe" ]
+            ++ pkgs.lib.optionals (system == "x86_64-linux") [ "--features" "rocm-ocr" ];
           doCheck = true;
           checkPhase = ''
             runHook preCheck
@@ -133,6 +134,7 @@
             QT_QPA_PLATFORM=offscreen qmltestrunner \
               -input crates/lunchbox-app/tests/qml
             cargo test --package lunchbox-app --lib --release \
+              ${pkgs.lib.optionalString (system == "x86_64-linux") "--features rocm-ocr"} \
               --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget}
             runHook postCheck
           '';

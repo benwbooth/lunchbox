@@ -20,6 +20,10 @@ if ! command -v watchexec >/dev/null 2>&1; then
 fi
 
 app_pid=""
+ocr_feature_args=()
+if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then
+  ocr_feature_args=(--features rocm-ocr)
+fi
 
 stop_app() {
   if [[ -n "$app_pid" ]] && kill -0 "$app_pid" 2>/dev/null; then
@@ -43,7 +47,7 @@ start_app() {
 
 # Returns non-zero when the build fails.
 build() {
-  cargo build -p lunchbox-app --bin lunchbox
+  cargo build -p lunchbox-app --bin lunchbox "${ocr_feature_args[@]}"
 }
 
 # Swaps the app for the freshly built binary.
@@ -70,7 +74,7 @@ watchexec --restart --shell=none \
   --watch Cargo.toml \
   --watch Cargo.lock \
   --exts rs,qml,json,toml,lock \
-  -- bash -c 'if cargo build -p lunchbox-app --bin lunchbox; then echo LUNCHBOX_DEV_BUILT; fi' \
+  -- bash -c 'ocr_feature_args=(); if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then ocr_feature_args=(--features rocm-ocr); fi; if cargo build -p lunchbox-app --bin lunchbox "${ocr_feature_args[@]}"; then echo LUNCHBOX_DEV_BUILT; fi' \
   | while IFS= read -r line; do
       printf '[dev] %s\n' "$line"
       if [[ "$line" == LUNCHBOX_DEV_BUILT ]]; then

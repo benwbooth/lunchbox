@@ -239,7 +239,7 @@ jobs:
           echo "5340f4e65d0fd0c40d5b1dd3c6ad1d5daa653ddb7f93affb70f0480cbc781a17  $ARCHIVE" | sha256sum -c -
           echo "LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
       - name: Build release executable
-        run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
+        run: cargo build --locked --release --no-default-features --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Stage AppDir
         run: |
           rm -rf dist/AppDir dist/appimage-assets
