@@ -169,6 +169,29 @@ TestCase {
         tryCompare(settings, "refreshCalls", before + 1)
         verify(workflow.controllerChoices(0).some(item => item.id === "sc2"))
     }
+    function test_player_dropdown_in_modal_explorer_shows_all_connected_controllers() {
+        explorer.openForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        tryVerify(function() { return explorer.visible })
+        const guided = findChild(explorer, "controllerSetupWorkflow")
+        verify(guided)
+        const combo = findChild(guided, "playerController0")
+        verify(combo)
+        compare(combo.model.length, 4)
+        mouseClick(combo, combo.width - 12, combo.height / 2)
+        tryVerify(function() { return combo.popup.visible })
+        verify(combo.popup.parent !== combo)
+        verify(combo.popup.z > explorer.z)
+        compare(combo.popup.contentItem.count, 4)
+        compare(combo.textAt(1), "Steam Controller 2")
+        compare(combo.textAt(2), "Brawler64")
+        tryVerify(function() { return combo.popup.contentItem.itemAtIndex(1) !== null })
+        const steamController = combo.popup.contentItem.itemAtIndex(1)
+        mouseClick(steamController, steamController.width / 2,
+                   steamController.height / 2)
+        tryCompare(combo, "currentIndex", 1)
+        compare(guided.playerDevices[0], "sc2")
+        verify(!combo.popup.visible)
+    }
     function test_native_mapping_is_automatic_and_existing_buttons_survive() {
         workflow.assignPlayer(0,"sc2")
         compare(settings.automaticCalls,1)

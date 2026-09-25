@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as C
 import QtQuick.Templates as T
 
 T.ComboBox {
@@ -68,7 +69,12 @@ T.ComboBox {
     }
 
     popup: T.Popup {
-        y: control.height + 2
+        // A ComboBox inside a modal Dialog otherwise leaves its popup beneath
+        // the dialog surface in the live window, even while popup.visible is true.
+        parent: C.Overlay.overlay
+        z: 100
+        x: parent ? control.mapToItem(parent, 0, 0).x : 0
+        y: parent ? control.mapToItem(parent, 0, control.height + 2).y : 0
         width: control.width
         implicitHeight: Math.min(360, contentItem.implicitHeight + topPadding + bottomPadding)
         padding: 4
