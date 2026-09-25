@@ -10574,6 +10574,7 @@ ApplicationWindow {
                     radius: 9 * card.expansion
                     artworkPresent: tile.previewActive
                                     || coverImage.status === Image.Ready
+                                    || coverImage.status === Image.Loading
                     fallbackColor: root.accentFor(tile.gameTitle)
                     clip: true
 
@@ -10589,18 +10590,16 @@ ApplicationWindow {
                         autoTransform: true
                         fillMode: root.wideArtwork(library.artwork_type)
                                   ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-                        // Never bind decode size to animated card geometry.
-                        // Changing sourceSize on every zoom frame makes Qt
-                        // discard and reload the texture, producing a black
-                        // flash during both expansion and collapse. Decode
-                        // once for the largest possible card and retain the
-                        // prior texture if the URL itself changes.
+                        // Decode from the preferred grid size, not the live
+                        // cell/card width. Sidebar dragging changes cellWidth
+                        // every frame and would otherwise reload the image,
+                        // briefly exposing the fallback letter. Leave enough
+                        // resolution for expanded cards and HiDPI displays.
                         sourceSize.width: Math.max(1, Math.min(
-                            4096, Math.round((cardGeometry.baseWidth - 18)
-                                             * cardGeometry.maximumExpansion * 2)))
+                            4096, Math.round(grid.preferredWidth * 4.5)))
                         sourceSize.height: Math.max(1, Math.min(
-                            4096, Math.round((cardGeometry.baseHeight - 79)
-                                             * cardGeometry.maximumExpansion * 2)))
+                            4096, Math.round((grid.preferredWidth * 1.36 - 79)
+                                             * 4.5)))
                         // Keep the cover opaque underneath the video. When a
                         // preview stops, VideoOutput can clear immediately;
                         // fading the cover in afterward exposed the black mat.
@@ -10714,7 +10713,9 @@ ApplicationWindow {
                         font.kerning: true
                         font.hintingPreference: Font.PreferDefaultHinting
                         renderType: Text.NativeRendering
-                        visible: coverImage.status !== Image.Ready && !tile.previewActive
+                        visible: (coverImage.status === Image.Null
+                                  || coverImage.status === Image.Error)
+                                 && !tile.previewActive
                     }
                     Rectangle {
                         z: previewPresentation.overlayLayer
