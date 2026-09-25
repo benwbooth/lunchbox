@@ -9,7 +9,8 @@ build = "build.rs"
 
 [features]
 # Nix/ROCm builds opt into MIGraphX against their matching ONNX Runtime.
-# Portable bundles use the available CPU ONNX Runtime distribution.
+# Portable bundles currently lack a GPU OCR provider and disable translation
+# rather than silently running OCR on the CPU.
 rocm-ocr = ["rapidocr-core/migraphx"]
 
 [dependencies]

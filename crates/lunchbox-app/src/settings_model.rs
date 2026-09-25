@@ -183,6 +183,9 @@ pub mod qobject {
         fn install_translation_model(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
+        fn setup_translation_docker(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
         fn cancel_translation_model(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
@@ -1998,21 +2001,21 @@ impl qobject::SettingsModel {
         let model = self.as_ref().translation_model().to_string();
         self.as_mut().set_translation_busy(true);
         self.as_mut()
-            .set_translation_status(qstring("Checking local Ollama…"));
+            .set_translation_status(qstring("Checking local models and GPU backends…"));
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-translation-check".into())
             .spawn(move || {
-                let result =
-                    crate::translation::model_available(&model).map_err(|error| error.to_string());
+                let result = crate::translation::gpu_translation_ready(&model)
+                    .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model_object| {
                     model_object.as_mut().set_translation_busy(false);
                     let status = match result {
                         Ok(true) => {
-                            format!("Local OCR and {model} are ready.")
+                            format!("GPU OCR and {model} on GPU are ready.")
                         }
                         Ok(false) => format!("A required model is missing: local OCR or {model}."),
-                        Err(error) => format!("Local Ollama is unavailable: {error}"),
+                        Err(error) => format!("GPU translation is unavailable: {error}"),
                     };
                     model_object
                         .as_mut()
@@ -2071,7 +2074,7 @@ impl qobject::SettingsModel {
                             model_object
                                 .as_mut()
                                 .set_translation_status(qstring(format!(
-                                    "Model download did not finish: {error}"
+                                    "Translation setup failed: {error}"
                                 )))
                         }
                     }
@@ -2083,6 +2086,74 @@ impl qobject::SettingsModel {
             self.as_mut().set_translation_status(qstring(format!(
                 "Could not start model download: {error}"
             )));
+        }
+    }
+
+    pub fn setup_translation_docker(mut self: Pin<&mut Self>) {
+        if *self.as_ref().translation_busy() {
+            return;
+        }
+        let model = self.as_ref().translation_model().to_string();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().translation_cancel = Some(Arc::clone(&cancel));
+        self.as_mut().set_translation_busy(true);
+        self.as_mut().set_translation_progress(0);
+        self.as_mut()
+            .set_translation_status(qstring("Checking Docker for a local Ollama container…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-translation-docker-setup".into())
+            .spawn(move || {
+                let result = (|| {
+                    let compute = crate::translation_docker::setup(&cancel, |status| {
+                        let _ = progress_thread.queue(move |mut model_object| {
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(status));
+                        });
+                    })?;
+                    crate::translation::pull_model(&model, &cancel, |percent, status| {
+                        let _ = progress_thread.queue(move |mut model_object| {
+                            model_object
+                                .as_mut()
+                                .set_translation_progress(i32::from(percent));
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(status));
+                        });
+                    })?;
+                    Ok::<_, anyhow::Error>(compute)
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model_object| {
+                    model_object.as_mut().rust_mut().translation_cancel = None;
+                    model_object.as_mut().set_translation_busy(false);
+                    match result {
+                        Ok(compute) => {
+                            model_object.as_mut().set_translation_progress(100);
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(format!(
+                                    "Docker Ollama ({}) and {model} are ready.",
+                                    compute.description()
+                                )));
+                        }
+                        Err(error) => {
+                            model_object
+                                .as_mut()
+                                .set_translation_status(qstring(format!(
+                                    "Docker translation setup failed: {error}"
+                                )))
+                        }
+                    }
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().rust_mut().translation_cancel = None;
+            self.as_mut().set_translation_busy(false);
+            self.as_mut()
+                .set_translation_status(qstring(format!("Could not start Docker setup: {error}")));
         }
     }
 

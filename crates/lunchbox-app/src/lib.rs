@@ -282,6 +282,7 @@ mod steamgriddb;
 pub mod steamgriddb_model;
 mod tags;
 mod translation;
+mod translation_docker;
 mod watched_torrent;
 pub mod watched_torrent_model;
 pub mod web_artwork_model;

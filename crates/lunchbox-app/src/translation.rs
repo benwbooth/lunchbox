@@ -155,7 +155,31 @@ fn download_ocr_models(cancelled: &AtomicBool) -> Result<()> {
     Ok(())
 }
 
+fn gpu_ocr_provider() -> Result<ExecutionProvider> {
+    #[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
+    let gpu_provider = std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH")
+        .filter(|path| Path::new(path).is_dir())
+        .map(|_| ExecutionProvider::Migraphx);
+    #[cfg(all(target_os = "linux", not(feature = "rocm-ocr")))]
+    let gpu_provider: Option<ExecutionProvider> = None;
+    #[cfg(target_os = "macos")]
+    let gpu_provider = Some(ExecutionProvider::CoreMl);
+    #[cfg(target_os = "windows")]
+    let gpu_provider = Some(ExecutionProvider::DirectMl);
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    let gpu_provider: Option<ExecutionProvider> = None;
+    gpu_provider.context(
+        "This Lunchbox build has no GPU OCR backend. Translation will not use CPU OCR; install a GPU-capable build.",
+    )
+}
+
+pub fn preflight_gpu_ocr() -> Result<()> {
+    let _ = gpu_ocr_provider()?;
+    Ok(())
+}
+
 fn load_ocr() -> Result<RapidOcr> {
+    let provider = gpu_ocr_provider()?;
     let cache = ocr_model_cache()?;
     let model_set = ocr_model_set()?;
     cache
@@ -176,39 +200,66 @@ fn load_ocr() -> Result<RapidOcr> {
         enable_cpu_mem_arena: true,
         ..Default::default()
     };
-    #[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
-    let gpu_provider = std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH")
-        .filter(|path| Path::new(path).is_dir())
-        .map(|_| ExecutionProvider::Migraphx);
-    #[cfg(all(target_os = "linux", not(feature = "rocm-ocr")))]
-    let gpu_provider: Option<ExecutionProvider> = None;
-    #[cfg(target_os = "macos")]
-    let gpu_provider = Some(ExecutionProvider::CoreMl);
-    #[cfg(target_os = "windows")]
-    let gpu_provider = Some(ExecutionProvider::DirectMl);
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    let gpu_provider: Option<ExecutionProvider> = None;
-    if let Some(provider) = gpu_provider {
-        if std::env::var_os("LUNCHBOX_OCR_CPU_ONLY").is_none() {
-            match RapidOcr::from_config(config.clone().with_inference_options(InferenceOptions {
-                execution_provider: provider,
-                enable_cpu_mem_arena: false,
-                ..options
-            })) {
-                Ok(ocr) => {
-                    eprintln!("LUNCHBOX_TRANSLATION_OCR_PROVIDER={provider:?}");
-                    return Ok(ocr);
-                }
-                Err(error) => eprintln!(
-                    "LUNCHBOX_TRANSLATION_OCR_GPU_UNAVAILABLE provider={provider:?}: {error:#}"
-                ),
-            }
-        }
-    }
-    let ocr = RapidOcr::from_config(config.with_inference_options(options))
-        .context("initializing local OCR")?;
-    eprintln!("LUNCHBOX_TRANSLATION_OCR_PROVIDER=Cpu");
+    let ocr = RapidOcr::from_config(config.with_inference_options(InferenceOptions {
+        execution_provider: provider,
+        enable_cpu_mem_arena: false,
+        ..options
+    }))
+    .with_context(|| {
+        format!("GPU OCR ({provider:?}) could not initialize; CPU fallback is disabled")
+    })?;
+    eprintln!("LUNCHBOX_TRANSLATION_OCR_PROVIDER={provider:?}");
     Ok(ocr)
+}
+
+fn loaded_model_gpu_fraction(body: &Value, model: &str) -> Result<u64> {
+    let entry = body["models"]
+        .as_array()
+        .and_then(|models| models.iter().find(|entry| entry["name"] == model))
+        .context("translation model was not loaded")?;
+    let size = entry["size"]
+        .as_u64()
+        .context("Ollama did not report model size")?;
+    let gpu = entry["size_vram"]
+        .as_u64()
+        .context("Ollama did not report GPU allocation")?;
+    ensure!(size > 0, "Ollama reported an empty model");
+    Ok(gpu.saturating_mul(100) / size)
+}
+
+fn active_model_gpu_percent(model: &str) -> Result<u64> {
+    let mut response = http_agent(Duration::from_secs(5))
+        .get(&format!("{OLLAMA_URL}/api/ps"))
+        .call()
+        .context("checking translation model GPU allocation")?;
+    ensure!(
+        response.status().as_u16() == 200,
+        "Ollama model status failed"
+    );
+    let body: Value = serde_json::from_str(&response.body_mut().read_to_string()?)?;
+    loaded_model_gpu_fraction(&body, model)
+}
+
+fn verify_model_gpu(model: &str) -> Result<()> {
+    // An empty prompt loads the model without generating text. Check its actual
+    // VRAM allocation: seeing a device node alone does not prove GPU inference.
+    let mut load = http_agent(Duration::from_secs(120))
+        .post(&format!("{OLLAMA_URL}/api/generate"))
+        .send_json(json!({"model": model, "prompt": "", "stream": false, "keep_alive": "10m"}))
+        .context("loading the translation model")?;
+    ensure!(
+        load.status().as_u16() == 200,
+        "Ollama could not load {model}"
+    );
+    // Drain the response before querying /api/ps, including on keep-alive HTTP.
+    let _ = load.body_mut().read_to_string()?;
+    let percent = active_model_gpu_percent(model)?;
+    ensure!(
+        percent >= 95,
+        "{model} is only {percent}% on GPU; CPU or partial-CPU inference is disabled. Free GPU memory or choose a smaller model."
+    );
+    eprintln!("LUNCHBOX_TRANSLATION_MODEL_GPU_PERCENT={percent}");
+    Ok(())
 }
 
 pub fn model_available(model: &str) -> Result<bool> {
@@ -235,6 +286,17 @@ pub fn model_available(model: &str) -> Result<bool> {
     Ok(ollama_ready && ocr_models_available()?)
 }
 
+pub fn gpu_translation_ready(model: &str) -> Result<bool> {
+    if !model_available(model)? {
+        return Ok(false);
+    }
+    let mut ocr = load_ocr()?;
+    ocr.warm_up_gpu(&OcrCancellationToken::new())
+        .context("warming up GPU OCR for setup verification")?;
+    verify_model_gpu(model)?;
+    Ok(true)
+}
+
 pub fn pull_model(
     model: &str,
     cancelled: &AtomicBool,
@@ -244,6 +306,7 @@ pub fn pull_model(
         supported_model(model),
         "unsupported local translation model"
     );
+    preflight_gpu_ocr()?;
     let mut response = http_agent(Duration::from_secs(60 * 60))
         .post(&format!("{OLLAMA_URL}/api/pull"))
         .send_json(json!({"model": model, "stream": true}))
@@ -276,14 +339,13 @@ pub fn pull_model(
     progress(90, "Installing local Japanese-capable OCR".to_owned());
     download_ocr_models(cancelled)?;
     let mut ocr = load_ocr()?;
-    if ocr.config().inference.execution_provider != ExecutionProvider::Cpu {
-        progress(
-            95,
-            "Compiling local GPU OCR (first setup may take a few minutes)".to_owned(),
-        );
-        ocr.warm_up_gpu(&OcrCancellationToken::new())
-            .context("compiling local GPU OCR")?;
-    }
+    progress(
+        95,
+        "Compiling local GPU OCR (first setup may take a few minutes)".to_owned(),
+    );
+    ocr.warm_up_gpu(&OcrCancellationToken::new())
+        .context("compiling local GPU OCR")?;
+    verify_model_gpu(model)?;
     ensure!(
         !cancelled.load(Ordering::Relaxed),
         "OCR model setup cancelled"
@@ -314,12 +376,11 @@ impl TranslationSession {
             settings.model
         );
         let mut ocr = load_ocr()?;
-        if ocr.config().inference.execution_provider != ExecutionProvider::Cpu {
-            // Pay the one-time GPU graph initialization before emulation starts,
-            // not on the first dialogue frame while the game is playing.
-            ocr.warm_up_gpu(&OcrCancellationToken::new())
-                .context("warming up local GPU OCR before launch")?;
-        }
+        // Pay the one-time GPU graph initialization before emulation starts,
+        // not on the first dialogue frame while the game is playing.
+        ocr.warm_up_gpu(&OcrCancellationToken::new())
+            .context("warming up local GPU OCR before launch")?;
+        verify_model_gpu(&settings.model)?;
         let viewport = overlay_viewport(plan, executable, output_dimensions)?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
             .context("opening local translation bridge")?;
@@ -1773,6 +1834,13 @@ fn english_only_translation(raw: &str) -> String {
 }
 
 fn ollama_chat(model: &str, prompt: &str, base_url: &str) -> Result<String> {
+    if base_url == OLLAMA_URL {
+        let percent = active_model_gpu_percent(model)?;
+        ensure!(
+            percent >= 95,
+            "{model} is no longer fully on the GPU ({percent}% in VRAM)"
+        );
+    }
     let request = json!({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -1804,6 +1872,15 @@ fn ollama_chat(model: &str, prompt: &str, base_url: &str) -> Result<String> {
     let text = result["message"]["content"]
         .as_str()
         .context("Ollama returned no translation")?;
+    // GPU memory pressure can make a previously GPU-loaded model reload after
+    // the game has started. Detect and reject the result if that happened.
+    if base_url == OLLAMA_URL {
+        let percent = active_model_gpu_percent(model)?;
+        ensure!(
+            percent >= 95,
+            "{model} left the GPU ({percent}% in VRAM); translation stopped"
+        );
+    }
     Ok(text.trim().to_owned())
 }
 
@@ -1821,6 +1898,23 @@ fn write_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_placement_requires_the_selected_model() {
+        let status = json!({"models": [
+            {"name": "translategemma:4b", "size": 100, "size_vram": 99},
+            {"name": "translategemma:12b", "size": 100, "size_vram": 2}
+        ]});
+        assert_eq!(
+            loaded_model_gpu_fraction(&status, "translategemma:4b").unwrap(),
+            99
+        );
+        assert_eq!(
+            loaded_model_gpu_fraction(&status, "translategemma:12b").unwrap(),
+            2
+        );
+        assert!(loaded_model_gpu_fraction(&status, "translategemma:27b").is_err());
+    }
 
     #[test]
     fn translation_memory_reuses_dialogue_across_changed_frames() {

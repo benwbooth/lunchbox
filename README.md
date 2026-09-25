@@ -363,15 +363,28 @@ require the separate Mega Bezel shader stack. The game viewport is fitted to
 the artwork's 4:3 opening in fullscreen. If fullscreen is explicitly disabled,
 the launch continues without the ultrawide overlay and reports why.
 
-Local game translation is opt-in under Settings → Game translation. Install and
-start [Ollama](https://ollama.com/download) natively on Linux, macOS, or
-Windows (or provide it through Nix on NixOS), then use Lunchbox to check the
-local service and explicitly download a TranslateGemma 4B, 12B, or 27B model
-and the Japanese-capable PP-OCRv6 small detection/recognition models. The OCR
-models come from [RapidOCR's model registry](https://github.com/RapidAI/RapidOCRDocs/blob/main/docs/model_list.md),
-are checksum-verified when installed, and run locally through ONNX Runtime on
-the CPU. Ollama can use ROCm for TranslateGemma on supported AMD GPUs; OCR
-does not require a GPU or a separate Python/Docker service.
+Local game translation is opt-in under Settings → Game translation. The setup
+wizard guides the user through choosing a GPU backend, installing the selected
+TranslateGemma 4B, 12B, or 27B and Japanese-capable PP-OCRv6 small OCR models,
+then checking actual GPU use. It can start an app-owned, loopback-only Ollama
+container on supported Linux/Windows hosts or use an existing host-side Ollama
+installation (including on macOS). Docker Engine or Docker Desktop must already
+be installed and running if the Docker path is chosen. The
+container uses a persistent `lunchbox-ollama-models` Docker volume, so a
+Lunchbox upgrade does not erase downloaded models. Linux AMD hosts with
+`/dev/kfd` and `/dev/dri` use Ollama's ROCm image; hosts with an NVIDIA GPU
+use Docker's NVIDIA GPU passthrough. The Docker path refuses hosts without a
+supported GPU. Ordinary Docker Desktop Linux containers on macOS cannot use
+Apple Metal, so the wizard offers the host-side Ollama path on macOS. An
+existing service on port 11434 is never replaced automatically.
+The OCR models come from [RapidOCR's model registry](https://github.com/RapidAI/RapidOCRDocs/blob/main/docs/model_list.md),
+are checksum-verified when installed, and run inside Lunchbox through ONNX
+Runtime. GPU OCR is experimental: Nix/dev Linux builds use MIGraphX on AMD,
+macOS uses Core ML, and Windows uses DirectML. If GPU OCR cannot initialize,
+translation reports an error instead of using CPU OCR. Ollama model loading is
+checked for at least 95% GPU placement before play and each translation
+request. The current portable Linux Flatpak and AppImage lack a GPU OCR
+backend, so translation is unavailable in those packages until one is bundled.
 For RetroArch launches, Lunchbox starts a session-only loopback bridge for
 RetroArch's [AI Service](https://docs.libretro.com/guides/ai-service/) and
 returns an English image overlay anchored to detected source-text regions,

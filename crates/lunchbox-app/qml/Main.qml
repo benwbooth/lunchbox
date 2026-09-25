@@ -19812,7 +19812,6 @@ ApplicationWindow {
         onOpened: {
             appSettings.refresh_controllers()
             appSettings.refresh_retroarch_shaders()
-            appSettings.check_translation_service()
             library.refresh_couch_themes()
             steamGridDb.initialize()
             igdb.initialize()
@@ -22432,7 +22431,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Requires Ollama running on this computer. Local PP-OCRv6 finds and reads text; TranslateGemma translates it. Lunchbox covers the original text regions with English. On supported GPUs, both models use GPU acceleration. GPU OCR is experimental and may miss some text; it falls back to CPU when unavailable. Initial GPU OCR setup can take a few minutes. No cloud account is needed."
+                                text: "Local PP-OCRv6 finds and reads text; TranslateGemma translates it. Use the setup wizard to install models and verify both GPU backends. Translation stops if a GPU backend is unavailable; no CPU fallback or cloud account is used."
                                 color: root.muted
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
@@ -22460,6 +22459,27 @@ ApplicationWindow {
                                         appSettings.check_translation_service()
                                     }
                                 }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                HeaderButton {
+                                    text: "Set up GPU translation…"
+                                    active: true
+                                    enabled: !appSettings.translation_busy
+                                    onClicked: {
+                                        translationSetupWizard.step = 0
+                                        translationSetupWizard.open()
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "The wizard offers a GPU Docker service where supported or a host-side Ollama service. It downloads OCR models separately and verifies actual GPU placement before play."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
                             }
                             Text {
                                 Layout.fillWidth: true
@@ -22511,31 +22531,6 @@ ApplicationWindow {
                                 value: appSettings.translation_progress
                                 fillColor: root.accent
                                 trackColor: root.line
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 10
-                                PaneButton {
-                                    text: "Get Ollama"
-                                    onClicked: Qt.openUrlExternally("https://ollama.com/download")
-                                }
-                                Item { Layout.fillWidth: true }
-                                PaneButton {
-                                    text: "Check Ollama"
-                                    enabled: !appSettings.translation_busy
-                                    onClicked: appSettings.check_translation_service()
-                                }
-                                PaneButton {
-                                    visible: appSettings.translation_busy
-                                    text: "Cancel download"
-                                    onClicked: appSettings.cancel_translation_model()
-                                }
-                                HeaderButton {
-                                    text: "Download translation models"
-                                    active: true
-                                    enabled: !appSettings.translation_busy
-                                    onClicked: appSettings.install_translation_model()
-                                }
                             }
                         }
                     }
@@ -22827,6 +22822,174 @@ ApplicationWindow {
                     }
                 }
                 Item { Layout.preferredHeight: 24 }
+                }
+            }
+        }
+    }
+
+    LbDialog {
+        id: translationSetupWizard
+        parent: Overlay.overlay
+        modal: true
+        dim: true
+        width: Math.min(640, root.width - 48)
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        title: "GPU translation setup"
+        closePolicy: Popup.CloseOnEscape
+        property int step: 0
+        property string backend: Qt.platform.os === "osx" ? "host" : "docker"
+        onOpened: backend = Qt.platform.os === "osx" ? "host" : "docker"
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                Layout.fillWidth: true
+                text: "Step " + (translationSetupWizard.step + 1) + " of 3"
+                color: root.accentCool
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: translationSetupWizard.step === 0
+                      ? "Choose how to run the translation model. Lunchbox downloads the OCR models separately and requires GPU inference for both."
+                      : translationSetupWizard.step === 1
+                        ? "Install or start the local service, then download " + appSettings.translation_model + " and the OCR models. This can take several minutes."
+                        : "Verify that OCR initializes on a GPU and the translation model is loaded into GPU memory. Translation will not start if either check fails."
+                color: root.ink
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            ColumnLayout {
+                visible: translationSetupWizard.step === 0
+                Layout.fillWidth: true
+                spacing: 8
+                PaneButton {
+                    Layout.fillWidth: true
+                    text: translationSetupWizard.backend === "docker"
+                          ? "✓  Docker GPU service" : "Docker GPU service"
+                    enabled: Qt.platform.os !== "osx"
+                    onClicked: translationSetupWizard.backend = "docker"
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: Qt.platform.os === "osx"
+                          ? "Docker's Linux containers cannot use Apple Metal. Choose a host-side service on this Mac."
+                          : "Uses AMD ROCm on Linux or NVIDIA GPU passthrough on Linux/Windows. Requires Docker to be installed and running."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+                PaneButton {
+                    Layout.fillWidth: true
+                    text: translationSetupWizard.backend === "host"
+                          ? "✓  Existing host-side Ollama" : "Existing host-side Ollama"
+                    onClicked: translationSetupWizard.backend = "host"
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Use Ollama installed for this operating system. The wizard verifies GPU placement; merely running the service is not enough."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+            ColumnLayout {
+                visible: translationSetupWizard.step === 1
+                Layout.fillWidth: true
+                spacing: 9
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    PaneButton {
+                        text: translationSetupWizard.backend === "docker" ? "Get Docker" : "Get Ollama"
+                        onClicked: Qt.openUrlExternally(translationSetupWizard.backend === "docker"
+                                                        ? "https://docs.docker.com/get-docker/"
+                                                        : "https://ollama.com/download")
+                    }
+                    HeaderButton {
+                        Layout.fillWidth: true
+                        text: translationSetupWizard.backend === "docker"
+                              ? "Start GPU service and install models" : "Install GPU translation models"
+                        active: true
+                        enabled: !appSettings.translation_busy
+                        onClicked: {
+                            if (translationSetupWizard.backend === "docker")
+                                appSettings.setup_translation_docker()
+                            else
+                                appSettings.install_translation_model()
+                        }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: translationSetupWizard.backend === "docker"
+                          ? "If another Ollama service owns port 11434, stop it first or choose the existing-service path. This wizard does not replace it automatically."
+                          : "Start Ollama on your computer before installing the models. Lunchbox does not require Nix or NixOS."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+            ColumnLayout {
+                visible: translationSetupWizard.step === 2
+                Layout.fillWidth: true
+                spacing: 8
+                HeaderButton {
+                    text: "Verify GPU translation"
+                    active: true
+                    enabled: !appSettings.translation_busy
+                    onClicked: appSettings.check_translation_service()
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "A successful check confirms the selected model is at least 95% in GPU memory and that the GPU OCR provider initializes. The game performs the checks again at launch."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: appSettings.translation_status
+                color: root.accentCool
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            InlineProgressBar {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 7
+                visible: appSettings.translation_busy
+                from: 0
+                to: 100
+                value: appSettings.translation_progress
+                fillColor: root.accent
+                trackColor: root.line
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                PaneButton {
+                    text: "Cancel download"
+                    visible: appSettings.translation_busy
+                    onClicked: appSettings.cancel_translation_model()
+                }
+                Item { Layout.fillWidth: true }
+                PaneButton {
+                    text: "Back"
+                    enabled: translationSetupWizard.step > 0 && !appSettings.translation_busy
+                    onClicked: translationSetupWizard.step--
+                }
+                HeaderButton {
+                    text: translationSetupWizard.step === 2 ? "Close" : "Next"
+                    active: true
+                    enabled: !appSettings.translation_busy
+                    onClicked: {
+                        if (translationSetupWizard.step === 2)
+                            translationSetupWizard.close()
+                        else
+                            translationSetupWizard.step++
+                    }
                 }
             }
         }
