@@ -238,7 +238,7 @@ LbDialog {
             reviewHasUnhandled = true
             review.close()
             statusText = "Removed " + removed.length + " numbered-button overrides for player " + port
-                + " from the draft. Directions, service inputs, analog assignments, cross-player routes and other players were preserved. Review again: the preset may reallocate default channels. Stage and Save settings only after review."
+                + " from the draft. Directions, service inputs, analog assignments, cross-player routes and other players were preserved. Review again: the preset may reallocate default channels. Stage only after review; settings save automatically."
         } catch (error) { statusText = "Cannot restore player buttons: " + error }
     }
     function swappableAction(route, routes) {
@@ -310,7 +310,7 @@ LbDialog {
                         dialog.reviewedText = ""
                         dialog.reviewHasUnhandled = true
                         const overriddenPorts = Object.keys(draft.player_digital_layouts || {}).sort((a, b) => Number(a) - Number(b))
-                        dialog.statusText = "Shared layout changed in this draft only. Review assignments, stage, then Save settings."
+                        dialog.statusText = "Shared layout changed in this draft only. Review assignments, then stage; settings save automatically."
                             + (overriddenPorts.length ? " Player-specific presets were kept for ports " + overriddenPorts.join(", ") + ". Change those in Player controllers." : "")
                     } catch (error) { dialog.statusText = "Load a valid setup before choosing its layout: " + error }
                 }
@@ -345,7 +345,7 @@ LbDialog {
                     dialog.reviewedText = ""
                     dialog.reviewHasUnhandled = true
                     dialog.statusText = selected.needs_reinspection
-                        ? "Saved snapshot schema " + selected.snapshot_schema + " needs reinspection. Your setup and assignments are preserved, but launch is blocked. Inspect native fields, use the completed inspection, review assignments, then stage and Save settings."
+                        ? "Saved snapshot schema " + selected.snapshot_schema + " needs reinspection. Your setup and assignments are preserved, but launch is blocked. Inspect native fields, use the completed inspection, review assignments, then stage; settings save automatically."
                         : "Loaded staged setup; not a runtime verification."
                 }
             }
@@ -444,7 +444,7 @@ LbDialog {
                         lines.push(dialog.reviewedText === editor.text
                             ? (dialog.reviewHasUnhandled ? "Review found inputs that still need setup." : "Current draft reviewed; staging is available.")
                             : "Review assignments to see the source and destination diagrams and current mapping gaps.")
-                        lines.push("Staging is separate from Save settings. This summary is not runtime verification.")
+                        lines.push("Stage the reviewed setup to keep it; settings save automatically. This summary is not runtime verification.")
                         return lines.join("\n")
                     } catch (error) {
                         return "The draft cannot be summarized: " + error
@@ -628,7 +628,7 @@ LbDialog {
                     if (error) { dialog.statusText = error; return }
                     dialog.loadedText = editor.text
                     dialog.refresh()
-                    dialog.statusText = "Setup staged. Save settings to persist it. No runtime was started."
+                    dialog.statusText = "Setup staged; settings save automatically. No runtime was started."
                 }
             }
             LbButton {
@@ -786,7 +786,7 @@ LbDialog {
                 editor.text = JSON.stringify(draft, null, 2)
                 dialog.reviewedText = ""
                 dialog.reviewHasUnhandled = true
-                dialog.statusText = comparisonScope + " applied to the draft. Unrelated presets and field assignments were preserved. Review assignments again, stage, then Save settings."
+                dialog.statusText = comparisonScope + " applied to the draft. Unrelated presets and field assignments were preserved. Review assignments again, then stage; settings save automatically."
                 close()
             } catch (error) { report += "\nCannot apply preset: " + error }
         }
@@ -2738,7 +2738,7 @@ LbDialog {
         contentItem: Label { text: "Only staged controller settings change. Game files and calibrations are kept."; wrapMode: Text.WordWrap }
         onAccepted: {
             const error = dialog.settingsModel.remove_mame_controller_setup(keyToRemove)
-            dialog.statusText = error || "Setup removed from staged settings. Save settings to persist the change."
+            dialog.statusText = error || "Setup removed from staged settings; changes save automatically."
             dialog.refresh()
         }
     }

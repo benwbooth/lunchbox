@@ -187,7 +187,7 @@ LbDialog {
                 !(sameAddress(item.target, address) && item.part === part))
             if (source) player.assignments.push({ target: address, part: part, source: source })
             editor.text = JSON.stringify(draft, null, 2)
-            statusText = "Assignment edited in text draft. Stage setup, then Save settings to keep it."
+            statusText = "Assignment edited in text draft. Stage setup to keep it; settings save automatically."
             refreshAssignments()
             Qt.callLater(() => targetList.contentY = Math.max(0,
                 Math.min(scrollPosition, targetList.contentHeight - targetList.height)))
@@ -285,7 +285,7 @@ LbDialog {
         }
         Label {
             Layout.fillWidth: true
-            text: "Stage setup changes the settings draft only. Use Save settings in the main settings page to persist it. Changing the emulator/core/content identity creates a separate setup. Inspected launches disable RetroArch gamepad hotkeys and turbo; keyboard-mapped setups also disable keyboard hotkeys in their private session."
+            text: "Stage setup to keep the reviewed draft; settings save automatically. Changing the emulator/core/content identity creates a separate setup. Inspected launches disable RetroArch gamepad hotkeys and turbo; keyboard-mapped setups also disable keyboard hotkeys in their private session."
             wrapMode: Text.WordWrap
         }
         RowLayout {
@@ -315,7 +315,7 @@ LbDialog {
                         && item.core === saved.core && item.content === saved.content)
                     dialog.selectedKey = row ? row.key : ""
                     dialog.refresh()
-                    dialog.statusText = "Setup staged. Save settings to keep it. No core was started."
+                    dialog.statusText = "Setup staged; settings save automatically. No core was started."
                 }
             }
             LbButton {
@@ -934,7 +934,7 @@ LbDialog {
                         dialog.loadedText = ""
                         editor.text = dialog.settingsModel.fbneo_import_draft
                         choices.currentIndex = -1
-                        dialog.statusText = "Imported draft loaded. Use Edit assignments, then Stage setup and Save settings."
+                        dialog.statusText = "Imported draft loaded. Use Edit assignments, then Stage setup; settings save automatically."
                         reportImport.close()
                     }
                 }
@@ -998,7 +998,7 @@ LbDialog {
                     if (targets.length && targets.every(isAim)) player.controller_id = ""
                 }
                 editor.text = JSON.stringify(draft, null, 2)
-                absoluteStatus.text = "Draft updated. Stage setup and Save settings to keep it."
+                absoluteStatus.text = "Draft updated. Stage setup to keep it; settings save automatically."
             } catch (error) { absoluteStatus.text = String(error) }
         }
         contentItem: ColumnLayout {
@@ -1454,7 +1454,7 @@ LbDialog {
             dialog.loadedText = ""
             editor.text = ""
             dialog.refresh()
-            dialog.statusText = "Removal staged. Save settings to keep it."
+            dialog.statusText = "Removal staged; settings save automatically."
         }
     }
 }

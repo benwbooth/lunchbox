@@ -821,7 +821,7 @@ LbDialog {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Use Save settings to keep changes. Disabling the adapter preserves physical and logical calibration records. This implementation has not been tested yet."
+                text: "Staged changes save automatically. Disabling the adapter preserves physical and logical calibration records. This implementation has not been tested yet."
                 color: "#95a2b6"
             }
         }

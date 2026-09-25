@@ -141,7 +141,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: root.settingsModel.watched_torrent_directory
                       !== root.inboxModel.directory
-                      ? "Save settings to begin watching this folder."
+                      ? "This folder will be watched once settings finish saving automatically."
                       : root.inboxModel.message
                 color: root.inboxModel.invalid_count > 0
                        ? root.accent : root.muted
@@ -284,7 +284,7 @@ ColumnLayout {
                 width: parent.width
                 text: root.settingsModel.watched_torrent_directory.length > 0
                       ? "New .torrent files appear here for platform review."
-                      : "Choose a folder above, then save settings."
+                      : "Choose a folder above; settings save automatically."
                 color: root.muted
                 font.pixelSize: 10
                 horizontalAlignment: Text.AlignHCenter

@@ -249,7 +249,7 @@ LbDialog {
                     text: "Stage settings"
                     onClicked: {
                         const error = dialog.settingsModel.stage_absolute_device_settings(editor.text)
-                        status.text = error || "Staged only. Save on the main settings page to persist. No device was opened."
+                        status.text = error || "Staged; settings save automatically. No device was opened."
                     }
                 }
                 LbButton { text: "Close"; onClicked: dialog.close() }

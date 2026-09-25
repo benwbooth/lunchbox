@@ -871,10 +871,11 @@ ApplicationWindow {
     // excluded so a save never re-triggers itself.
     property bool settingsDirty: false
     function markSettingsDirty() {
-        if (!settingsDialog.visible || !appSettings.initialized || appSettings.busy)
+        if (!settingsDialog.visible || !appSettings.initialized)
             return
         root.settingsDirty = true
-        settingsAutosaveTimer.restart()
+        if (!appSettings.busy)
+            settingsAutosaveTimer.restart()
     }
     function flushSettingsSave() {
         settingsAutosaveTimer.stop()
@@ -3178,10 +3179,16 @@ ApplicationWindow {
         function onBusyChanged() {
             root.finishSettingsProbeWhenSaved()
             root.finishOnboardingWhenSaved()
+            if (!appSettings.busy && root.settingsDirty)
+                settingsAutosaveTimer.restart()
         }
         function onMessageChanged() {
             root.finishSettingsProbeWhenSaved()
             root.finishOnboardingWhenSaved()
+            if (settingsDialog.visible
+                    && (appSettings.message.indexOf("Could not save settings:") === 0
+                        || appSettings.message.indexOf("Could not start settings worker:") === 0))
+                root.settingsDirty = true
             if (appSettings.message.indexOf("Settings saved.") === 0) {
                 library.refresh_media()
                 watchedTorrents.refresh()
@@ -22576,7 +22583,7 @@ ApplicationWindow {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Credential-store secrets remain on this computer. ROMs, torrent data, media caches, emulator binaries, and save files stay outside the profile archive. Save settings first if you want unsaved edits included."
+                                text: "Credential-store secrets remain on this computer. ROMs, torrent data, media caches, emulator binaries, and save files stay outside the profile archive. Pending settings changes are saved automatically before backup is available."
                                 color: root.muted
                                 font.pixelSize: 9
                                 wrapMode: Text.WordWrap
@@ -22590,6 +22597,8 @@ ApplicationWindow {
                                     text: "BACK UP NOW…"
                                     enabled: appSettings.initialized
                                              && !appSettings.profile_busy
+                                             && !appSettings.busy
+                                             && !root.settingsDirty
                                              && !appSettings.profile_restart_required
                                     onClicked: root.chooseProfileBackupFile()
                                     Accessible.name: "Create a portable Lunchbox profile backup"
@@ -22750,17 +22759,7 @@ ApplicationWindow {
                         }
                     }
                 }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
-                    HeaderButton {
-                        text: "Save settings"
-                        enabled: !appSettings.busy
-                        active: true
-                        onClicked: appSettings.save()
-                    }
-                }
-                    Item { Layout.preferredHeight: 24 }
+                Item { Layout.preferredHeight: 24 }
                 }
             }
         }

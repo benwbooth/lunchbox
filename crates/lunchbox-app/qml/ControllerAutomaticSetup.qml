@@ -45,7 +45,7 @@ ColumnLayout {
                     text: "Stage setups"
                     onClicked: {
                         const error = setup.settingsModel.stage_mame_native_setups(mameNativeText.text)
-                        mameNativeResult.text = error || "Staged. Save settings on the main page. Native raw SDL dispatch is partial and untested; no device discovery or emulator launch was performed."
+                        mameNativeResult.text = error || "Staged. Settings save automatically. Native raw SDL dispatch is partial and untested; no device discovery or emulator launch was performed."
                     }
                 }
             }
@@ -1284,148 +1284,148 @@ ColumnLayout {
                             ? setup.settingsModel.stage_ppsspp_setups(duckstationEditor.text)
                             : setup.settingsModel.stage_duckstation_setups(duckstationEditor.text)
                         duckstationStatus.text = error || (duckstationSetups.melonds
-                            ? "melonDS setups staged. Save settings on the main page. Native launch integration is partial and untested; no devices opened."
+                            ? "melonDS setups staged. Settings save automatically. Native launch integration is partial and untested; no devices opened."
                             : duckstationSetups.rpcs3
-                            ? "RPCS3 setups staged. Save settings on the main page. Native integration is partial and untested; no devices opened."
+                            ? "RPCS3 setups staged. Settings save automatically. Native integration is partial and untested; no devices opened."
                             : duckstationSetups.pcsx2
-                            ? "PCSX2 setups staged. Save settings on the main page. Native launch integration is partial and untested; no devices opened."
+                            ? "PCSX2 setups staged. Settings save automatically. Native launch integration is partial and untested; no devices opened."
                             : duckstationSetups.flycastNative
-                            ? "Staged. Save settings on the main page. Standalone Flycast uses partial native Linux launch mapping; no devices were opened during review."
+                            ? "Staged. Settings save automatically. Standalone Flycast uses partial native Linux launch mapping; no devices were opened during review."
                             : duckstationSetups.mednafen
-                            ? "Staged. Save settings in the main page. Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested; no devices were opened."
+                            ? "Staged. Settings save automatically. Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested; no devices were opened."
                             : duckstationSetups.jgenesisNative
-                            ? "Staged. Save settings in the main page. jgenesis native dispatch writes a private config at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. jgenesis native dispatch writes a private config at launch; no devices were opened."
                             : duckstationSetups.gopher64Native
-                            ? "Staged. Save settings in the main page. Gopher64 native dispatch writes a private config while preserving its normal save/state data root; no devices were opened."
+                            ? "Staged. Settings save automatically. Gopher64 native dispatch writes a private config while preserving its normal save/state data root; no devices were opened."
                             : duckstationSetups.gearNative
-                            ? "Staged. Save settings in the main page. Gearsystem/Gearcoleco native dispatch writes a private config, preserves save/state roots, and checks exact SDL3 player order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Gearsystem/Gearcoleco native dispatch writes a private config, preserves save/state roots, and checks exact SDL3 player order at launch; no devices were opened."
                             : duckstationSetups.xroarNative
-                            ? "Staged. Save settings in the main page. XRoar native dispatch writes a private first-option config and checks exact SDL3 joystick order and bindings at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. XRoar native dispatch writes a private first-option config and checks exact SDL3 joystick order and bindings at launch; no devices were opened."
                             : duckstationSetups.zesaruxNative
-                            ? "Staged. Save settings in the main page. ZEsarUX native dispatch writes a private first-option config and exact joydev link at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. ZEsarUX native dispatch writes a private first-option config and exact joydev link at launch; no devices were opened."
                             : duckstationSetups.oricutronNative
-                            ? "Staged. Save settings in the main page. Oricutron native dispatch overlays only a copied sibling config and rechecks exact SDL2 slot/instance routing at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Oricutron native dispatch overlays only a copied sibling config and rechecks exact SDL2 slot/instance routing at launch; no devices were opened."
                             : duckstationSetups.yabaSanshiroNative
-                            ? "Staged. Save settings in the main page. Yaba Sanshiro 2 native dispatch writes a private Qt input config and checks exact SDL2 routing at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Yaba Sanshiro 2 native dispatch writes a private Qt input config and checks exact SDL2 routing at launch; no devices were opened."
                             : duckstationSetups.kronosNative
-                            ? "Staged. Save settings in the main page. Kronos native dispatch overlays a private Qt config and checks exact raw-SDL2 routing at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Kronos native dispatch overlays a private Qt config and checks exact raw-SDL2 routing at launch; no devices were opened."
                             : duckstationSetups.atariPlusPlusNative
-                            ? "Staged. Save settings in the main page. Atari++ native dispatch overlays only the copied config and exact joydev nodes while retaining media/save/state paths; no devices were opened."
+                            ? "Staged. Settings save automatically. Atari++ native dispatch overlays only the copied config and exact joydev nodes while retaining media/save/state paths; no devices were opened."
                             : duckstationSetups.aranymNative
-                            ? "Staged. Save settings in the main page. ARAnyM native dispatch overlays only the copied config and rechecks exact SDL2 slot/instance routing while retaining TOS/media/save/state paths; no devices were opened."
+                            ? "Staged. Settings save automatically. ARAnyM native dispatch overlays only the copied config and rechecks exact SDL2 slot/instance routing while retaining TOS/media/save/state paths; no devices were opened."
                             : duckstationSetups.atari800Native
-                            ? "Staged. Save settings in the main page. Atari800 native dispatch overlays only the selected config and rechecks exact SDL2 name, duplicate-slot, and raw-control routing while retaining media, firmware and state paths; no devices were opened."
+                            ? "Staged. Settings save automatically. Atari800 native dispatch overlays only the selected config and rechecks exact SDL2 name, duplicate-slot, and raw-control routing while retaining media, firmware and state paths; no devices were opened."
                             : duckstationSetups.nanoboyadvanceNative
-                            ? "Staged. Save settings in the main page. NanoBoyAdvance native dispatch overlays only a copied config and rechecks the unique SDL3 GUID, raw controls, configured BIOS, and save/state directory; no devices were opened."
+                            ? "Staged. Settings save automatically. NanoBoyAdvance native dispatch overlays only a copied config and rechecks the unique SDL3 GUID, raw controls, configured BIOS, and save/state directory; no devices were opened."
                             : duckstationSetups.vbaMNative
-                            ? "Staged. Save settings in the main page. VBA-M native dispatch passes an explicit private Qt/wx config and rechecks raw SDL routing, configured persistence roots, and any active GBA BIOS; no devices were opened."
+                            ? "Staged. Settings save automatically. VBA-M native dispatch passes an explicit private Qt/wx config and rechecks raw SDL routing, configured persistence roots, and any active GBA BIOS; no devices were opened."
                             : duckstationSetups.eightySixBoxNative
-                            ? "Staged. Save settings in the main page. 86Box native dispatch overlays the machine config and rechecks raw SDL2 device order and controls while leaving guest disks and ROM paths native; no devices were opened."
+                            ? "Staged. Settings save automatically. 86Box native dispatch overlays the machine config and rechecks raw SDL2 device order and controls while leaving guest disks and ROM paths native; no devices were opened."
                             : duckstationSetups.caprice32Native
-                            ? "Staged. Save settings in the main page. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
                             : duckstationSetups.vita3kNative
-                            ? "Staged. Save settings in the main page. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
                             : duckstationSetups.playNative
-                            ? "Staged. Save settings in the main page. Play! native dispatch runs in a session directory with a private input profile and rechecks evdev routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Play! native dispatch runs in a session directory with a private input profile and rechecks evdev routes at launch; no devices were opened."
                             : duckstationSetups.ep128emuNative
-                            ? "Staged. Save settings in the main page. ep128emu native dispatch stages a session config and rechecks SDL slot 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. ep128emu native dispatch stages a session config and rechecks SDL slot 0 at launch; no devices were opened."
                             : duckstationSetups.adamemNative
-                            ? "Staged. Save settings in the main page. ADAMEm native dispatch stages a private adamem.joy and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. ADAMEm native dispatch stages a private adamem.joy and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.vector06sdlNative
-                            ? "Staged. Save settings in the main page. vector06sdl native dispatch stages a session gamecontrollerdb.txt and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. vector06sdl native dispatch stages a session gamecontrollerdb.txt and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.simcoupeNative
-                            ? "Staged. Save settings in the main page. SimCoupe native dispatch stages a session SimCoupe.cfg and rechecks exact SDL routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. SimCoupe native dispatch stages a session SimCoupe.cfg and rechecks exact SDL routes at launch; no devices were opened."
                             : duckstationSetups.pcemNative
-                            ? "Staged. Save settings in the main page. PCem native dispatch passes a private machine config and rechecks SDL slot 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. PCem native dispatch passes a private machine config and rechecks SDL slot 0 at launch; no devices were opened."
                             : duckstationSetups.tsugaruNative
-                            ? "Staged. Save settings in the main page. Tsugaru native dispatch passes explicit flags and rechecks joydev slot 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Tsugaru native dispatch passes explicit flags and rechecks joydev slot 0 at launch; no devices were opened."
                             : duckstationSetups.touchhleNative
-                            ? "Staged. Save settings in the main page. touchHLE native dispatch passes touch options and rechecks exact SDL2 button routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. touchHLE native dispatch passes touch options and rechecks exact SDL2 button routes at launch; no devices were opened."
                             : duckstationSetups.openborNative
-                            ? "Staged. Save settings in the main page. OpenBOR native dispatch stages a session Saves/<pak>.cfg and rechecks SDL slot 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. OpenBOR native dispatch stages a session Saves/<pak>.cfg and rechecks SDL slot 0 at launch; no devices were opened."
                             : duckstationSetups.supermodelNative
-                            ? "Staged. Save settings in the main page. Supermodel native dispatch stages a session Config/Supermodel.ini and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Supermodel native dispatch stages a session Config/Supermodel.ini and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.panda3dsNative
-                            ? "Staged. Save settings in the main page. Panda3DS native dispatch runs in a session directory with a private config.toml and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Panda3DS native dispatch runs in a session directory with a private config.toml and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.dreampotatoNative
-                            ? "Staged. Save settings in the main page. DreamPotato native dispatch patches a private configuration.json and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. DreamPotato native dispatch patches a private configuration.json and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.ymirNative
-                            ? "Staged. Save settings in the main page. Ymir native dispatch stages a session profile with a patched Ymir.toml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Ymir native dispatch stages a session profile with a patched Ymir.toml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
                             : duckstationSetups.shadps4Native
-                            ? "Staged. Save settings in the main page. shadPS4 native dispatch stages default.ini plus the per-game file and rechecks gamepad order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. shadPS4 native dispatch stages default.ini plus the per-game file and rechecks gamepad order at launch; no devices were opened."
                             : duckstationSetups.azaharNative
-                            ? "Staged. Save settings in the main page. Azahar native dispatch runs in a session directory with a private qt-config.ini and rechecks exact SDL2 gamepad routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Azahar native dispatch runs in a session directory with a private qt-config.ini and rechecks exact SDL2 gamepad routes at launch; no devices were opened."
                             : duckstationSetups.cemuNative
-                            ? "Staged. Save settings in the main page. Cemu native dispatch writes a private controller0.xml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Cemu native dispatch writes a private controller0.xml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
                             : duckstationSetups.eka2l1Native
-                            ? "Staged. Save settings in the main page. EKA2L1 native dispatch stages a session config plus keybind profile and rechecks exact SDL2 routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. EKA2L1 native dispatch stages a session config plus keybind profile and rechecks exact SDL2 routes at launch; no devices were opened."
                             : duckstationSetups.uzemNative
-                            ? "Staged. Save settings in the main page. Uzem native dispatch runs in a session directory with a private joystick-settings binary and rechecks SDL slot order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Uzem native dispatch runs in a session directory with a private joystick-settings binary and rechecks SDL slot order at launch; no devices were opened."
                             : duckstationSetups.pokeminiNative
-                            ? "Staged. Save settings in the main page. PokeMini native dispatch runs a symlink sandbox with a private pokemini.cfg and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. PokeMini native dispatch runs a symlink sandbox with a private pokemini.cfg and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.gbePlusNative
-                            ? "Staged. Save settings in the main page. GBE+ native dispatch writes a private gbe.ini and rechecks SDL index 0 at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. GBE+ native dispatch writes a private gbe.ini and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.amiberryNative
-                            ? "Staged. Save settings in the main page. Amiberry native dispatch writes a private gamecontrollerdb plus joyport fragment and rechecks exact SDL3 routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Amiberry native dispatch writes a private gamecontrollerdb plus joyport fragment and rechecks exact SDL3 routes at launch; no devices were opened."
                             : duckstationSetups.fuseNative
-                            ? "Staged. Save settings in the main page. Fuse native dispatch patches a private fuserc and rechecks exact SDL slot order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Fuse native dispatch patches a private fuserc and rechecks exact SDL slot order at launch; no devices were opened."
                             : duckstationSetups.linappleNative
-                            ? "Staged. Save settings in the main page. LinApple native dispatch patches a private linapple.conf and rechecks exact SDL routes at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. LinApple native dispatch patches a private linapple.conf and rechecks exact SDL routes at launch; no devices were opened."
                             : duckstationSetups.skyemuNative
-                            ? "Staged. Save settings in the main page. SkyEmu native dispatch writes a private <name>-bindings.bin and rechecks exact SDL device order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. SkyEmu native dispatch writes a private <name>-bindings.bin and rechecks exact SDL device order at launch; no devices were opened."
                             : duckstationSetups.nestopiaUeNative
-                            ? "Staged. Save settings in the main page. Nestopia native dispatch writes a private nestopia.conf/input.conf pair and rechecks exact SDL enumeration order at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Nestopia native dispatch writes a private nestopia.conf/input.conf pair and rechecks exact SDL enumeration order at launch; no devices were opened."
                             : duckstationSetups.picodriveNative
-                            ? "Staged. Save settings in the main page. PicoDrive native dispatch writes a private binddev/bind config and rechecks exact SDL device order and controls at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. PicoDrive native dispatch writes a private binddev/bind config and rechecks exact SDL device order and controls at launch; no devices were opened."
                             : duckstationSetups.gambatteNative
-                            ? "Staged. Save settings in the main page. Gambatte native dispatch writes a private gambatte_qt.conf [input] group and rechecks exact SDL2 device order and controls at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Gambatte native dispatch writes a private gambatte_qt.conf [input] group and rechecks exact SDL2 device order and controls at launch; no devices were opened."
                             : duckstationSetups.a7800Native
-                            ? "Staged. Save settings in the main page. A7800 native dispatch creates a private controller profile and filtered cfg directory, then rechecks exact old-fork SDL2 name/item routing and child ownership at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. A7800 native dispatch creates a private controller profile and filtered cfg directory, then rechecks exact old-fork SDL2 name/item routing and child ownership at launch; no devices were opened."
                             : duckstationSetups.b2Native
-                            ? "Staged. Save settings in the main page. b2 native dispatch writes a private b2.json while leaving disk images in place; no devices were opened."
+                            ? "Staged. Settings save automatically. b2 native dispatch writes a private b2.json while leaving disk images in place; no devices were opened."
                             : duckstationSetups.hypseusNative
-                            ? "Staged. Save settings in the main page. Hypseus native dispatch writes a private keymap/home, fixes SDL3 Gamepad order, and preserves the selected NVRAM directory; no devices were opened."
+                            ? "Staged. Settings save automatically. Hypseus native dispatch writes a private keymap/home, fixes SDL3 Gamepad order, and preserves the selected NVRAM directory; no devices were opened."
                             : duckstationSetups.rmgNative
-                            ? "Staged. Save settings in the main page. RMG native dispatch writes private base input-plugin profiles while preserving native save/state roots; no devices were opened."
+                            ? "Staged. Settings save automatically. RMG native dispatch writes private base input-plugin profiles while preserving native save/state roots; no devices were opened."
                             : duckstationSetups.simple64Native
-                            ? "Staged. Save settings in the main page. simple64 native dispatch stages private input profiles and settings while preserving its native save root; no devices were opened."
+                            ? "Staged. Settings save automatically. simple64 native dispatch stages private input profiles and settings while preserving its native save root; no devices were opened."
                             : duckstationSetups.scummvmNative
-                            ? "Staged. Save settings in the main page. ScummVM native dispatch writes a private ini target at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. ScummVM native dispatch writes a private ini target at launch; no devices were opened."
                             : duckstationSetups.openmsxNative
-                            ? "Staged. Save settings in the main page. openMSX native dispatch stages a private OPENMSX_HOME and settings file at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. openMSX native dispatch stages a private OPENMSX_HOME and settings file at launch; no devices were opened."
                             : duckstationSetups.desmumeNative
-                            ? "Staged. Save settings in the main page. DeSmuME native dispatch writes a private keyfile under an isolated XDG_CONFIG_HOME at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. DeSmuME native dispatch writes a private keyfile under an isolated XDG_CONFIG_HOME at launch; no devices were opened."
                             : duckstationSetups.xemuNative
-                            ? "Staged. Save settings in the main page. xemu native dispatch writes a private -config_path configuration at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. xemu native dispatch writes a private -config_path configuration at launch; no devices were opened."
                             : duckstationSetups.blastemNative
-                            ? "Staged. Save settings in the main page. BlastEm native dispatch writes a private blastem.cfg under an isolated HOME at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. BlastEm native dispatch writes a private blastem.cfg under an isolated HOME at launch; no devices were opened."
                             : duckstationSetups.mesen2Native
-                            ? "Staged. Save settings in the main page. Mesen2 native dispatch writes a private settings.json under an isolated XDG_DATA_HOME at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Mesen2 native dispatch writes a private settings.json under an isolated XDG_DATA_HOME at launch; no devices were opened."
                             : duckstationSetups.hatariNative
-                            ? "Staged. Save settings in the main page. Hatari native dispatch stages a private HOME and -c configuration at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Hatari native dispatch stages a private HOME and -c configuration at launch; no devices were opened."
                             : duckstationSetups.viceNative
-                            ? "Staged. Save settings in the main page. VICE native dispatch stages a private -config/-joymap pair at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. VICE native dispatch stages a private -config/-joymap pair at launch; no devices were opened."
                             : duckstationSetups.stellaNative
-                            ? "Staged. Save settings in the main page. Stella native dispatch writes a private stella.sqlite3 under its -basedir at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. Stella native dispatch writes a private stella.sqlite3 under its -basedir at launch; no devices were opened."
                             : duckstationSetups.bsnes
-                            ? "Staged. Save settings in the main page. bsnes native dispatch writes a private settings.bml at launch; no devices were opened."
+                            ? "Staged. Settings save automatically. bsnes native dispatch writes a private settings.bml at launch; no devices were opened."
                             : duckstationSetups.sameboy
-                            ? "Staged. Save settings in the main page. SameBoy native dispatch is partial; runtime details are user-declared and tilt-game axes remain unresolved; no devices were opened."
+                            ? "Staged. Settings save automatically. SameBoy native dispatch is partial; runtime details are user-declared and tilt-game axes remain unresolved; no devices were opened."
                             : duckstationSetups.fceux
-                            ? "Staged. Save settings in the main page. FCEUX native dispatch is partial: ROM device overrides remain unresolved. No devices were opened."
+                            ? "Staged. Settings save automatically. FCEUX native dispatch is partial: ROM device overrides remain unresolved. No devices were opened."
                             : duckstationSetups.punes
-                            ? "Staged. Save settings in the main page. puNES launch will verify the exact Flatpak runtime, private configs, fixed target evdev paths, and persistent native data root; no devices were opened while staging."
+                            ? "Staged. Settings save automatically. puNES launch will verify the exact Flatpak runtime, private configs, fixed target evdev paths, and persistent native data root; no devices were opened while staging."
                             : duckstationSetups.nestopia
-                            ? "Staged. Save settings in the main page. Nestopia launch will verify the exact Flatpak runtime, private configs, both controller paths, and persistent native data root; no devices were opened while staging."
+                            ? "Staged. Settings save automatically. Nestopia launch will verify the exact Flatpak runtime, private configs, both controller paths, and persistent native data root; no devices were opened while staging."
                             : duckstationSetups.snes9x
-                            ? "Staged. Save settings in the main page. Native Snes9x launch checks runtime and controller routing; no devices were opened while staging."
+                            ? "Staged. Settings save automatically. Native Snes9x launch checks runtime and controller routing; no devices were opened while staging."
                             : duckstationSetups.dolphin
-                            ? "Staged. Save settings in the main page. No devices were opened; native launch checks run when starting a game."
+                            ? "Staged. Settings save automatically. No devices were opened; native launch checks run when starting a game."
                             : duckstationSetups.mgba
-                            ? "Staged. Save settings in the main page. Native mGBA launch will resolve and check the controller; no devices were opened while staging."
+                            ? "Staged. Settings save automatically. Native mGBA launch will resolve and check the controller; no devices were opened while staging."
                             : duckstationSetups.ppsspp
-                            ? "Staged. Save settings in the main page. Native PPSSPP launch will capture and confirm the mapping; no devices were opened while staging."
-                            : "Staged. Save settings in the main page. Native launch validates the configured runtime and confirms actual startup routing; staging opens no devices.")
+                            ? "Staged. Settings save automatically. Native PPSSPP launch will capture and confirm the mapping; no devices were opened while staging."
+                            : "Staged. Settings save automatically. Native launch validates the configured runtime and confirms actual startup routing; staging opens no devices.")
                     }
                 }
                 LbButton { text: "Close"; onClicked: duckstationSetups.close() }
@@ -1664,7 +1664,7 @@ ColumnLayout {
                     text: "Stage settings"
                     onClicked: {
                         const error = setup.settingsModel.stage_relative_device_settings(relativeEditor.text)
-                        relativeStatus.text = error || "Staged. Save settings in the main page to persist this list. No device was opened."
+                        relativeStatus.text = error || "Staged. Settings save automatically. No device was opened."
                     }
                 }
                 LbButton { text: "Close"; onClicked: relativeSettings.close() }
@@ -1682,7 +1682,7 @@ ColumnLayout {
             currentIndex: { setup.revision; return ids.indexOf(setup.settingsModel.mame_arcade_layout()) }
             onActivated: {
                 const error = setup.settingsModel.choose_mame_arcade_layout(ids[index])
-                mameDefaultStatus.text = error || "Arcade default staged. Save settings to persist it."
+                mameDefaultStatus.text = error || "Arcade default staged; settings save automatically."
             }
         }
         LbButton {
@@ -1744,7 +1744,7 @@ ColumnLayout {
         checked: { setup.revision; return setup.settingsModel.mame_dependency_discovery() }
         onToggled: {
             setup.settingsModel.choose_mame_dependency_discovery(checked)
-            mameDefaultStatus.text = "Dependency discovery staged. Each required ROM set needs its own archive in that folder; CHDs may use set/parent subfolders. Merged archives need an explicit setup. Save settings to persist this choice."
+            mameDefaultStatus.text = "Dependency discovery staged. Each required ROM set needs its own archive in that folder; CHDs may use set/parent subfolders. Merged archives need an explicit setup. This choice saves automatically."
         }
     }
     LbButton {
@@ -1878,7 +1878,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     text: nativeCapture.targetControls.length
-                        ? "Choose which calibrated physical control this gesture represents. Use Save settings to keep recorded bindings. Native BizHawk digital pads and directly representable DualShock sticks use these records; asymmetric or composite stick mappings still need normalized transport. This implementation has not been tested yet."
+                        ? "Choose which calibrated physical control this gesture represents. Recorded bindings save automatically. Native BizHawk digital pads and directly representable DualShock sticks use these records; asymmetric or composite stick mappings still need normalized transport. This implementation has not been tested yet."
                         : "Choose a layout and save physical calibration first, then reopen this dialog to record logical bindings."
                     color: "#ffb454"
                 }
@@ -1932,7 +1932,7 @@ ColumnLayout {
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: "This removes scoped SDL2 bindings for this controller and runtime only. Other scopes and legacy fallback bindings remain unchanged. Legacy bindings may apply again after clearing this scope. The change reaches disk only when you save settings."
+            text: "This removes scoped SDL2 bindings for this controller and runtime only. Other scopes and legacy fallback bindings remain unchanged. Legacy bindings may apply again after clearing this scope. The change saves automatically."
         }
         onAccepted: setup.settingsModel.clear_scoped_native_controller_calibration(controllerId, runtimeKey)
     }
@@ -2020,7 +2020,7 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
-        text: "For two-button systems, horizontal pads keep their comfortable left/right layout; diamond pads use left for run and bottom for jump. Save settings after changes."
+        text: "For two-button systems, horizontal pads keep their comfortable left/right layout; diamond pads use left for run and bottom for jump. Changes save automatically."
         wrapMode: Text.WordWrap
         color: "#95a2b6"
     }

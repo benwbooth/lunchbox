@@ -1810,7 +1810,7 @@ impl qobject::SettingsModel {
                     && self.as_ref().torrent_library_directory().is_empty()
                 {
                     format!(
-                        "Connected to qBittorrent {}. Its download path is {detected_path}; choose the matching folder on this computer below, then save.",
+                        "Connected to qBittorrent {}. Its download path is {detected_path}; choose the matching folder on this computer below. Settings save automatically.",
                         details.version,
                     )
                 } else {
@@ -1922,7 +1922,7 @@ impl qobject::SettingsModel {
         self.as_mut().sync_primary_region();
         self.as_mut().bump_region_revision();
         self.as_mut().set_message(qstring(
-            "Region priority changed. Save settings to apply it to Minerva results.",
+            "Region priority changed; settings save automatically for Minerva results.",
         ));
     }
 
@@ -1932,7 +1932,7 @@ impl qobject::SettingsModel {
         self.as_mut().sync_primary_region();
         self.as_mut().bump_region_revision();
         self.as_mut().set_message(qstring(
-            "Default region priority restored. Save settings to apply it.",
+            "Default region priority restored; settings save automatically.",
         ));
     }
 
@@ -1978,7 +1978,7 @@ impl qobject::SettingsModel {
             .insert(to, provider);
         self.as_mut().bump_media_provider_revision();
         self.as_mut().set_message(qstring(
-            "Media source priority changed. Save settings to reindex cached media.",
+            "Media source priority changed; settings save automatically before cached media is reindexed.",
         ));
     }
 
@@ -1987,7 +1987,7 @@ impl qobject::SettingsModel {
             crate::media::default_provider_priority();
         self.as_mut().bump_media_provider_revision();
         self.as_mut().set_message(qstring(
-            "Default media source priority restored. Save settings to reindex cached media.",
+            "Default media source priority restored; settings save automatically before cached media is reindexed.",
         ));
     }
 
@@ -8122,7 +8122,7 @@ impl qobject::SettingsModel {
             Ok(mapping) => {
                 self.as_mut().rust_mut().controller_mapping = mapping;
                 self.as_mut().controller_settings_changed();
-                self.as_mut().set_message(qstring("MAME setup staged. Save settings to keep it. No runtime or device was opened; native fields and physical inputs will be checked at launch."));
+                self.as_mut().set_message(qstring("MAME setup staged; settings save automatically. No runtime or device was opened; native fields and physical inputs will be checked at launch."));
                 QString::default()
             }
             Err(error) => qstring(format!("Invalid MAME setup: {error:#}")),
@@ -8141,7 +8141,7 @@ impl qobject::SettingsModel {
         }
         self.as_mut().rust_mut().controller_mapping = mapping;
         self.as_mut().controller_settings_changed();
-        self.as_mut().set_message(qstring("MAME setup removed from staged settings. Save settings to keep this change. Game files and calibrations are unchanged."));
+        self.as_mut().set_message(qstring("MAME setup removed from staged settings; changes save automatically. Game files and calibrations are unchanged."));
         QString::default()
     }
 
@@ -8840,7 +8840,7 @@ impl qobject::SettingsModel {
             Ok(mapping) => {
                 self.as_mut().rust_mut().controller_mapping = mapping;
                 self.as_mut().controller_settings_changed();
-                self.as_mut().set_message(qstring("FBNeo setup staged. Save settings to keep it. No core or input device was started; the reviewed contract will be checked again at launch."));
+                self.as_mut().set_message(qstring("FBNeo setup staged; settings save automatically. No core or input device was started; the reviewed contract will be checked again at launch."));
                 QString::default()
             }
             Err(error) => qstring(format!("Invalid FBNeo controller setup: {error:#}")),
@@ -8859,7 +8859,7 @@ impl qobject::SettingsModel {
         }
         self.as_mut().rust_mut().controller_mapping = mapping;
         self.as_mut().controller_settings_changed();
-        self.as_mut().set_message(qstring("FBNeo setup removed from staged settings. Save settings to keep this change. Game files and physical calibrations are unchanged."));
+        self.as_mut().set_message(qstring("FBNeo setup removed from staged settings; changes save automatically. Game files and physical calibrations are unchanged."));
         QString::default()
     }
 
@@ -8898,7 +8898,7 @@ impl qobject::SettingsModel {
         }
         self.as_mut().controller_settings_changed();
         qstring(
-            "Mode staged. Save settings to persist it. This selects a target mode, not new physical button mappings.",
+            "Mode staged; settings save automatically. This selects a target mode, not new physical button mappings.",
         )
     }
 
@@ -9183,7 +9183,7 @@ impl qobject::SettingsModel {
                 self.as_mut().rust_mut().controller_mapping = mapping;
                 self.as_mut().controller_settings_changed();
                 self.as_mut().set_native_capture_status(qstring(
-                    "Runtime-scoped logical binding recorded. Other runtime and legacy bindings are unchanged. Save settings to keep it.",
+                    "Runtime-scoped logical binding recorded. Other runtime and legacy bindings are unchanged. Settings save automatically.",
                 ));
                 QString::default()
             }
@@ -9556,7 +9556,7 @@ impl qobject::SettingsModel {
                 self.as_mut().cancel_native_controller_capture();
                 self.as_mut().rust_mut().controller_mapping = mapping;
                 self.as_mut().controller_settings_changed();
-                self.as_mut().set_message(qstring("Selected native setup removed from staged settings. All calibration records and other setups are preserved. Save settings to keep the change."));
+                self.as_mut().set_message(qstring("Selected native setup removed from staged settings. All calibration records and other setups are preserved. Changes save automatically."));
                 QString::default()
             }
             Err(error) => qstring(format!("Cannot remove native setup: {error:#}")),
@@ -9623,7 +9623,7 @@ impl qobject::SettingsModel {
                 self.as_mut().cancel_native_controller_capture();
                 self.as_mut().rust_mut().controller_mapping = mapping;
                 self.as_mut().controller_settings_changed();
-                self.as_mut().set_message(qstring("Native controller runtime setup recorded. Save settings to keep it. No emulator or input probe was started."));
+                self.as_mut().set_message(qstring("Native controller runtime setup recorded; settings save automatically. No emulator or input probe was started."));
                 QString::default()
             }
             Err(error) => qstring(format!("Invalid native runtime setup: {error:#}")),
@@ -9698,7 +9698,7 @@ impl qobject::SettingsModel {
             .remove(&device.to_string());
         if removed.is_some() {
             self.as_mut().controller_settings_changed();
-            self.as_mut().set_native_capture_status(qstring("Logical bindings cleared from staged settings. Save settings to keep this change. Physical calibration is unchanged."));
+            self.as_mut().set_native_capture_status(qstring("Logical bindings cleared from staged settings; changes save automatically. Physical calibration is unchanged."));
         }
     }
 
@@ -9924,7 +9924,7 @@ impl qobject::SettingsModel {
             .calibrations
             .insert(id, calibration);
         self.as_mut().controller_settings_changed();
-        self.as_mut().set_message(qstring(format!("Controller calibration recorded. Save settings to keep it. {invalidated} stale SDL2 logical bindings removed; unchanged bindings were preserved. Supported launch adapters apply calibration automatically; others still need adapter support.")));
+        self.as_mut().set_message(qstring(format!("Controller calibration recorded; settings save automatically. {invalidated} stale SDL2 logical bindings removed; unchanged bindings were preserved. Supported launch adapters apply calibration automatically; others still need adapter support.")));
         QString::default()
     }
 
@@ -11152,7 +11152,7 @@ impl qobject::SettingsModel {
             _ => unreachable!(),
         }
         self.as_mut().set_message(qstring(
-            "Directory selected. Save settings to keep this native path.",
+            "Directory selected; settings save automatically to keep this native path.",
         ));
     }
 
@@ -11584,7 +11584,7 @@ impl qobject::SettingsModel {
     fn controller_settings_changed(mut self: Pin<&mut Self>) {
         self.as_mut().bump_controller_revision();
         self.as_mut().set_message(qstring(
-            "Controller mapping changed. Save settings to apply it when games launch.",
+            "Controller mapping changed; settings save automatically for future launches.",
         ));
     }
 
