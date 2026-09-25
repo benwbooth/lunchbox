@@ -17,8 +17,8 @@ Rectangle {
     Keys.onSpacePressed: clicked()
 
     width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : parent ? parent.width : 228
-    // Two-line platform names ("Super Nintendo Entertainment System") get a
-    // taller row instead of being elided; single-line rows keep 43px.
+    // Long platform names grow vertically instead of being truncated;
+    // single-line rows keep 43px.
     height: Math.max(43, labelText.implicitHeight + 21)
     radius: 9
     color: active ? "#272c34" : hover.hovered ? "#1b2330" : "transparent"
@@ -77,6 +77,7 @@ Rectangle {
     }
     Text {
         id: labelText
+        objectName: "sidebarNavLabel"
         text: nav.label
         anchors.left: parent.left
         anchors.leftMargin: 54
@@ -85,11 +86,10 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideNone
         fontSizeMode: Text.HorizontalFit
-        minimumPixelSize: 10
-        maximumLineCount: 2
-        wrapMode: Text.WordWrap
+        minimumPixelSize: 9
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: nav.active ? "#f4f7fb" : "#c0c8d4"
-        font.pixelSize: 14
+        font.pixelSize: 12
         font.weight: nav.active ? Font.DemiBold : Font.Medium
     }
     ToolTip.visible: hover.hovered
