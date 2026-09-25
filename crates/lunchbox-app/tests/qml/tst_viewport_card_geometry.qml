@@ -3,7 +3,17 @@ import QtTest
 import "../../qml" as Lunchbox
 
 TestCase {
+    id: testCase
     name: "ViewportCardGeometry"
+    when: windowShown
+    visible: true
+    width: 1024
+    height: 800
+    property bool staticHoverActive: false
+    readonly property bool dynamicHover: dynamicHandler.hovered
+                                         && dynamicGeometry.hoverContainsViewportPoint(
+                                             dynamicHandler.point.scenePosition.x,
+                                             dynamicHandler.point.scenePosition.y)
 
     Lunchbox.ViewportCardGeometry {
         id: geometry
@@ -20,12 +30,58 @@ TestCase {
         animated: false
     }
 
+    Item {
+        id: hoverCapture
+        visible: testCase.staticHoverActive
+        x: geometry.hoverViewportX
+        y: geometry.hoverViewportY
+        width: geometry.hoverWidth
+        height: geometry.hoverHeight
+        HoverHandler { id: hoverHandler }
+    }
+    readonly property bool effectiveHover: hoverHandler.hovered
+                                           && geometry.hoverContainsViewportPoint(
+                                               hoverHandler.point.scenePosition.x,
+                                               hoverHandler.point.scenePosition.y)
+
+    Lunchbox.ViewportCardGeometry {
+        id: dynamicGeometry
+        expanded: testCase.dynamicHover
+        baseWidth: 200
+        baseHeight: 280
+        tileWidth: 216
+        tileHeight: 296
+        tileViewportX: 900
+        tileViewportY: 700
+        viewportWidth: 1000
+        viewportHeight: 800
+        trailingInset: 20
+    }
+    Item {
+        visible: !testCase.staticHoverActive
+        x: dynamicGeometry.tileViewportX
+        y: dynamicGeometry.tileViewportY
+        Item {
+            id: dynamicCapture
+            x: dynamicGeometry.expanded ? dynamicGeometry.hoverLocalX
+                                        : dynamicGeometry.localX
+            y: dynamicGeometry.expanded ? dynamicGeometry.hoverLocalY
+                                        : dynamicGeometry.localY
+            width: dynamicGeometry.expanded ? dynamicGeometry.hoverWidth
+                                            : dynamicGeometry.baseWidth
+            height: dynamicGeometry.expanded ? dynamicGeometry.hoverHeight
+                                             : dynamicGeometry.baseHeight
+            HoverHandler { id: dynamicHandler }
+        }
+    }
+
     function fuzzyCompare(actual, expected, message) {
         verify(Math.abs(actual - expected) < 0.01,
                message + ": expected " + expected + ", got " + actual)
     }
 
     function init() {
+        staticHoverActive = false
         geometry.expanded = true
         geometry.baseWidth = 200
         geometry.baseHeight = 280
@@ -78,6 +134,46 @@ TestCase {
         verify(geometry.hoverViewportY <= geometry.viewportHeight - geometry.margin)
         verify(geometry.hoverViewportBottom >= geometry.viewportHeight,
                "a pointer at the clipped bottom row remains inside the stable union")
+    }
+
+    function test_diagonal_edge_hover_excludes_empty_bounding_box_corners() {
+        geometry.tileViewportX = 900
+        geometry.tileViewportY = 700
+
+        verify(geometry.hoverContainsViewportPoint(930, 740),
+               "the original card still accepts hover during repositioning")
+        verify(geometry.hoverContainsViewportPoint(600, 260),
+               "the expanded card accepts hover after repositioning")
+        verify(!geometry.hoverContainsViewportPoint(600, 900),
+               "empty space below the expanded card must release hover")
+        verify(!geometry.hoverContainsViewportPoint(1000, 260),
+               "empty space beside the expanded card must not steal hover")
+    }
+
+    function test_hover_handler_releases_pointer_in_empty_corner() {
+        staticHoverActive = true
+        geometry.tileViewportX = 900
+        geometry.tileViewportY = 700
+
+        mouseMove(testCase, 600, 260)
+        tryCompare(testCase, "effectiveHover", true)
+        mouseMove(testCase, 990, 260)
+        tryCompare(testCase, "effectiveHover", false)
+        mouseMove(testCase, 920, 740)
+        tryCompare(testCase, "effectiveHover", true)
+    }
+
+    function test_hover_expands_then_collapses_without_rearming_in_empty_space() {
+        mouseMove(testCase, 500, 100)
+        tryCompare(testCase, "dynamicHover", false)
+        mouseMove(testCase, 930, 740)
+        tryCompare(testCase, "dynamicHover", true)
+        tryCompare(dynamicGeometry, "expansion", 2)
+        mouseMove(testCase, 990, 260)
+        tryCompare(testCase, "dynamicHover", false)
+        tryCompare(dynamicGeometry, "expansion", 1)
+        wait(200)
+        compare(testCase.dynamicHover, false)
     }
 
     function test_resting_bottom_rows_stay_inside_their_own_delegates() {

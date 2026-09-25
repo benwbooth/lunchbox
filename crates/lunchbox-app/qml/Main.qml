@@ -10357,8 +10357,17 @@ ApplicationWindow {
             // and pointer hover wins over the game retained in Details.
             readonly property bool focusedHighlight: grid.activeFocus
                                                      && grid.currentIndex === tile.index
-            readonly property bool hoverEmphasis: cardHover.hovered
-                                                 && !controllerFocusElsewhere
+            readonly property bool hoverEmphasis: {
+                if (!cardHover.hovered || controllerFocusElsewhere)
+                    return false
+                // Scene coordinates avoid a binding loop through the hover
+                // target's position, which changes when the card expands.
+                const pointer = grid.mapFromItem(
+                    null, cardHover.point.scenePosition.x,
+                    cardHover.point.scenePosition.y)
+                return cardGeometry.hoverContainsViewportPoint(pointer.x,
+                                                                pointer.y)
+            }
             readonly property bool hoverHighlight: !grid.activeFocus
                                                    && root.hoverPreviewTile === tile
             readonly property bool selectedHighlight: !grid.activeFocus
@@ -10480,6 +10489,7 @@ ApplicationWindow {
             onFavoriteProbeReadyChanged: runFavoriteProbe()
             onCollectionProbeReadyChanged: runCollectionProbe()
             onActiveFocusChanged: updatePreviewInterest()
+            onHoverEmphasisChanged: updatePreviewInterest()
             width: grid.cellWidth
             height: grid.cellHeight
             z: hoverEmphasis || previewRequested ? 100 : 0
@@ -10520,7 +10530,6 @@ ApplicationWindow {
 
                 HoverHandler {
                     id: cardHover
-                    onHoveredChanged: tile.updatePreviewInterest()
                 }
             }
 

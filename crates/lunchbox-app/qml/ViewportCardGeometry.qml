@@ -49,8 +49,8 @@ QtObject {
     // The hover target must not follow the animated card. At a viewport edge,
     // inward repositioning can otherwise move the card out from under a
     // stationary pointer; collapse moves it back and produces an arm/disarm
-    // loop. This stable region is the union of the resting and fully expanded
-    // card rectangles.
+    // loop. Its bounding box encloses both card positions, but the actual hit
+    // shape must exclude the empty corners between those positions.
     readonly property real hoverViewportX: Math.min(restingViewportX,
                                                      maximumViewportX)
     readonly property real hoverViewportY: Math.min(restingViewportY,
@@ -65,6 +65,19 @@ QtObject {
     readonly property real hoverHeight: hoverViewportBottom - hoverViewportY
     readonly property real hoverLocalX: hoverViewportX - tileViewportX
     readonly property real hoverLocalY: hoverViewportY - tileViewportY
+
+    function hoverContainsViewportPoint(x, y) {
+        const inRestingCard = x >= restingViewportX
+                              && x < restingViewportX + baseWidth
+                              && y >= restingViewportY
+                              && y < restingViewportY + baseHeight
+        const inExpandedCard = x >= maximumViewportX
+                               && x < maximumViewportX + maximumCardWidth
+                               && y >= maximumViewportY
+                               && y < maximumViewportY + maximumCardHeight
+        return inRestingCard || inExpandedCard
+    }
+
     property real expansion: expanded ? maximumExpansion : 1
     readonly property real cardWidth: baseWidth * expansion
     readonly property real cardHeight: baseHeight * expansion
