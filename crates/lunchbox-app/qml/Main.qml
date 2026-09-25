@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.impl as ControlsImpl
 import QtQuick.Layouts
 import QtMultimedia
 import QtCore
@@ -25,7 +26,7 @@ ApplicationWindow {
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            || libraryViewUiProbe || listFilterUiProbe || alphabetUiProbe || hoverPreviewUiProbe
            || soundtrackUiProbe || settingsUiProbe || downloadStatusUiProbe
-           ? 1920 : 1440
+           ? 1920 : unifiedTopBarUiProbe ? 1040 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || webArtworkUiProbe || onboardingUiProbe
@@ -39,10 +40,13 @@ ApplicationWindow {
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             || libraryViewUiProbe || listFilterUiProbe || alphabetUiProbe || hoverPreviewUiProbe
             || soundtrackUiProbe || settingsUiProbe || downloadStatusUiProbe
-            ? 1200 : 900
+            ? 1200 : unifiedTopBarUiProbe ? 720 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: downloadPlanUiProbe ? "Lunchbox - Download Review Probe" : "Lunchbox"
+    // The library header is the window's sole top bar. Keep ordinary window
+    // semantics (taskbar, minimize, maximize) while replacing only its frame.
+    flags: Qt.Window | Qt.FramelessWindowHint
     color: palette.window
     // Keep each host's native UI family (Noto Sans on this KDE session,
     // Segoe UI on Windows, and the system UI font on macOS), including its
@@ -470,6 +474,8 @@ ApplicationWindow {
     readonly property string metadataProbeCustomSearch: "8BitDo Ultimate"
     ProbeArguments { id: probeArguments }
     readonly property bool automatedProbeRun: probeArguments.isProbeRun(Qt.application.arguments)
+    readonly property bool unifiedTopBarUiProbe:
+        Qt.application.arguments.indexOf("--unified-top-bar-ui-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -637,6 +643,13 @@ ApplicationWindow {
         root.requestActivate()
         console.log("LUNCHBOX_INSTANCE_RAISED startup_presented=" + root.startupPresented)
         root.pendingRaise = false
+    }
+
+    function toggleWindowMaximized() {
+        if (root.visibility === Window.Maximized)
+            root.showNormal()
+        else
+            root.showMaximized()
     }
 
     onWidthChanged: root.settleStartupResize()
@@ -2220,7 +2233,7 @@ ApplicationWindow {
         interval: 2000
         repeat: true
         running: true
-        onTriggered: gameDetails.refresh_emulator_session()
+        onTriggered: gameDetails.poll_emulator_session()
     }
 
     GamepadInput {
@@ -7992,6 +8005,53 @@ ApplicationWindow {
     }
 
     Timer {
+        interval: 80
+        running: root.unifiedTopBarUiProbe
+        repeat: true
+        onTriggered: {
+            if (!library.ready || library.filtering || !gameViewLoader.item)
+                return
+            stop()
+            const ordered = brandRow.x + brandRow.width <= searchField.x
+                && searchField.x + searchField.width <= headerActions.x
+                && headerActions.x + headerActions.width <= windowActions.x
+                && windowActions.x + windowActions.width <= header.width - 12
+                && searchField.width >= 160
+            if (!ordered || !(root.flags & Qt.FramelessWindowHint)) {
+                console.error("LUNCHBOX_UNIFIED_TOP_BAR_UI_FAILED ordered=" + ordered
+                              + " geometry=" + brandRow.x + "," + brandRow.width
+                              + ";" + searchField.x + "," + searchField.width
+                              + ";" + headerActions.x + "," + headerActions.width
+                              + ";" + windowActions.x + "," + windowActions.width
+                              + " flags=" + root.flags)
+                Qt.exit(2)
+                return
+            }
+            const report = function() {
+                console.log("LUNCHBOX_UNIFIED_TOP_BAR_UI_READY width=" + root.width
+                            + " search=" + searchField.width
+                            + " close_radius=" + closeWindowButton.background.radius
+                            + " close_color=" + closeWindowButton.background.color
+                            + " screenshot=" + root.screenshotOutput)
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                report()
+                return
+            }
+            header.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_UNIFIED_TOP_BAR_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                report()
+            })
+        }
+    }
+
+    Timer {
         id: libraryViewProbeTimer
         interval: 80
         running: root.libraryViewUiProbe
@@ -11227,149 +11287,215 @@ ApplicationWindow {
 
     Rectangle {
         id: header
+        objectName: "unifiedTopBar"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: 70
+        height: 62
         color: "#101620"
         border.color: root.line
 
-        Row {
-            anchors.left: parent.left
-            anchors.leftMargin: 22
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 11
-            AppIcon {
-                width: 35
-                height: 35
-            }
-            Column {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: -2
-                Text {
-                    text: "LUNCHBOX"
-                    color: root.ink
-                    font.pixelSize: 17
-                    font.weight: Font.Black
-                    font.letterSpacing: 1.2
-                }
-                Text {
-                    text: "PLAY WITHOUT FRICTION"
-                    color: root.muted
-                    font.pixelSize: 8
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.1
-                }
-            }
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            onPressed: root.startSystemMove()
+            onDoubleClicked: root.toggleWindowMaximized()
         }
 
-        // Quiet build identity: which revision is running and when it was
-        // compiled. Especially useful while iterating with `dev.sh`.
-        Text {
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.leftMargin: 8
-            anchors.topMargin: 4
-            text: {
-                const seconds = Number(buildInfo.built_unix)
-                const when = isFinite(seconds) && seconds > 0
-                    ? Qt.formatDateTime(new Date(seconds * 1000), "yyyy-MM-dd HH:mm")
-                    : ""
-                return "build " + buildInfo.build_hash
-                    + (when.length > 0 ? " · " + when : "")
-            }
-            color: root.muted
-            font.pixelSize: 9
-            opacity: 0.75
-            z: 5
-        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 19
+            anchors.rightMargin: 12
+            spacing: 12
 
-        ClearableSearchField {
-            id: searchField
-            anchors.centerIn: parent
-            width: Math.min(460, root.width * 0.34)
-            height: 40
-            leftPadding: 42
-            rightPadding: 42
-            searchIconVisible: true
-            placeholderText: "Search games, platforms, and tags"
-            placeholderTextColor: "#687488"
-            color: root.ink
-            selectionColor: root.accent
-            selectedTextColor: "#15100a"
-            font.pixelSize: 14
-            onTextEdited: {
-                root.rememberPlatformSearch(false)
-                root.scheduleFilter()
-            }
-            onClearRequested: {
-                root.rememberPlatformSearch(false)
-                root.scheduleFilter()
-            }
-            background: Rectangle {
-                radius: 11
-                color: "#0a0f16"
-                border.color: searchField.activeFocus ? root.accent : root.line
-                border.width: searchField.activeFocus ? 2 : 1
-            }
-        }
-
-        Row {
-            anchors.right: parent.right
-            anchors.rightMargin: 20
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 9
-            HeaderButton {
-                text: ""
-                implicitWidth: 42
-                leftPadding: 0
-                rightPadding: 0
-                onClicked: root.enterCouchMode()
-                contentItem: Image {
-                    source: "qrc:/qt/qml/Lunchbox/qml/icons/couch.svg"
-                    sourceSize.width: 24
-                    sourceSize.height: 24
-                    fillMode: Image.PreserveAspectFit
+            Row {
+                id: brandRow
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 10
+                AppIcon {
+                    width: 32
+                    height: 32
                 }
-                ToolTip.visible: hovered
-                ToolTip.text: "Couch mode"
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: -2
+                    Text {
+                        text: "LUNCHBOX"
+                        color: root.ink
+                        font.pixelSize: 16
+                        font.weight: Font.Black
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        text: "PLAY WITHOUT FRICTION"
+                        color: root.muted
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.1
+                    }
+                }
+                HoverHandler { id: brandHover }
+                ToolTip.visible: brandHover.hovered
+                ToolTip.text: {
+                    const seconds = Number(buildInfo.built_unix)
+                    const when = isFinite(seconds) && seconds > 0
+                        ? Qt.formatDateTime(new Date(seconds * 1000), "yyyy-MM-dd HH:mm")
+                        : ""
+                    return "Lunchbox build " + buildInfo.build_hash
+                        + (when.length > 0 ? " · " + when : "")
+                }
             }
-            HeaderButton {
-                text: "↓  " + downloadQueue.active_count
-                active: downloadsDrawer.opened || romDownloadStatus.expanded
-                onClicked: romDownloadStatus.toggle()
-                ToolTip.visible: hovered
-                ToolTip.text: "ROM download queue"
+
+            Item {
+                // Center search when there is room, but let it contract
+                // before the actions at the minimum window width.
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: Math.max(0, (root.width - 460) / 2
+                                                - brandRow.width - 43)
             }
-            HeaderButton {
-                text: "🔔  " + notificationHistory.count
-                implicitWidth: 62
-                leftPadding: 8
-                rightPadding: 8
-                active: notificationHistoryDialog.opened
-                onClicked: notificationHistoryDialog.open()
-                ToolTip.visible: hovered
-                ToolTip.text: "Notifications"
-                Accessible.name: "Notifications, " + notificationHistory.count + " saved"
+
+            ClearableSearchField {
+                id: searchField
+                Layout.fillWidth: true
+                Layout.preferredWidth: 460
+                Layout.maximumWidth: 460
+                Layout.minimumWidth: 160
+                Layout.preferredHeight: 40
+                leftPadding: 42
+                rightPadding: 42
+                searchIconVisible: true
+                placeholderText: "Search games, platforms, and tags"
+                placeholderTextColor: "#687488"
+                color: root.ink
+                selectionColor: root.accent
+                selectedTextColor: "#15100a"
+                font.pixelSize: 14
+                onTextEdited: {
+                    root.rememberPlatformSearch(false)
+                    root.scheduleFilter()
+                }
+                onClearRequested: {
+                    root.rememberPlatformSearch(false)
+                    root.scheduleFilter()
+                }
+                background: Rectangle {
+                    radius: 11
+                    color: "#0a0f16"
+                    border.color: searchField.activeFocus ? root.accent : root.line
+                    border.width: searchField.activeFocus ? 2 : 1
+                }
             }
-            HeaderButton {
-                text: "⚙"
-                implicitWidth: 42
-                leftPadding: 0
-                rightPadding: 0
-                onClicked: root.openSettingsFor("")
-                ToolTip.visible: hovered
-                ToolTip.text: "Settings"
+
+            Item {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
             }
-            HeaderButton {
-                text: library.loading ? "…" : "↻"
-                implicitWidth: 42
-                leftPadding: 0
-                rightPadding: 0
-                enabled: !library.loading
-                onClicked: library.reload()
-                ToolTip.visible: hovered
-                ToolTip.text: "Refresh library"
+
+            Row {
+                id: headerActions
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 7
+                HeaderButton {
+                    text: ""
+                    implicitWidth: 42
+                    leftPadding: 0
+                    rightPadding: 0
+                    onClicked: root.enterCouchMode()
+                    contentItem: Image {
+                        source: "qrc:/qt/qml/Lunchbox/qml/icons/couch.svg"
+                        sourceSize.width: 24
+                        sourceSize.height: 24
+                        fillMode: Image.PreserveAspectFit
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Couch mode"
+                }
+                HeaderButton {
+                    text: "↓  " + downloadQueue.active_count
+                    active: downloadsDrawer.opened || romDownloadStatus.expanded
+                    onClicked: romDownloadStatus.toggle()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "ROM download queue"
+                }
+                HeaderButton {
+                    text: "🔔  " + notificationHistory.count
+                    implicitWidth: 62
+                    leftPadding: 8
+                    rightPadding: 8
+                    active: notificationHistoryDialog.opened
+                    onClicked: notificationHistoryDialog.open()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Notifications"
+                    Accessible.name: "Notifications, " + notificationHistory.count + " saved"
+                }
+                HeaderButton {
+                    text: "⚙"
+                    implicitWidth: 42
+                    leftPadding: 0
+                    rightPadding: 0
+                    onClicked: root.openSettingsFor("")
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Settings"
+                }
+                HeaderButton {
+                    text: library.loading ? "…" : "↻"
+                    implicitWidth: 42
+                    leftPadding: 0
+                    rightPadding: 0
+                    enabled: !library.loading
+                    onClicked: library.reload()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Refresh library"
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.preferredHeight: 25
+                Layout.alignment: Qt.AlignVCenter
+                color: root.line
+            }
+
+            Row {
+                id: windowActions
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 2
+                WindowControlButton {
+                    width: 38
+                    height: 38
+                    icon.name: "window-minimize"
+                    icon.source: "qrc:/qt/qml/Lunchbox/qml/icons/window-minimize.svg"
+                    onClicked: root.showMinimized()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Minimize"
+                    Accessible.name: "Minimize window"
+                }
+                WindowControlButton {
+                    width: 38
+                    height: 38
+                    icon.name: root.visibility === Window.Maximized
+                               ? "window-restore" : "window-maximize"
+                    icon.source: root.visibility === Window.Maximized
+                                 ? "qrc:/qt/qml/Lunchbox/qml/icons/window-restore.svg"
+                                 : "qrc:/qt/qml/Lunchbox/qml/icons/window-maximize.svg"
+                    onClicked: root.toggleWindowMaximized()
+                    ToolTip.visible: hovered
+                    ToolTip.text: root.visibility === Window.Maximized ? "Restore" : "Maximize"
+                    Accessible.name: ToolTip.text + " window"
+                }
+                WindowControlButton {
+                    id: closeWindowButton
+                    width: 38
+                    height: 38
+                    destructive: true
+                    previewHover: root.unifiedTopBarUiProbe
+                    icon.name: "window-close"
+                    icon.source: "qrc:/qt/qml/Lunchbox/qml/icons/window-close.svg"
+                    onClicked: root.close()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Close"
+                    Accessible.name: "Close window"
+                }
             }
         }
     }
@@ -25870,6 +25996,130 @@ ApplicationWindow {
             text: library.startup_ms > 0 ? "native shell " + library.startup_ms + " ms" : "native Qt"
             color: "#566175"
             font.pixelSize: 10
+        }
+    }
+
+    component WindowControlButton: ToolButton {
+        id: windowControl
+        property bool destructive: false
+        property bool previewHover: false
+        readonly property bool showHover: hovered || previewHover
+        flat: true
+        display: AbstractButton.IconOnly
+        icon.width: 18
+        icon.height: 18
+        icon.color: windowControl.destructive && windowControl.showHover
+                    ? "#ffffff" : "#d9e4ef"
+        contentItem: Item {
+            ControlsImpl.IconImage {
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                sourceSize.width: 18
+                sourceSize.height: 18
+                fillMode: Image.PreserveAspectFit
+                name: windowControl.icon.name
+                source: windowControl.icon.source
+                color: windowControl.icon.color
+            }
+        }
+        background: Rectangle {
+            radius: width / 2
+            color: windowControl.down
+                   ? (windowControl.destructive ? "#8d2735" : "#34445a")
+                   : windowControl.showHover
+                     ? (windowControl.destructive ? "#b33342" : "#2b394b")
+                     : "transparent"
+            border.width: windowControl.visualFocus ? 1 : 0
+            border.color: root.accentCool
+        }
+    }
+
+    // Frameless windows still need the native compositor's resize operation.
+    // Only the narrow outer rim handles it; content and top-bar buttons retain
+    // their ordinary pointer interactions.
+    component ResizeArea: MouseArea {
+        required property int edges
+        acceptedButtons: Qt.LeftButton
+        onPressed: root.startSystemResize(edges)
+    }
+
+    Item {
+        anchors.fill: parent
+        z: 1100
+        visible: root.visibility === Window.Windowed
+
+        ResizeArea {
+            edges: Qt.TopEdge
+            cursorShape: Qt.SizeVerCursor
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            height: 5
+        }
+        ResizeArea {
+            edges: Qt.BottomEdge
+            cursorShape: Qt.SizeVerCursor
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            height: 7
+        }
+        ResizeArea {
+            edges: Qt.LeftEdge
+            cursorShape: Qt.SizeHorCursor
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 10
+            anchors.bottomMargin: 10
+            width: 6
+        }
+        ResizeArea {
+            edges: Qt.RightEdge
+            cursorShape: Qt.SizeHorCursor
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 10
+            anchors.bottomMargin: 10
+            width: 6
+        }
+        ResizeArea {
+            edges: Qt.TopEdge | Qt.LeftEdge
+            cursorShape: Qt.SizeFDiagCursor
+            anchors.left: parent.left
+            anchors.top: parent.top
+            width: 10
+            height: 10
+        }
+        ResizeArea {
+            edges: Qt.TopEdge | Qt.RightEdge
+            cursorShape: Qt.SizeBDiagCursor
+            anchors.right: parent.right
+            anchors.top: parent.top
+            width: 10
+            height: 10
+        }
+        ResizeArea {
+            edges: Qt.BottomEdge | Qt.LeftEdge
+            cursorShape: Qt.SizeBDiagCursor
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            width: 10
+            height: 10
+        }
+        ResizeArea {
+            edges: Qt.BottomEdge | Qt.RightEdge
+            cursorShape: Qt.SizeFDiagCursor
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            width: 10
+            height: 10
         }
     }
 }

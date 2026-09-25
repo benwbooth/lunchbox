@@ -2,7 +2,7 @@
 //!
 //! Lunchbox owns one library, one settings store and one set of running
 //! emulators, so a second GUI process must not start. The first process takes
-//! an advisory lock on `instance.lock` next to the state database and listens
+//! an advisory lock on `instance.lock` in its per-user directory and listens
 //! on a loopback socket; a later launch connects, asks the owner to raise its
 //! window, and exits.
 //!
@@ -12,6 +12,7 @@
 //! user's own data directory.
 
 use anyhow::{Context, Result};
+use directories::ProjectDirs;
 use fs2::FileExt;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -37,10 +38,11 @@ impl Drop for InstanceGuard {
 }
 
 fn paths() -> Result<(PathBuf, PathBuf)> {
-    let directory = crate::settings::state_database_path()?
-        .parent()
-        .map(Path::to_path_buf)
-        .context("state database path has no parent directory")?;
+    // The lock identifies the visible application, not a database. Otherwise
+    // --state-database could open a second desktop window beside the owner.
+    let directory = ProjectDirs::from("com", "Lunchbox", "Lunchbox")
+        .map(|dirs| dirs.data_local_dir().to_path_buf())
+        .context("could not determine the operating system application data directory")?;
     std::fs::create_dir_all(&directory)
         .with_context(|| format!("creating {}", directory.display()))?;
     Ok((

@@ -221,9 +221,9 @@ pub mod display_setup;
 mod download_plan;
 pub mod download_queue_model;
 mod emulator;
-mod emulator_session;
 mod emulator_manager;
 pub mod emulator_manager_model;
+mod emulator_session;
 pub mod emulator_update_model;
 mod emumovies;
 pub mod emumovies_model;
@@ -367,6 +367,13 @@ fn startup_controls_style() -> Option<&'static str> {
         requested_style.as_deref(),
         command_line_style,
     )
+}
+
+fn may_bypass_instance_guard(arguments: &[String], platform: Option<&str>) -> bool {
+    platform == Some("offscreen")
+        && arguments
+            .iter()
+            .any(|argument| argument.starts_with("--") && argument.ends_with("-ui-probe"))
 }
 
 fn needs_widget_application(
@@ -765,11 +772,13 @@ pub fn run() -> i32 {
         };
     }
 
-    // One Lunchbox owns the library, settings and running emulator sessions. A
-    // later launch raises the running window and exits instead of starting a
-    // second copy. Automated UI probes use isolated state databases and run
-    // alongside a developer's instance, so they bypass the guard.
-    let _instance_guard = if std::env::args().any(|argument| argument.contains("ui-probe")) {
+    // One visible Lunchbox owns the desktop. Headless UI probes may run
+    // alongside it, but a visible probe must raise the existing instance just
+    // like any other second launch.
+    let arguments = std::env::args().collect::<Vec<_>>();
+    let qpa_platform = std::env::var("QT_QPA_PLATFORM").ok();
+    let headless_ui_probe = may_bypass_instance_guard(&arguments, qpa_platform.as_deref());
+    let _instance_guard = if headless_ui_probe {
         None
     } else {
         match single_instance::request_or_own() {
@@ -784,7 +793,6 @@ pub fn run() -> i32 {
 
     let controls_style = startup_controls_style();
     let environment_style = std::env::var("QT_QUICK_CONTROLS_STYLE").ok();
-    let arguments = std::env::args().collect::<Vec<_>>();
     let command_line_style = arguments
         .windows(2)
         .find(|pair| pair[0] == "-style")
@@ -826,7 +834,20 @@ pub fn run() -> i32 {
 
 #[cfg(test)]
 mod controls_style_tests {
-    use super::preferred_controls_style;
+    use super::{may_bypass_instance_guard, preferred_controls_style};
+
+    #[test]
+    fn only_headless_ui_probes_may_run_beside_a_visible_instance() {
+        let normal = vec!["lunchbox".to_owned()];
+        let probe = vec![
+            "lunchbox".to_owned(),
+            "--unified-top-bar-ui-probe".to_owned(),
+        ];
+        assert!(!may_bypass_instance_guard(&normal, Some("offscreen")));
+        assert!(!may_bypass_instance_guard(&probe, Some("wayland")));
+        assert!(!may_bypass_instance_guard(&probe, None));
+        assert!(may_bypass_instance_guard(&probe, Some("offscreen")));
+    }
 
     #[test]
     fn kde_desktop_uses_desktop_controls() {

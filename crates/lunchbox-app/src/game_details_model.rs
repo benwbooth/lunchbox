@@ -369,6 +369,9 @@ pub mod qobject {
         fn refresh_emulator_session(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn poll_emulator_session(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn stop_emulator(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
@@ -861,6 +864,7 @@ pub struct GameDetailsModelRust {
     preparation_generation: u64,
     launch_generation: u64,
     session_generation: u64,
+    session_poll_in_flight: bool,
     discovery_cache: std::collections::HashMap<String, EmulatorDiscoveryResult>,
     details_cache: std::collections::HashMap<String, GameDetails>,
     activity_load_generation: u64,
@@ -1115,6 +1119,7 @@ impl Default for GameDetailsModelRust {
             preparation_generation: 0,
             launch_generation: 0,
             session_generation: 0,
+            session_poll_in_flight: false,
             discovery_cache: std::collections::HashMap::new(),
             details_cache: std::collections::HashMap::new(),
             activity_load_generation: 0,
@@ -6798,18 +6803,65 @@ impl qobject::GameDetailsModel {
 
     pub fn refresh_emulator_session(mut self: Pin<&mut Self>) {
         match crate::emulator_session::active() {
-            Ok(Some(session)) => {
-                self.as_mut().set_launch_busy(session.preparing());
-                self.as_mut().set_game_running(!session.preparing());
-                self.as_mut().set_session_title(qstring(session.title));
-            }
-            Ok(None) => {
-                self.as_mut().set_launch_busy(false);
-                self.as_mut().set_game_running(false);
-                self.as_mut().set_session_stopping(false);
-                self.as_mut().set_session_title(QString::default());
-            }
+            Ok(session) => self.as_mut().apply_emulator_session(session),
             Err(error) => eprintln!("LUNCHBOX_EMULATOR_SESSION_REFRESH_FAILED: {error:#}"),
+        }
+    }
+
+    fn apply_emulator_session(
+        mut self: Pin<&mut Self>,
+        session: Option<crate::emulator_session::Session>,
+    ) {
+        let preparing = session.as_ref().is_some_and(|session| session.preparing());
+        let running = session.as_ref().is_some_and(|session| !session.preparing());
+        let title = session
+            .as_ref()
+            .map_or("", |session| session.title.as_str());
+        if *self.as_ref().launch_busy() != preparing {
+            self.as_mut().set_launch_busy(preparing);
+        }
+        if *self.as_ref().game_running() != running {
+            self.as_mut().set_game_running(running);
+        }
+        if self.as_ref().session_title().to_string() != title {
+            self.as_mut().set_session_title(qstring(title));
+        }
+        if session.is_none() && *self.as_ref().session_stopping() {
+            self.as_mut().set_session_stopping(false);
+        }
+    }
+
+    /// The recurring process scan must never run on Qt's event thread: when
+    /// there is no persisted session, recovery searches the OS process list.
+    pub fn poll_emulator_session(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().session_poll_in_flight {
+            return;
+        }
+        self.as_mut().rust_mut().session_poll_in_flight = true;
+        let generation = self.as_ref().rust().session_generation;
+        let qt_thread = self.as_ref().qt_thread();
+        let spawned = std::thread::Builder::new()
+            .name("lunchbox-session-poll".into())
+            .spawn(move || {
+                let result = crate::emulator_session::active().map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().rust_mut().session_poll_in_flight = false;
+                    if generation != model.as_ref().rust().session_generation
+                        || *model.as_ref().session_stopping()
+                    {
+                        return;
+                    }
+                    match result {
+                        Ok(session) => model.as_mut().apply_emulator_session(session),
+                        Err(error) => {
+                            eprintln!("LUNCHBOX_EMULATOR_SESSION_REFRESH_FAILED: {error}")
+                        }
+                    }
+                });
+            });
+        if let Err(error) = spawned {
+            self.as_mut().rust_mut().session_poll_in_flight = false;
+            eprintln!("LUNCHBOX_EMULATOR_SESSION_POLL_FAILED: {error}");
         }
     }
 

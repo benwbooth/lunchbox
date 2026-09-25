@@ -301,10 +301,22 @@ fn generate_platform_resources() -> PathBuf {
     let icon_directory = manifest_directory.join("../../assets/platforms");
     let search_icon = manifest_directory.join("qml/icons/search.svg");
     let couch_icon = manifest_directory.join("qml/icons/couch.svg");
+    let window_minimize_icon = manifest_directory.join("qml/icons/window-minimize.svg");
+    let window_maximize_icon = manifest_directory.join("qml/icons/window-maximize.svg");
+    let window_restore_icon = manifest_directory.join("qml/icons/window-restore.svg");
+    let window_close_icon = manifest_directory.join("qml/icons/window-close.svg");
     let app_icon = manifest_directory.join("../../assets/lunchbox.svg");
     println!("cargo:rerun-if-changed={}", icon_directory.display());
     println!("cargo:rerun-if-changed={}", search_icon.display());
     println!("cargo:rerun-if-changed={}", couch_icon.display());
+    for icon in [
+        &window_minimize_icon,
+        &window_maximize_icon,
+        &window_restore_icon,
+        &window_close_icon,
+    ] {
+        println!("cargo:rerun-if-changed={}", icon.display());
+    }
     println!("cargo:rerun-if-changed={}", app_icon.display());
 
     let mut icons = fs::read_dir(&icon_directory)
@@ -333,9 +345,13 @@ fn generate_platform_resources() -> PathBuf {
     qrc.push_str("  </qresource>\n");
     writeln!(
         qrc,
-        "  <qresource prefix=\"/qt/qml/Lunchbox/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n    <file alias=\"couch.svg\">{}</file>\n    <file alias=\"lunchbox.svg\">{}</file>\n  </qresource>",
+        "  <qresource prefix=\"/qt/qml/Lunchbox/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n    <file alias=\"couch.svg\">{}</file>\n    <file alias=\"window-minimize.svg\">{}</file>\n    <file alias=\"window-maximize.svg\">{}</file>\n    <file alias=\"window-restore.svg\">{}</file>\n    <file alias=\"window-close.svg\">{}</file>\n    <file alias=\"lunchbox.svg\">{}</file>\n  </qresource>",
         search_icon.display(),
         couch_icon.display(),
+        window_minimize_icon.display(),
+        window_maximize_icon.display(),
+        window_restore_icon.display(),
+        window_close_icon.display(),
         app_icon.display()
     )
     .expect("writing search icon resource manifest");

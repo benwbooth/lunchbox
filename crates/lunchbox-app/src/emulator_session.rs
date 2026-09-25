@@ -126,7 +126,9 @@ fn owned_retroarch_orphan() -> Option<Session> {
     // Migration for games started before this record existed. The generated
     // Lunchbox config/content path distinguishes our session from a user's
     // independently launched RetroArch process.
-    let mut system = System::new_all();
+    // Refresh processes once. `new_all()` already refreshes everything, so
+    // pairing it with `refresh_processes` doubled the cost of every poll.
+    let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::All, true);
     let process = system.processes().values().find(|process| {
         is_process_leader(process.pid().as_u32())
