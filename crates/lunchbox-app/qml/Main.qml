@@ -3763,7 +3763,7 @@ ApplicationWindow {
                         && saveSync.local_folder_root.length > 0
                         && root.cloudLastSyncTarget) {
                     const destination = saveSync.local_folder_root
-                            + "/saves/v1/"
+                            + "/lunchbox/saves/v1/"
                             + root.cloudLastSyncTarget.emulator_slug
                             + "/" + root.cloudLastSyncTarget.runtime_platform
                             + "/current"

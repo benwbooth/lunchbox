@@ -1142,7 +1142,7 @@ mod tests {
             "Simulated device heads do not retain the expected merged history"
         );
         let provider_snapshot = snapshot_tree(provider_root.path())?;
-        let provider_prefix = "saves/v1/nestopia-ue/linux-flatpak";
+        let provider_prefix = "lunchbox/saves/v1/nestopia-ue/linux-flatpak";
         for expected in [
             format!("{provider_prefix}/devices/device-a.json"),
             format!("{provider_prefix}/devices/device-b.json"),

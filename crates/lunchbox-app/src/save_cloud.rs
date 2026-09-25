@@ -308,7 +308,8 @@ impl CloudStore {
                     "saved local save-sync root is not canonical ({})",
                     root.display()
                 );
-                let builder = Fs::default().root(path_to_utf8(&root)?);
+                let managed_root = prepare_local_folder_store_root(&root)?;
+                let builder = Fs::default().root(path_to_utf8(&managed_root)?);
                 Operator::new(builder).context("configuring local-folder save storage")?
             }
             CloudProvider::GoogleDrive => {
@@ -1172,7 +1173,15 @@ fn canonical_local_root(root: &Path) -> Result<std::path::PathBuf> {
     let canonical = root
         .canonicalize()
         .with_context(|| format!("canonicalizing local save-sync root {}", root.display()))?;
-    for relative in ["health", "saves", "saves/v1"] {
+    for relative in [
+        "health",
+        "saves",
+        "saves/v1",
+        "lunchbox",
+        "lunchbox/health",
+        "lunchbox/saves",
+        "lunchbox/saves/v1",
+    ] {
         let candidate = canonical.join(relative);
         match std::fs::symlink_metadata(&candidate) {
             Ok(metadata) => {
@@ -1196,6 +1205,68 @@ fn canonical_local_root(root: &Path) -> Result<std::path::PathBuf> {
         }
     }
     Ok(canonical)
+}
+
+fn prepare_local_folder_store_root(root: &Path) -> Result<std::path::PathBuf> {
+    let managed_root = root.join("lunchbox");
+    match std::fs::create_dir(&managed_root) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "creating Lunchbox save-sync folder {}",
+                    managed_root.display()
+                )
+            });
+        }
+    }
+    let metadata = std::fs::symlink_metadata(&managed_root)
+        .with_context(|| format!("inspecting {}", managed_root.display()))?;
+    ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        "Lunchbox save-sync folder must be a physical directory: {}",
+        managed_root.display()
+    );
+
+    let legacy_saves = root.join("saves");
+    let legacy_exists = match std::fs::symlink_metadata(&legacy_saves) {
+        Ok(metadata) => {
+            ensure!(
+                metadata.is_dir() && !metadata.file_type().is_symlink(),
+                "old save-sync folder must be a physical directory: {}",
+                legacy_saves.display()
+            );
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(error).with_context(|| format!("inspecting {}", legacy_saves.display()));
+        }
+    };
+    if legacy_exists {
+        let namespaced_saves = managed_root.join("saves");
+        match std::fs::symlink_metadata(&namespaced_saves) {
+            Ok(_) => anyhow::bail!(
+                "both old and new save-sync folders exist; refusing to choose between {} and {}",
+                legacy_saves.display(),
+                namespaced_saves.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("inspecting {}", namespaced_saves.display()));
+            }
+        }
+        std::fs::rename(&legacy_saves, &namespaced_saves).with_context(|| {
+            format!(
+                "moving existing save backups from {} to {}",
+                legacy_saves.display(),
+                namespaced_saves.display()
+            )
+        })?;
+    }
+    Ok(managed_root)
 }
 
 fn path_to_utf8(path: &Path) -> Result<&str> {
@@ -1371,7 +1442,7 @@ mod tests {
         let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
         store.probe().unwrap();
         assert_eq!(
-            std::fs::read_dir(directory.path().join("health"))
+            std::fs::read_dir(directory.path().join("lunchbox/health"))
                 .unwrap()
                 .count(),
             0
@@ -1394,7 +1465,7 @@ mod tests {
             .unwrap();
         let named = directory
             .path()
-            .join("saves/v1/duckstation/linux/versions")
+            .join("lunchbox/saves/v1/duckstation/linux/versions")
             .join(&file.sha256)
             .join(key.as_str());
         assert_eq!(std::fs::read(named).unwrap(), bytes);
@@ -1415,7 +1486,7 @@ mod tests {
         store.publish_readable_current(&first, None).unwrap();
         let current = directory
             .path()
-            .join("saves/v1/duckstation/linux/current")
+            .join("lunchbox/saves/v1/duckstation/linux/current")
             .join(key.as_str());
         assert_eq!(std::fs::read(&current).unwrap(), bytes);
 
@@ -1458,7 +1529,7 @@ mod tests {
             std::fs::read(
                 directory
                     .path()
-                    .join("saves/v1/duckstation/linux/versions")
+                    .join("lunchbox/saves/v1/duckstation/linux/versions")
                     .join(&old_version.sha256)
                     .join(old_key.as_str())
             )
@@ -1523,23 +1594,30 @@ mod tests {
             (&newer, b"newer state"),
         ] {
             assert_eq!(
-                std::fs::read(
-                    directory
-                        .path()
-                        .join(named_version_path(&scope(), &key, file))
-                )
+                std::fs::read(directory.path().join("lunchbox").join(named_version_path(
+                    &scope(),
+                    &key,
+                    file
+                )))
                 .unwrap(),
                 bytes
             );
             assert!(
                 !directory
                     .path()
+                    .join("lunchbox")
                     .join(blob_path(&scope(), &file.sha256))
                     .exists()
             );
         }
         assert_eq!(
-            std::fs::read(directory.path().join(current_file_path(&scope(), &key))).unwrap(),
+            std::fs::read(
+                directory
+                    .path()
+                    .join("lunchbox")
+                    .join(current_file_path(&scope(), &key))
+            )
+            .unwrap(),
             b"newer state"
         );
     }
@@ -1568,9 +1646,55 @@ mod tests {
         assert!(
             directory
                 .path()
+                .join("lunchbox")
                 .join(blob_path(&scope(), &version(b"orphan", 100).sha256))
                 .exists()
         );
+    }
+
+    #[test]
+    fn local_folder_moves_existing_save_history_into_lunchbox() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
+        let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
+        let manifest = manifest(Vec::new(), "desktop-a", 100, b"existing state");
+        store.put_manifest(&manifest).unwrap();
+        store
+            .set_device_head(
+                &DeviceHead::new(scope(), "desktop-a", manifest.id.clone(), 100).unwrap(),
+            )
+            .unwrap();
+        drop(store);
+
+        // Simulate the previously shipped local-folder layout.
+        std::fs::rename(
+            directory.path().join("lunchbox/saves"),
+            directory.path().join("saves"),
+        )
+        .unwrap();
+        let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
+        assert!(!directory.path().join("saves").exists());
+        assert_eq!(
+            store.device_heads(&scope()).unwrap()[0].manifest_id,
+            manifest.id
+        );
+        assert!(
+            directory
+                .path()
+                .join("lunchbox/saves/v1/duckstation/linux/devices/desktop-a.json")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn local_folder_refuses_ambiguous_old_and_new_save_trees() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(directory.path().join("saves/v1")).unwrap();
+        std::fs::create_dir_all(directory.path().join("lunchbox/saves/v1")).unwrap();
+        let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
+        assert!(CloudStore::connect(profile.provider, &profile.root, &profile.auth).is_err());
+        assert!(directory.path().join("saves/v1").is_dir());
+        assert!(directory.path().join("lunchbox/saves/v1").is_dir());
     }
 
     #[test]
@@ -1610,6 +1734,10 @@ mod tests {
         assert!(CloudProfile::new_local_folder(&linked_root, "desktop-a", true).is_err());
 
         symlink(&target, root.join("saves")).unwrap();
+        assert!(CloudProfile::new_local_folder(&root, "desktop-a", true).is_err());
+
+        std::fs::remove_file(root.join("saves")).unwrap();
+        symlink(&target, root.join("lunchbox")).unwrap();
         assert!(CloudProfile::new_local_folder(&root, "desktop-a", true).is_err());
     }
 

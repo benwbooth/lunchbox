@@ -162,7 +162,7 @@ ColumnLayout {
     Text {
         Layout.fillWidth: true
         visible: provider.currentValue === "local_folder"
-        text: "RetroArch writes playable .srm and .state files to Lunchbox's local data folder. After play, Lunchbox backs them up here under saves/v1/{emulator}/{runtime} as versioned blobs and manifests; this folder is a sync backup, not RetroArch's live save path. The folder must already exist and be an absolute path."
+        text: "RetroArch writes playable .srm and .state files to Lunchbox's local data folder. After play, Lunchbox backs them up here under lunchbox/saves/v1/{emulator}/{runtime}, keeping readable filenames and version history. This folder is a sync backup, not RetroArch's live save path. The selected folder must already exist and be an absolute path."
         color: root.muted
         font.pixelSize: 9
         wrapMode: Text.WordWrap

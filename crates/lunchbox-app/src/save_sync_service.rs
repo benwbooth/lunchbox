@@ -1274,7 +1274,7 @@ mod tests {
             .apply(&store, &BTreeMap::new(), recovery.path(), 1000)
             .unwrap();
 
-        let prefix = provider.path().join("saves/v1/duckstation/linux");
+        let prefix = provider.path().join("lunchbox/saves/v1/duckstation/linux");
         assert!(prefix.join("devices/device-a.json").is_file());
         assert_eq!(
             std::fs::read(prefix.join("current/saves/0/game.sav")).unwrap(),
