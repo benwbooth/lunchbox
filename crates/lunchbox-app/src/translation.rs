@@ -1,6 +1,7 @@
 //! Session-scoped, localhost-only RetroArch AI Service to Ollama bridge.
 //! No screenshot is persisted or sent to a remote service.
 
+use std::collections::{HashMap, VecDeque};
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
@@ -36,8 +37,9 @@ const MAX_REQUEST_BYTES: usize = 80 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 128 * 1024;
 const MAX_FRAME_PIXELS: u64 = 16_000_000;
 // RetroArch requests the next frame as soon as it receives `auto: "auto"`.
-// Bound screenshot traffic while keeping captions responsive to scene changes.
-const AUTO_REQUEST_INTERVAL: Duration = Duration::from_millis(750);
+// One capture per second is enough for dialogue and limits interruption of the game.
+const AUTO_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
+const MAX_TRANSLATION_MEMORY: usize = 256;
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
 const REGION_BACKGROUND_ALPHA: u8 = 224;
@@ -470,6 +472,7 @@ fn serve(
         .name("lunchbox-translation-worker".into())
         .spawn(move || {
             let mut cached: Option<CachedTranslation> = None;
+            let mut memory = TranslationMemory::default();
             let mut ocr = ocr;
             for job in pending_jobs {
                 let result = render_translation(
@@ -480,6 +483,7 @@ fn serve(
                     &mut ocr,
                     viewport,
                     cached.as_ref(),
+                    &mut memory,
                 )
                 .and_then(|(regions, overlay)| {
                     let screenshot =
@@ -572,6 +576,39 @@ struct CachedTranslation {
     region_fingerprints: Vec<[u8; 32]>,
     dimensions: (u32, u32),
     overlay: String,
+}
+
+#[derive(Default)]
+struct TranslationMemory {
+    entries: HashMap<String, String>,
+    order: VecDeque<String>,
+}
+
+impl TranslationMemory {
+    fn key(source: &str) -> String {
+        source.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn get(&self, source: &str) -> Option<&str> {
+        self.entries.get(&Self::key(source)).map(String::as_str)
+    }
+
+    fn insert(&mut self, source: &str, english: &str) {
+        if english.trim().is_empty() {
+            return;
+        }
+        let key = Self::key(source);
+        if key.is_empty() || self.entries.contains_key(&key) {
+            return;
+        }
+        if self.entries.len() == MAX_TRANSLATION_MEMORY
+            && let Some(oldest) = self.order.pop_front()
+        {
+            self.entries.remove(&oldest);
+        }
+        self.entries.insert(key.clone(), english.to_owned());
+        self.order.push_back(key);
+    }
 }
 
 fn fingerprint_region(image: &RgbImage, rect: TextRect) -> [u8; 32] {
@@ -736,7 +773,7 @@ fn handle_request(
         && can_retry
         && state
             .last_started_at
-            .is_none_or(|last| last.elapsed() >= Duration::from_millis(1500));
+            .is_none_or(|last| last.elapsed() >= AUTO_REQUEST_INTERVAL);
     if can_start {
         state.jobs.try_send(TranslationJob {
             digest,
@@ -897,13 +934,17 @@ fn axis_overlap(a1: u32, a2: u32, b1: u32, b2: u32) -> u32 {
 }
 
 fn text_region_allowed(rect: TextRect, width: u32, height: u32) -> bool {
+    // Dialogue often fills almost the entire width of a short text strip.
+    // The old 95% width cap split those lines in two; keep rejecting broad
+    // panels that also consume substantial vertical space.
+    let short_dialogue_line = u64::from(rect.height()) * 100 <= u64::from(height) * 12;
     rect.x1 < rect.x2
         && rect.y1 < rect.y2
         && rect.x2 <= width
         && rect.y2 <= height
         && rect.width() >= 8
         && rect.height() >= 5
-        && u64::from(rect.width()) * 100 <= u64::from(width) * 95
+        && (u64::from(rect.width()) * 100 <= u64::from(width) * 95 || short_dialogue_line)
         && u64::from(rect.height()) * 100 <= u64::from(height) * 30
         && u64::from(rect.width()) * u64::from(rect.height()) * 100
             <= u64::from(width) * u64::from(height) * 20
@@ -922,7 +963,7 @@ fn nearby_text(a: TextGroup, b: TextGroup, allow_multiline: bool) -> bool {
     let horizontal_overlap = axis_overlap(a.rect.x1, a.rect.x2, b.rect.x1, b.rect.x2);
     let same_line = axis_overlap(a.rect.y1, a.rect.y2, b.rect.y1, b.rect.y2)
         >= a.rect.height().min(b.rect.height()) / 2
-        && horizontal_gap <= line_height / 3;
+        && horizontal_gap <= line_height.saturating_mul(3) / 2;
     same_line
         || (allow_multiline
             && vertical_gap <= line_height
@@ -1064,7 +1105,7 @@ fn detect_text_regions(ocr: &mut RapidOcr, image: &RgbImage) -> Result<Vec<(Text
     Ok(groups
         .into_iter()
         .filter_map(|group| {
-            let source = lines
+            let mut members = lines
                 .iter()
                 .filter(|(rect, _)| {
                     let center_x = (rect.x1 + rect.x2) / 2;
@@ -1074,6 +1115,10 @@ fn detect_text_regions(ocr: &mut RapidOcr, image: &RgbImage) -> Result<Vec<(Text
                         && center_y >= group.rect.y1
                         && center_y <= group.rect.y2
                 })
+                .collect::<Vec<_>>();
+            members.sort_by_key(|(rect, _)| (rect.y1, rect.x1));
+            let source = members
+                .into_iter()
                 .map(|(_, text)| text.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -1136,6 +1181,7 @@ fn render_translation(
     ocr: &mut RapidOcr,
     viewport: Option<OverlayViewport>,
     cached: Option<&CachedTranslation>,
+    memory: &mut TranslationMemory,
 ) -> Result<(Vec<TranslatedRegion>, String)> {
     let bytes = BASE64
         .decode(image)
@@ -1155,6 +1201,7 @@ fn render_translation(
                 || group.rect.width() >= group.line_height.saturating_mul(2)
         })
         .collect::<Vec<_>>();
+    let ocr_elapsed = started.elapsed();
     boxes.sort_by_key(|(group, _)| std::cmp::Reverse(group.rect.width()));
     boxes.truncate(4);
     boxes.sort_by_key(|(group, _)| (group.rect.y1, group.rect.x1));
@@ -1163,16 +1210,19 @@ fn render_translation(
     }
     let candidate_count = boxes.len();
     let mut regions = Vec::new();
-    let mut reused = 0;
+    let mut pixel_reused = 0;
+    let mut text_reused = 0;
     let pending = boxes
         .iter()
         .enumerate()
         .filter(|(_, (detected, source))| {
             source.chars().filter(|ch| ch.is_alphabetic()).count() >= 2
                 && cached_region(cached, &screenshot, (width, height), detected.rect).is_none()
+                && memory.get(source).is_none()
         })
         .map(|(index, (_, source))| (index, source.clone()))
         .collect::<Vec<_>>();
+    let model_requested = pending.len();
     let translated = match translate_texts_at(
         settings,
         &pending
@@ -1195,19 +1245,25 @@ fn render_translation(
         let rect = detected.rect;
         let previous = cached_region(cached, &screenshot, (width, height), rect);
         let (source, english) = if let Some(previous) = previous {
-            reused += 1;
+            pixel_reused += 1;
             (previous.source.clone(), previous.english.clone())
         } else {
             let source = recognized;
             if source.chars().filter(|ch| ch.is_alphabetic()).count() < 2 {
                 continue;
             }
-            let english = translated.get(&index).cloned().unwrap_or_default();
+            let english = if let Some(english) = memory.get(&source) {
+                text_reused += 1;
+                english.to_owned()
+            } else {
+                translated.get(&index).cloned().unwrap_or_default()
+            };
             (source, english)
         };
         if english.is_empty() {
             continue;
         }
+        memory.insert(&source, &english);
         regions.push(TranslatedRegion {
             rect,
             source_line_height: detected.line_height,
@@ -1217,11 +1273,14 @@ fn render_translation(
         });
     }
     eprintln!(
-        "LUNCHBOX_TRANSLATION_RENDER elapsed_ms={} candidates={} translated={} reused={}",
+        "LUNCHBOX_TRANSLATION_RENDER elapsed_ms={} ocr_ms={} candidates={} translated={} model_requested={} pixel_reused={} text_reused={}",
         started.elapsed().as_millis(),
+        ocr_elapsed.as_millis(),
         candidate_count,
         regions.len(),
-        reused,
+        model_requested,
+        pixel_reused,
+        text_reused,
     );
     if regions.is_empty() {
         let output = viewport
@@ -1705,7 +1764,9 @@ fn ollama_chat(model: &str, prompt: &str, base_url: &str) -> Result<String> {
         "messages": [{"role": "user", "content": prompt}],
         "stream": false,
         "keep_alive": "10m",
-        "options": {"temperature": 0, "num_predict": 256},
+        // A game dialogue request is short. Avoid Ollama's 32k default on a
+        // 24 GB card so RetroArch and GPU OCR retain headroom beside the LLM.
+        "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 256},
     });
     let mut response = http_agent(Duration::from_secs(60))
         .post(&format!("{base_url}/api/chat"))
@@ -1746,6 +1807,32 @@ fn write_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translation_memory_reuses_dialogue_across_changed_frames() {
+        let mut memory = TranslationMemory::default();
+        memory.insert("ブリッツの攻撃を止める!", "Stop Blitzer's attack!");
+        assert_eq!(
+            memory.get("  ブリッツの攻撃を止める!\n"),
+            Some("Stop Blitzer's attack!")
+        );
+        memory.insert("失敗", "");
+        assert_eq!(memory.get("失敗"), None);
+    }
+
+    #[test]
+    fn translation_memory_is_bounded_to_the_current_session() {
+        let mut memory = TranslationMemory::default();
+        for index in 0..=MAX_TRANSLATION_MEMORY {
+            memory.insert(&format!("source {index}"), &format!("english {index}"));
+        }
+        assert_eq!(memory.entries.len(), MAX_TRANSLATION_MEMORY);
+        assert_eq!(memory.get("source 0"), None);
+        assert_eq!(
+            memory.get(&format!("source {MAX_TRANSLATION_MEMORY}")),
+            Some(format!("english {MAX_TRANSLATION_MEMORY}").as_str())
+        );
+    }
 
     #[test]
     fn animated_pixels_outside_text_do_not_invalidate_translation() {
@@ -2000,6 +2087,34 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn nearly_full_width_dialogue_line_is_one_region() {
+        let left = TextRect {
+            x1: 5,
+            y1: 70,
+            x2: 236,
+            y2: 96,
+        };
+        let right = TextRect {
+            x1: 262,
+            y1: 71,
+            x2: 507,
+            y2: 97,
+        };
+        let groups = group_text_regions(vec![right, left], 512, 478);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].rect, left.union(right));
+        assert!(text_region_allowed(groups[0].rect, 512, 478));
+
+        let distant = TextRect {
+            x1: 300,
+            y1: 71,
+            x2: 507,
+            y2: 97,
+        };
+        assert_eq!(group_text_regions(vec![left, distant], 512, 478).len(), 2);
     }
 
     #[test]
@@ -2479,6 +2594,7 @@ mod tests {
             &mut ocr,
             viewport,
             None,
+            &mut TranslationMemory::default(),
         )
         .unwrap();
         assert!(!regions.is_empty());
