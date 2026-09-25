@@ -35,6 +35,9 @@ const TRANSLATION_HOTKEY: &str = "f10";
 const MAX_REQUEST_BYTES: usize = 80 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 128 * 1024;
 const MAX_FRAME_PIXELS: u64 = 16_000_000;
+// RetroArch requests the next frame as soon as it receives `auto: "auto"`.
+// Bound screenshot traffic while keeping captions responsive to scene changes.
+const AUTO_REQUEST_INTERVAL: Duration = Duration::from_millis(750);
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
 const REGION_BACKGROUND_ALPHA: u8 = 224;
@@ -512,6 +515,7 @@ fn serve(
         in_flight: None,
         retry_after: None,
         last_started_at: None,
+        last_response_at: None,
         status_overlay: None,
     };
     while !stop.load(Ordering::Relaxed) {
@@ -548,7 +552,17 @@ struct TranslationBridge {
     in_flight: Option<[u8; 32]>,
     retry_after: Option<([u8; 32], Instant)>,
     last_started_at: Option<Instant>,
+    last_response_at: Option<Instant>,
     status_overlay: Option<((u32, u32), &'static str, String)>,
+}
+
+fn pace_auto_response(state: &mut TranslationBridge) {
+    if let Some(last) = state.last_response_at
+        && let Some(wait) = AUTO_REQUEST_INTERVAL.checked_sub(last.elapsed())
+    {
+        thread::sleep(wait);
+    }
+    state.last_response_at = Some(Instant::now());
 }
 
 #[derive(Clone)]
@@ -708,10 +722,11 @@ fn handle_request(
             })
     });
     if same_text {
+        pace_auto_response(state);
         return write_json(
             stream,
             200,
-            &json!({"image": state.cached.as_ref().unwrap().overlay, "auto": "continue"}),
+            &json!({"image": state.cached.as_ref().unwrap().overlay, "auto": "auto"}),
         );
     }
     let can_retry = !state
@@ -736,6 +751,7 @@ fn handle_request(
     } else {
         "Translation failed; retrying…"
     };
+    pace_auto_response(state);
     let overlay = status_overlay(state, viewport, (width, height), label)?;
     write_json(stream, 200, &json!({"image": overlay, "auto": "auto"}))?;
     Ok(())
@@ -2310,6 +2326,7 @@ mod tests {
             in_flight: None,
             retry_after: None,
             last_started_at: None,
+            last_response_at: None,
             status_overlay: None,
         };
         handle_request(&mut stream, "secret", None, &mut state).unwrap();
@@ -2317,7 +2334,7 @@ mod tests {
         let response = client.join().unwrap();
         let body = response.split("\r\n\r\n").nth(1).unwrap();
         let body: Value = serde_json::from_str(body).unwrap();
-        assert_eq!(body["auto"], "continue");
+        assert_eq!(body["auto"], "auto");
         let image = BASE64.decode(body["image"].as_str().unwrap()).unwrap();
         assert_eq!(png_dimensions(&image).unwrap(), (64, 64));
     }
@@ -2352,6 +2369,7 @@ mod tests {
             in_flight: None,
             retry_after: None,
             last_started_at: None,
+            last_response_at: None,
             status_overlay: None,
         };
         let (mut stream, _) = listener.accept().unwrap();
