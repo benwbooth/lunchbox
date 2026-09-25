@@ -47,17 +47,17 @@ modules:
         LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE: /run/build/lunchbox/chdman/libchdman_rs-x86_64-linux.a
         # The Flatpak sandbox has no build-time network access. Link against
         # the declared CPU ONNX Runtime instead of ort-sys downloading one.
-        ORT_LIB_PATH: /run/build/lunchbox/onnxruntime/onnxruntime-linux-x64-1.27.1/lib
+        ORT_LIB_PATH: /run/build/lunchbox/onnxruntime/onnxruntime-linux-x64-1.28.0/lib
         ORT_PREFER_DYNAMIC_LINK: '1'
     build-commands:
       - cargo build --locked --offline --release --no-default-features --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database
       - install -Dm0755 target/release/lunchbox /app/bin/lunchbox
       - install -Dm0755 target/release/lunchbox-controller-probe /app/bin/lunchbox-controller-probe
-      - install -Dm0755 onnxruntime/onnxruntime-linux-x64-1.27.1/lib/libonnxruntime.so.1.27.1 /app/lib/libonnxruntime.so.1.27.1
-      - ln -s libonnxruntime.so.1.27.1 /app/lib/libonnxruntime.so.1
+      - install -Dm0755 onnxruntime/onnxruntime-linux-x64-1.28.0/lib/libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1.28.0
+      - ln -s libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1
       - ln -s libonnxruntime.so.1 /app/lib/libonnxruntime.so
-      - install -Dm0755 onnxruntime/onnxruntime-linux-x64-1.27.1/lib/libonnxruntime_providers_shared.so /app/lib/libonnxruntime_providers_shared.so
+      - install -Dm0755 onnxruntime/onnxruntime-linux-x64-1.28.0/lib/libonnxruntime_providers_shared.so /app/lib/libonnxruntime_providers_shared.so
       - install -Dm0644 database/lunchbox.db /app/share/lunchbox/lunchbox.db
       - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.desktop /app/share/applications/io.github.benwbooth.Lunchbox.desktop
       - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.metainfo.xml /app/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml
@@ -73,8 +73,8 @@ modules:
           - target
       - cargo-sources.json
       - type: archive
-        url: https://github.com/microsoft/onnxruntime/releases/download/v1.27.1/onnxruntime-linux-x64-1.27.1.tgz
-        sha256: 25b1ef1fea1acd210d63f8f24dc870ad6e077795ce1f54876252c6d3803c15af
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-x64-1.28.0.tgz
+        sha256: a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407
         dest: onnxruntime
       - type: file
         url: https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-x86_64-unknown-linux-gnu-glibc2.35.a
