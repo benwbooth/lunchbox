@@ -122,8 +122,8 @@ Column {
         height: 34
         visible: root.hasCollapsedContent
         text: root.sourcesExpanded
-              ? "SHOW TOP " + root.collapsedSourceLimit + " SOURCES"
-              : "SHOW ALL SOURCES AND MATCHES"
+              ? "Show top " + root.collapsedSourceLimit + " sources"
+              : "Show all sources and matches"
         flat: true
         font.pixelSize: 9
         font.weight: Font.Bold
@@ -314,7 +314,7 @@ Column {
                                 id: getButton
                                 objectName: "getTorrentCandidate-" + fileRow.index
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.detailsModel.download_busy ? "…" : "GET"
+                                text: root.detailsModel.download_busy ? "…" : "Get"
                                 enabled: !root.detailsModel.download_busy
                                          && sourceSection.candidateCount > 0
                                 implicitWidth: 62
@@ -343,7 +343,7 @@ Column {
         height: 36
         visible: root.showAddSource
         text: root.registeredSourceCount > 0 || root.matchingSourceCount > 0
-              ? "ADD ANOTHER TORRENT SOURCE" : "ADD TORRENT SOURCE"
+              ? "Add another torrent source" : "Add torrent source"
         font.pixelSize: 9
         font.weight: Font.Bold
         onClicked: root.addSourceRequested()

@@ -502,7 +502,7 @@ Rectangle {
                         objectName: "loadedTorrentClearSelection"
                         Layout.preferredWidth: 72
                         Layout.preferredHeight: 32
-                        text: "CLEAR"
+                        text: "Clear"
                         enabled: root.torrent.existing_selected_count > 0
                         onClicked: root.torrent.clear_existing_selection()
                     }
@@ -514,8 +514,8 @@ Rectangle {
                         Layout.preferredHeight: 32
                         highlighted: true
                         text: root.torrent.existing_selected_count === 1
-                              ? "REVIEW 1 SOURCE"
-                              : "REVIEW " + root.torrent.existing_selected_count + " SOURCES"
+                              ? "Review 1 source"
+                              : "Review " + root.torrent.existing_selected_count + " sources"
                         enabled: root.torrent.existing_selected_count > 0
                         font.pixelSize: 8
                         font.weight: Font.Bold

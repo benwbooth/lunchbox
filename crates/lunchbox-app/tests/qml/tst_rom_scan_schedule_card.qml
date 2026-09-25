@@ -101,7 +101,7 @@ TestCase {
         const runButton = findChild(card, "romScanRunNowButton")
         verify(reviewButton)
         verify(reviewButton.visible)
-        compare(reviewButton.text, "REVIEW CHANGES")
+        compare(reviewButton.text, "Review changes")
         compare(card.badgeText, "1 TO REVIEW")
         reviewButton.clicked()
         compare(reviewSpy.count, 1)

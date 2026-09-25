@@ -149,7 +149,7 @@ TestCase {
         host.detailsState.download_preflight_ready = false
         host.detailsState.download_preflight_terminal = true
         host.detailsState.download_preflight_status = "The exact destination already exists."
-        compare(host.downloadScreen.actionLabel, "ALREADY IN LIBRARY")
+        compare(host.downloadScreen.actionLabel, "Already in library")
         host.detailsState.inspectedIndex = -1
         host.downloadScreen.activateReview()
         compare(host.detailsState.inspectedIndex, -1)

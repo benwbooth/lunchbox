@@ -95,13 +95,13 @@ TestCase {
         compare(host.emulatorRow.defaultActionsAvailable, true)
         tryCompare(host.emulatorRow, "gameDefaultActionVisible", true)
         tryCompare(host.emulatorRow, "platformDefaultActionVisible", true)
-        compare(gameButton.text, "USE FOR GAME")
-        compare(systemButton.text, "USE FOR SYSTEM")
+        compare(gameButton.text, "Use for game")
+        compare(systemButton.text, "Use for system")
 
         host.emulatorRow.platformDefault = true
-        tryCompare(systemButton, "text", "✓  SYSTEM DEFAULT")
+        tryCompare(systemButton, "text", "✓  System default")
         host.emulatorRow.gameDefault = true
-        tryCompare(gameButton, "text", "✓  GAME DEFAULT")
+        tryCompare(gameButton, "text", "✓  Game default")
     }
 
     function test_uninstalled_emulator_keeps_default_path_discoverable() {

@@ -139,7 +139,7 @@ LbDialog {
                     LbButton {
                         objectName: "identitySelectAllFiles"
                         visible: dialog.identityModel.file_count > 1
-                        text: "ALL"
+                        text: "All"
                         Accessible.name: "Select all imported ROM associations"
                         implicitWidth: 44
                         implicitHeight: 24
@@ -153,7 +153,7 @@ LbDialog {
                     LbButton {
                         objectName: "identityClearFiles"
                         visible: dialog.identityModel.file_count > 1
-                        text: "NONE"
+                        text: "None"
                         Accessible.name: "Clear imported ROM selection"
                         implicitWidth: 52
                         implicitHeight: 24
@@ -279,7 +279,7 @@ LbDialog {
             CheckBox {
                 id: platformScope
                 objectName: "identitySamePlatformOnly"
-                text: "THIS PLATFORM"
+                text: "This platform"
                 checked: dialog.samePlatformOnly
                 onToggled: {
                     dialog.samePlatformOnly = checked
@@ -454,7 +454,7 @@ LbDialog {
                     font.pixelSize: 9
                     font.weight: Font.Bold
                     text: dialog.batchConfirmArmed
-                          ? "CONFIRM " + dialog.identityModel.operation_label
+                          ? "Confirm " + dialog.identityModel.operation_label
                           : dialog.identityModel.operation_label
                     Accessible.name: text
                     enabled: dialog.identityModel.selected_file_count > 0
@@ -553,7 +553,7 @@ LbDialog {
                     LbButton {
                         objectName: "identityUndoButton-" + historyRow.index
                         visible: dialog.identityModel.history_undoable_at(historyRow.index)
-                        text: "UNDO"
+                        text: "Undo"
                         font.pixelSize: 8
                         font.weight: Font.Bold
                         onClicked: dialog.identityModel.undo_at(historyRow.index)

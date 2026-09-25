@@ -117,7 +117,7 @@ Popup {
                 font.letterSpacing: 0.8
             }
             LbButton {
-                text: parent.parent.configured ? "MANAGE" : "SET UP"
+                text: parent.parent.configured ? "Manage" : "Set up"
                 flat: parent.parent.configured
                 onClicked: parent.parent.setupRequested(parent.parent.section)
             }
@@ -213,7 +213,7 @@ Popup {
                         LbButton {
                             Layout.fillWidth: true
                             text: setup.settingsModel.rom_directory.length > 0
-                                  ? "CHANGE ROM FOLDER" : "CHOOSE ROM FOLDER"
+                                  ? "Change ROM folder" : "Choose ROM folder"
                             onClicked: setup.chooseDirectory("rom")
                         }
                     }
@@ -245,7 +245,7 @@ Popup {
                                 font.weight: Font.Bold
                             }
                             LbButton {
-                                text: "CONFIGURE"
+                                text: "Configure"
                                 onClicked: setup.openSettings("qbittorrent")
                             }
                         }
@@ -315,7 +315,7 @@ Popup {
                         LbButton {
                             Layout.preferredWidth: 190
                             Layout.preferredHeight: 44
-                            text: setup.settingsModel.busy ? "SAVING…" : "FINISH SETUP"
+                            text: setup.settingsModel.busy ? "Saving…" : "Finish setup"
                             enabled: setup.settingsModel.initialized
                                      && !setup.settingsModel.busy
                             onClicked: setup.finishRequested()

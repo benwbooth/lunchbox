@@ -283,7 +283,7 @@ LbDialog {
             }
             HeaderButton {
                 visible: detailsModel.download_preflight_action === "configure_qbittorrent"
-                text: "SET UP DOWNLOAD FOLDER"
+                text: "Set up download folder"
                 active: true
                 enabled: !detailsModel.download_preflight_busy
                          && !detailsModel.download_busy
@@ -295,10 +295,10 @@ LbDialog {
                 // check button hides and the status text carries the outcome.
                 objectName: "downloadPreflightCheckButton"
                 visible: !detailsModel.download_preflight_terminal
-                text: detailsModel.download_preflight_busy ? "CHECKING…"
-                      : detailsModel.download_preflight_ready ? "RE-CHECK"
-                      : detailsModel.download_preflight_status.length > 0 ? "TRY AGAIN"
-                      : "CHECK"
+                text: detailsModel.download_preflight_busy ? "Checking…"
+                      : detailsModel.download_preflight_ready ? "Recheck"
+                      : detailsModel.download_preflight_status.length > 0 ? "Try again"
+                      : "Check"
                 enabled: dialog.reviewIndex >= 0
                          && !detailsModel.download_preflight_busy
                          && !detailsModel.download_busy
@@ -311,7 +311,7 @@ LbDialog {
                 highlighted: true
                 visible: !detailsModel.download_preflight_terminal
                 text: settingsModel.download_entire_torrent && !dialog.selectiveOnly
-                      ? "DOWNLOAD ALL" : "DOWNLOAD"
+                      ? "Download all" : "Download"
                 enabled: dialog.reviewIndex >= 0
                          && detailsModel.download_preflight_ready
                          && !detailsModel.download_preflight_busy

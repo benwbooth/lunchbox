@@ -358,6 +358,7 @@ pub fn add_layout(catalog: &mut crate::controller_catalog::Catalog) {
 }
 
 pub enum InputEvent {
+    InventoryChanged,
     Press {
         key: String,
         binding: InputBinding,
@@ -481,14 +482,24 @@ pub fn run(stop: &AtomicBool, mut publish: impl FnMut(InputEvent)) -> anyhow::Re
             .iter()
             .map(|pad| (key(pad, &frame.pads), pad.clone()))
             .collect();
-        {
+        let inventory_changed = {
             let mut state = inventory().lock().unwrap();
+            let changed = state.pads.len() != pads.len()
+                || state
+                    .pads
+                    .iter()
+                    .zip(&pads)
+                    .any(|((old_key, _), (new_key, _))| old_key != new_key);
             state.pads = pads.clone();
             state.status = format!(
                 "SDL3 {} native input · {} Steam Controller 2 devices",
                 frame.version,
                 pads.len()
             );
+            changed
+        };
+        if inventory_changed {
+            publish(InputEvent::InventoryChanged);
         }
         trackers.retain(|key, tracker| {
             if pads.iter().any(|(id, _)| id == key) {

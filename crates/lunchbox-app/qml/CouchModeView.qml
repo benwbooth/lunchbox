@@ -114,15 +114,15 @@ Item {
     readonly property bool downloadInProgress: downloadJobIndex >= 0
                                                && downloadJobState !== "IMPORTED"
     readonly property string primaryAction: details.game_running
-            ? details.session_stopping ? "STOPPING…" : "STOP EMULATOR"
-            : details.launch_busy ? "CANCEL PREPARATION"
-            : !detailsCurrent || details.loading ? "LOADING…"
-            : details.download_busy ? "ADDING DOWNLOAD…"
-            : details.can_launch ? "PLAY"
-            : selectedLocal ? "SET UP PLAY"
-            : downloadInProgress ? "VIEW DOWNLOAD"
-            : selectedDownloadable ? "DOWNLOAD OPTIONS"
-            : "VIEW DETAILS"
+            ? details.session_stopping ? "Stopping…" : "Stop emulator"
+            : details.launch_busy ? "Cancel preparation"
+            : !detailsCurrent || details.loading ? "Loading…"
+            : details.download_busy ? "Adding download…"
+            : details.can_launch ? "Play"
+            : selectedLocal ? "Set up play"
+            : downloadInProgress ? "View download"
+            : selectedDownloadable ? "Download options"
+            : "View details"
 
     signal exitRequested()
     signal filterRequested(string key)
@@ -653,19 +653,19 @@ Item {
         if (index === 0)
             return primaryAction
         if (index === 1)
-            return favorite ? "REMOVE FAVORITE" : "ADD FAVORITE"
+            return favorite ? "Remove favorite" : "Add favorite"
         if (index === 2)
-            return "DESKTOP DETAILS"
+            return "Desktop details"
         if (index === 3)
-            return "RELEASES & MEDIA"
+            return "Releases & media"
         if (index === 4)
-            return "START ATTRACT MODE"
+            return "Start attract mode"
         if (index === 5)
-            return cinematicWheel ? "USE COVER SHELF" : "USE CINEMATIC WHEEL"
+            return cinematicWheel ? "Use cover shelf" : "Use cinematic wheel"
         if (index === 6)
             return library.couch_music_enabled
-                   ? "MUTE BACKGROUND MUSIC" : "ENABLE BACKGROUND MUSIC"
-        return "RETURN TO BROWSING"
+                   ? "Mute background music" : "Enable background music"
+        return "Return to browsing"
     }
 
     function menuActionDescription(index) {
@@ -1302,7 +1302,7 @@ Item {
             Text {
                 id: viewStyleLabel
                 anchors.centerIn: parent
-                text: view.cinematicWheel ? "▦  COVER SHELF" : "☷  CINEMATIC WHEEL"
+                text: view.cinematicWheel ? "▦  Cover shelf" : "☷  Cinematic wheel"
                 color: view.ink
                 font.pixelSize: 9
                 font.weight: Font.Bold
@@ -1496,7 +1496,7 @@ Item {
                     property bool selected: view.navigationZone === 1
                                             && view.actionIndex === index
                     readonly property bool playAction: index === 0
-                                                       && view.primaryAction === "PLAY"
+                                                       && view.primaryAction === "Play"
                     width: index === 0 ? 190 : index === 1 ? 170 : 52
                     height: 50
                     radius: Math.max(8, view.cardRadius - 4)
@@ -3525,7 +3525,7 @@ Item {
                                 required property int index
                                 property bool selected: view.menuActionIndex === index
                                 readonly property bool playAction: index === 0
-                                                                   && view.primaryAction === "PLAY"
+                                                                   && view.primaryAction === "Play"
                                 width: gameMenu.width
                                 height: 88
                                 radius: Math.max(9, view.cardRadius - 2)

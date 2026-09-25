@@ -233,7 +233,7 @@ Rectangle {
             enabled: !row.managerBusy
             Layout.preferredWidth: 132
             Layout.preferredHeight: 29
-            text: row.gameDefault ? "✓  GAME DEFAULT" : "USE FOR GAME"
+            text: row.gameDefault ? "✓  Game default" : "Use for game"
             font.pixelSize: 8
             font.weight: Font.Bold
             onClicked: row.gameDefaultRequested(row.rowIndex)
@@ -248,7 +248,7 @@ Rectangle {
             enabled: !row.managerBusy
             Layout.preferredWidth: 142
             Layout.preferredHeight: 29
-            text: row.platformDefault ? "✓  SYSTEM DEFAULT" : "USE FOR SYSTEM"
+            text: row.platformDefault ? "✓  System default" : "Use for system"
             font.pixelSize: 8
             font.weight: Font.Bold
             onClicked: row.platformDefaultRequested(row.rowIndex)

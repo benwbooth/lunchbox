@@ -29,7 +29,7 @@ TestCase {
             emulatorOptionCount: 2
             selectedEmulatorOption: 0
             firmwareMissingCount: 0
-            firmwareSetupLabel: "SET UP EMULATOR"
+            firmwareSetupLabel: "Set up emulator"
             emulatorLabelAt: function(index) {
                 return index === 0 ? "RetroArch · Mesen" : "Mesen"
             }
@@ -393,7 +393,7 @@ TestCase {
         hero.prepareRequested.connect(function() { prepared = true })
         const action = findChild(hero, "launchAction")
         verify(action)
-        compare(action.text, "PREPARE INSTALL")
+        compare(action.text, "Prepare install")
         action.clicked()
         verify(prepared)
     }
@@ -411,7 +411,7 @@ TestCase {
         verify(!hero.prepareNeeded)
         const action = findChild(hero, "launchAction")
         verify(action)
-        compare(action.text, "PREPARING INSTALL…")
+        compare(action.text, "Preparing install…")
         compare(action.enabled, false)
     }
 
@@ -424,7 +424,7 @@ TestCase {
         hero.cancelLaunchRequested.connect(function() { cancelled = true })
         const action = findChild(hero, "launchAction")
         verify(action)
-        compare(action.text, "CANCEL PREPARATION")
+        compare(action.text, "Cancel preparation")
         verify(action.enabled)
         action.clicked()
         verify(cancelled)
@@ -439,7 +439,7 @@ TestCase {
         verify(hero)
         const action = findChild(hero, "launchAction")
         verify(action)
-        compare(action.text, "■  STOP EMULATOR")
+        compare(action.text, "■  Stop emulator")
         verify(action.enabled)
         verify(!action.highlighted)
         verify(!action.positive)
@@ -451,7 +451,7 @@ TestCase {
         verify(stopped)
         verify(!played)
         hero.sessionStopping = true
-        compare(action.text, "STOPPING EMULATOR…")
+        compare(action.text, "Stopping emulator…")
         verify(!action.enabled)
     }
 
@@ -462,7 +462,7 @@ TestCase {
             emulatorOptionCount: 1,
             selectedEmulatorOption: 0,
             firmwareMissingCount: 2,
-            firmwareSetupLabel: "SET UP EMULATOR",
+            firmwareSetupLabel: "Set up emulator",
             launchStatus: "prod.keys and Switch firmware are required."
         })
         verify(hero)
@@ -471,7 +471,7 @@ TestCase {
         hero.firmwareSetupRequested.connect(function() { setupRequested = true })
         const action = findChild(hero, "launchAction")
         verify(action)
-        compare(action.text, "SET UP EMULATOR")
+        compare(action.text, "Set up emulator")
         action.clicked()
         verify(setupRequested)
     }

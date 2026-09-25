@@ -198,8 +198,8 @@ Rectangle {
             width: parent.width
             height: 30
             visible: versions.count > 3
-            text: versions.expanded ? "SHOW FEWER VERSIONS"
-                  : "SHOW " + (versions.count - 3) + " MORE"
+            text: versions.expanded ? "Show fewer versions"
+                  : "Show " + (versions.count - 3) + " more"
             font.pixelSize: 8
             font.weight: Font.Bold
             onClicked: versions.expanded = !versions.expanded
@@ -230,7 +230,7 @@ Rectangle {
                 height: 34
                 visible: !card.detailsModel.selected_local_file_is_preferred
                          || !card.detailsModel.local_file_preference_configured
-                text: "MAKE SELECTED DEFAULT"
+                text: "Make selected default"
                 enabled: card.detailsModel.selected_local_file >= 0
                          && !card.detailsModel.launch_busy
                          && !card.detailsModel.game_running
@@ -246,7 +246,7 @@ Rectangle {
                        ? (parent.width - 8) / 2 : parent.width
                 height: 34
                 visible: card.detailsModel.local_file_preference_configured
-                text: "USE AUTOMATIC"
+                text: "Use automatic"
                 enabled: !card.detailsModel.launch_busy
                          && !card.detailsModel.game_running
                 font.pixelSize: 8
@@ -273,7 +273,7 @@ Rectangle {
             LbButton {
                 width: (parent.width - 8) / 2
                 height: 34
-                text: "OPEN FOLDER"
+                text: "Open folder"
                 enabled: card.detailsModel.selected_local_directory_url.toString().length > 0
                          && !card.detailsModel.install_management_busy
                 font.pixelSize: 9
@@ -285,7 +285,7 @@ Rectangle {
                 width: (parent.width - 8) / 2
                 height: 34
                 visible: !card.detailsModel.managed_install_present
-                text: "MANAGE IDENTITY"
+                text: "Manage identity"
                 enabled: !card.detailsModel.install_management_busy
                          && card.detailsModel.game_id.length > 0
                 font.pixelSize: 8
@@ -297,9 +297,9 @@ Rectangle {
                 width: (parent.width - 8) / 2
                 height: 34
                 visible: card.detailsModel.managed_install_present
-                text: card.detailsModel.install_management_busy ? "VERIFYING…"
+                text: card.detailsModel.install_management_busy ? "Verifying…"
                       : card.detailsModel.managed_install_can_delete
-                        ? "UNINSTALL" : "REMOVE FROM LIBRARY"
+                        ? "Uninstall" : "Remove from library"
                 enabled: !card.detailsModel.install_management_busy
                          && !card.detailsModel.launch_busy
                          && !card.detailsModel.game_running

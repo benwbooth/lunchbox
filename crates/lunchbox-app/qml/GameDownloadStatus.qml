@@ -114,21 +114,21 @@ Rectangle {
             HeaderButton {
                 objectName: "downloadPlayAction"
                 visible: card.jobState === "IMPORTED"
-                text: "PLAY"
+                text: "Play"
                 active: card.jobState === "IMPORTED"
                 positive: true
                 implicitHeight: 34
                 onClicked: card.playRequested()
             }
             HeaderButton {
-                text: "VIEW DOWNLOAD"
+                text: "View download"
                 implicitHeight: 34
                 onClicked: card.manageRequested()
             }
             HeaderButton {
                 visible: card.alternativesAvailable
-                text: card.alternativesExpanded ? "HIDE OTHER SOURCES"
-                                                : "SHOW OTHER SOURCES"
+                text: card.alternativesExpanded ? "Hide other sources"
+                                                : "Show other sources"
                 implicitHeight: 34
                 onClicked: card.alternativesRequested()
             }

@@ -22,13 +22,14 @@ TestCase {
             property var calibrations: ({})
             property var models: ({})
             property int automaticCalls: 0
+            property int refreshCalls: 0
             property string failure: ""
             function controller_count() { return ids.length }
             function controller_key_at(i) { return ids[i] }
             function controller_name_at(i) { return ["Steam Controller 2", "Brawler64", "Same-name pad", "Steam output"][["sc2","brawler","unknown","steam-virtual"].indexOf(ids[i])] }
             function controller_alias_at(i) { return "" }
             function controller_key_for_input(key) { return key }
-            function refresh_controllers() {}
+            function refresh_controllers() { refreshCalls++; controller_revision++ }
             function controller_catalog_json() {
                 return JSON.stringify({host_os:"linux", layouts:[{id:"nes",name:"NES",notes:"",family:"two-button",controls:[
                     {id:"b",label:"B",analog:false,x:20,y:30}, {id:"a",label:"A",analog:false,x:40,y:30}
@@ -117,6 +118,7 @@ TestCase {
         QtObject {
             id: pad
             property int input_revision: 0
+            property int sdl3_device_revision: 0
             property int neutral_revision: 0
             property string last_device_key: ""
             property string last_binding: '{"code":9,"kind":"button","direction":0,"logical":"South"}'
@@ -156,6 +158,16 @@ TestCase {
         verify(!workflow.controllerChoices(1).some(item => item.id === "unknown"))
         workflow.assignPlayer(1,"brawler")
         compare(settings.order.join(","),"unknown,brawler")
+    }
+    function test_sdl3_hotplug_refreshes_controller_choices() {
+        settings.ids = ["brawler"]
+        settings.controller_revision++
+        verify(!workflow.controllerChoices(0).some(item => item.id === "sc2"))
+        const before = settings.refreshCalls
+        settings.ids = ["brawler", "sc2"]
+        pad.sdl3_device_revision++
+        tryCompare(settings, "refreshCalls", before + 1)
+        verify(workflow.controllerChoices(0).some(item => item.id === "sc2"))
     }
     function test_native_mapping_is_automatic_and_existing_buttons_survive() {
         workflow.assignPlayer(0,"sc2")

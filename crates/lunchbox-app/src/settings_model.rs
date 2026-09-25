@@ -2665,6 +2665,16 @@ impl qobject::SettingsModel {
                 {
                     return qstring(name);
                 }
+                if let Some(model_name) = self
+                    .rust()
+                    .controller_mapping
+                    .device_models
+                    .get(&controller.stable_id)
+                    .and_then(|id| crate::controller_models::model(id))
+                    .map(|model| model.name.as_str())
+                {
+                    return qstring(model_name);
+                }
                 if controller.vendor_id.as_deref() == Some("28de")
                     && controller.product_id.as_deref() == Some("11ff")
                 {

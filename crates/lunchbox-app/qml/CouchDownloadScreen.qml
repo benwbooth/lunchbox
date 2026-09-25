@@ -33,22 +33,22 @@ FocusScope {
     readonly property bool needsSetup: details.download_preflight_action
                                                 === "configure_qbittorrent"
     readonly property string actionLabel: phase === "candidates"
-            ? (candidateCount > 0 ? "REVIEW DOWNLOAD" : "WAITING FOR MATCHES")
+            ? (candidateCount > 0 ? "Review download" : "Waiting for matches")
             : phase === "queue"
-              ? "ADDING TO DOWNLOADS…"
+              ? "Adding to downloads…"
               : phase === "result"
-                ? "RETURN TO BROWSING"
+                ? "Return to browsing"
                 : details.download_preflight_busy
-                  ? "CHECKING STORAGE…"
+                  ? "Checking storage…"
                   : needsSetup
-                    ? "OPEN DOWNLOAD SETTINGS"
+                    ? "Open download settings"
                     : details.download_preflight_ready
-                      ? "DOWNLOAD"
+                      ? "Download"
                       : details.download_preflight_terminal
-                        ? "ALREADY IN LIBRARY"
+                        ? "Already in library"
                         : details.download_preflight_status.length > 0
-                          ? "TRY AGAIN"
-                          : "CHECK"
+                          ? "Try again"
+                          : "Check"
 
     signal closeRequested()
     signal configureRequested()
@@ -470,7 +470,7 @@ FocusScope {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "IMPORT TORRENT"
+                            text: "Import torrent"
                             color: "#1b140c"
                             font.pixelSize: 13
                             font.weight: Font.Black

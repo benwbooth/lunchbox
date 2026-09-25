@@ -1072,7 +1072,7 @@ impl Default for GameDetailsModelRust {
             firmware_runtime_path: QString::default(),
             firmware_next_package: QString::default(),
             firmware_setup_action: QString::from("review"),
-            firmware_setup_label: QString::from("SET UP EMULATOR"),
+            firmware_setup_label: QString::from("Set up emulator"),
             switch_prod_keys_imported: false,
             switch_prod_keys_ready: false,
             switch_firmware_imported: false,
@@ -5807,7 +5807,7 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_firmware_setup_action(QString::from("review"));
         self.as_mut()
-            .set_firmware_setup_label(QString::from("SET UP EMULATOR"));
+            .set_firmware_setup_label(QString::from("Set up emulator"));
         self.as_mut().set_switch_prod_keys_imported(false);
         self.as_mut().set_switch_prod_keys_ready(false);
         self.as_mut().set_switch_firmware_imported(false);
@@ -5947,7 +5947,7 @@ impl qobject::GameDetailsModel {
                 .unwrap_or_else(|| "review".to_owned()),
         ));
         self.as_mut()
-            .set_firmware_setup_label(QString::from("SET UP EMULATOR"));
+            .set_firmware_setup_label(QString::from("Set up emulator"));
         self.as_mut()
             .set_switch_prod_keys_imported(package_imported("switch-keys.zip"));
         self.as_mut()

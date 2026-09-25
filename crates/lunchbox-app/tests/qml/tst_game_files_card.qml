@@ -147,7 +147,7 @@ TestCase {
 
         expand.clicked()
         tryVerify(function() { return list.height > collapsedHeight }, 100)
-        compare(expand.text, "SHOW FEWER VERSIONS")
+        compare(expand.text, "Show fewer versions")
     }
 
     function test_saved_but_missing_default_is_actionable() {

@@ -17,7 +17,7 @@ TestCase {
 
     Component {
         id: positiveButtonComponent
-        Lunchbox.LbButton { text: "PLAY"; highlighted: true; positive: true }
+        Lunchbox.LbButton { text: "Play"; highlighted: true; positive: true }
     }
     Component {
         id: longButtonComponent

@@ -92,7 +92,7 @@ Rectangle {
 
                 LbButton {
                     objectName: "closeFirmwareSetup"
-                    text: "CLOSE"
+                    text: "Close"
                     onClicked: page.closeRequested()
                 }
             }
@@ -264,9 +264,9 @@ Rectangle {
                                                                : 0
                                         Layout.preferredHeight: 36
                                         text: applyAvailable
-                                              ? "APPLY TO "
-                                                + page.detailsModel.emulator_name.toUpperCase()
-                                              : "CHOOSE FILE"
+                                              ? "Apply to "
+                                                + page.detailsModel.emulator_name
+                                              : "Choose file"
                                         enabled: !page.detailsModel.firmware_busy
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
@@ -407,8 +407,8 @@ Rectangle {
                                 width: parent.width
                                 height: 48
                                 highlighted: true
-                                text: page.ready ? "▶  PLAY"
-                                      : page.detailsModel.firmware_busy ? "WORKING…"
+                                text: page.ready ? "▶  Play"
+                                      : page.detailsModel.firmware_busy ? "Working…"
                                       : page.detailsModel.firmware_setup_label
                                 enabled: page.ready || !page.detailsModel.firmware_busy
                                 font.pixelSize: 11
@@ -427,17 +427,17 @@ Rectangle {
                         width: parent.width
                         spacing: 10
                         LbButton {
-                            text: "RECHECK SETUP"
+                            text: "Recheck setup"
                             enabled: !page.detailsModel.firmware_busy
                             onClicked: page.refreshRequested()
                         }
                         LbButton {
-                            text: "OPEN MANAGED FOLDER"
+                            text: "Open managed folder"
                             enabled: !page.detailsModel.firmware_busy
                             onClicked: page.openFolderRequested()
                         }
                         LbButton {
-                            text: "MANAGE EMULATOR"
+                            text: "Manage emulator"
                             enabled: !page.detailsModel.firmware_busy
                             onClicked: page.manageEmulatorsRequested()
                         }

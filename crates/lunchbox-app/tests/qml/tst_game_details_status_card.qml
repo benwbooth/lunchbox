@@ -46,7 +46,7 @@ TestCase {
         verify(status.visible)
         verify(button.visible)
         verify(button.enabled)
-        compare(button.text, "IMPORT TORRENT FOR THIS GAME")
+        compare(button.text, "Import torrent for this game")
 
         mouseClick(button, button.width / 2, button.height / 2)
         compare(importSpy.count, 1)

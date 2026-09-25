@@ -70,7 +70,7 @@ Rectangle {
             highlighted: true
             visible: card.importTorrentAvailable
             enabled: visible && !card.busy
-            text: "IMPORT TORRENT FOR THIS GAME"
+            text: "Import torrent for this game"
             font.pixelSize: 10
             font.weight: Font.Bold
             Accessible.name: "Import a torrent for this game"

@@ -93,18 +93,18 @@ Rectangle {
                 id: discoverButton
                 Layout.preferredWidth: 94
                 Layout.preferredHeight: 32
-                highlighted: text === "FIND MUSIC"
+                highlighted: text === "Find music"
                 font.pixelSize: 8
                 font.weight: Font.Bold
                 text: emuMoviesModel && emuMoviesModel.busy
                       && emuMoviesModel.last_media_kind === "soundtrack"
-                      ? "CANCEL"
+                      ? "Cancel"
                       : emuMoviesModel && emuMoviesModel.credentials_saved
-                        ? "FIND MUSIC" : "SET UP"
+                        ? "Find music" : "Set up"
                 enabled: emuMoviesModel
-                Accessible.name: text === "SET UP"
+                Accessible.name: text === "Set up"
                                  ? "Set up EmuMovies game music"
-                                 : text === "CANCEL"
+                                 : text === "Cancel"
                                    ? "Cancel EmuMovies game music operation"
                                    : "Find EmuMovies game music"
                 onClicked: {
@@ -281,7 +281,7 @@ Rectangle {
                             Layout.preferredWidth: 78
                             Layout.preferredHeight: 28
                             text: trackRow.trackCached
-                                  ? "READY" : "DOWNLOAD"
+                                  ? "Ready" : "Download"
                             enabled: !emuMoviesModel.busy
                                      && !trackRow.trackCached
                             Accessible.name: text + " "

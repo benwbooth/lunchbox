@@ -31,6 +31,7 @@ pub mod qobject {
         #[qproperty(QString, neutral_error)]
         #[qproperty(i32, neutral_revision)]
         #[qproperty(i32, input_revision)]
+        #[qproperty(i32, sdl3_device_revision)]
         #[qproperty(bool, navigation_enabled)]
         #[qproperty(QString, navigation_action)]
         #[qproperty(i32, navigation_revision)]
@@ -89,6 +90,7 @@ pub struct GamepadInputRust {
     neutral_error: QString,
     neutral_revision: i32,
     input_revision: i32,
+    sdl3_device_revision: i32,
     navigation_enabled: bool,
     navigation_action: QString,
     navigation_revision: i32,
@@ -118,6 +120,7 @@ impl Default for GamepadInputRust {
             neutral_error: QString::default(),
             neutral_revision: 0,
             input_revision: 0,
+            sdl3_device_revision: 0,
             navigation_enabled: true,
             navigation_action: QString::default(),
             navigation_revision: 0,
@@ -391,6 +394,10 @@ impl qobject::GamepadInput {
                 let result = crate::controller_sdl3::run(&sdl_stop, |event| {
                     let virtual_gilrs = Arc::clone(&sdl_virtual_gilrs);
                     let _ = sdl_qt.queue(move |mut model| match event {
+                        crate::controller_sdl3::InputEvent::InventoryChanged => {
+                            let revision = model.as_ref().sdl3_device_revision().wrapping_add(1);
+                            model.as_mut().set_sdl3_device_revision(revision);
+                        }
                         crate::controller_sdl3::InputEvent::Press {
                             key,
                             binding,

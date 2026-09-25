@@ -216,6 +216,10 @@ ColumnLayout {
     onVisibleChanged: if (visible && initialized && !dirty) { stage = 0; restorePlayers() }
     Connections {
         target: setup.gamepad
+        function onSdl3_device_revisionChanged() {
+            if (setup.visible && !setup.settingsModel.controller_busy)
+                setup.settingsModel.refresh_controllers()
+        }
         function onInput_revisionChanged() {
             if (!setup.visible) return
             const id = setup.settingsModel.controller_key_for_input(setup.gamepad.last_device_key)
@@ -289,7 +293,7 @@ ColumnLayout {
             Layout.fillWidth: true; wrapMode: Text.WordWrap
             text: setup.activeDevices[setup.lastPressedDevice] && setup.connected(setup.lastPressedDevice)
                 ? "Button pressed on: " + setup.connected(setup.lastPressedDevice).name
-                : "Not sure which controller is which? Press a button to identify it."
+                : "Not sure which controller is which? Press a button to identify it. Some pads report a generic name; choose its model or rename it after identifying."
             color: setup.activeDevices[setup.lastPressedDevice] ? "#8ad4b7" : palette.text
         }
         Label { visible: setup.connectedControllers.length === 0; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "No controllers connected. Plug one in or pair it over Bluetooth; it will appear here." }

@@ -443,7 +443,7 @@ Item {
                     Accessible.name: "Game Menu"
                     CrispText {
                         anchors.centerIn: parent
-                        text: "GAME MENU"
+                        text: "Game menu"
                         color: screen.inkColor
                         font.pixelSize: 10
                         font.weight: Font.Bold
@@ -466,7 +466,7 @@ Item {
                     Accessible.name: "Desktop Details"
                     CrispText {
                         anchors.centerIn: parent
-                        text: "DESKTOP DETAILS"
+                        text: "Desktop details"
                         color: screen.inkColor
                         font.pixelSize: 10
                         font.weight: Font.Bold
@@ -491,7 +491,7 @@ Item {
                     CrispText {
                         anchors.centerIn: parent
                         text: screen.phase === "starting"
-                              ? "CANCEL PREPARATION" : "RETURN TO BROWSING"
+                              ? "Cancel preparation" : "Return to browsing"
                         color: screen.backgroundColor
                         font.pixelSize: 10
                         font.weight: Font.Bold

@@ -53,7 +53,7 @@ Item {
         anchors.bottom: parent.bottom
         anchors.margins: 3
         width: 58
-        text: control.revealed ? "HIDE" : "SHOW"
+        text: control.revealed ? "Hide" : "Show"
         enabled: control.enabled
         font.pixelSize: 9
         font.weight: Font.Bold

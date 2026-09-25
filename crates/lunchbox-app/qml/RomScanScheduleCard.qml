@@ -185,7 +185,7 @@ Rectangle {
                 LbButton {
                     objectName: "romScanRunNowButton"
                     Layout.fillWidth: true
-                    text: "RUN NOW"
+                    text: "Run now"
                     enabled: !card.controlsBusy && !card.running
                              && card.scanModel.profile_count > 0
                     onClicked: card.scanModel.run_scheduled_scan_now()
@@ -205,7 +205,7 @@ Rectangle {
                 objectName: "romScanReviewButton"
                 Layout.fillWidth: true
                 visible: card.hasReview
-                text: "REVIEW CHANGES"
+                text: "Review changes"
                 enabled: !card.controlsBusy && !card.running
                 onClicked: card.reviewRequested()
                 ToolTip.visible: hovered

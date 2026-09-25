@@ -190,7 +190,7 @@ Rectangle {
             LbButton {
                 objectName: "displayAccordionButton"
                 width: parent.width
-                text: (hero.displayExpanded ? "▾  " : "▸  ") + "DISPLAY SETTINGS"
+                text: (hero.displayExpanded ? "▾  " : "▸  ") + "Display settings"
                 flat: true
                 font.pixelSize: 11
                 font.weight: Font.Bold
@@ -204,7 +204,7 @@ Rectangle {
                 visible: hero.displayExpanded
                 LbButton {
                     Layout.fillWidth: true
-                    text: "THIS GAME"
+                    text: "This game"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     flat: true
@@ -217,7 +217,7 @@ Rectangle {
                 }
                 LbButton {
                     Layout.fillWidth: true
-                    text: "THIS PLATFORM"
+                    text: "This platform"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     flat: true
@@ -655,7 +655,7 @@ Rectangle {
                 LbButton {
                     width: (parent.width - 12) / 3
                     height: 32
-                    text: "THIS GAME"
+                    text: "This game"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     highlighted: hero.preferenceScope === "game"
@@ -664,7 +664,7 @@ Rectangle {
                 LbButton {
                     width: (parent.width - 12) / 3
                     height: 32
-                    text: "THIS PLATFORM"
+                    text: "This platform"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     highlighted: hero.preferenceScope === "platform"
@@ -674,7 +674,7 @@ Rectangle {
                     width: (parent.width - 12) / 3
                     height: 32
                     visible: hero.preferenceScope.length > 0
-                    text: "RESET"
+                    text: "Reset"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     onClicked: hero.clearDefaultRequested()
@@ -693,13 +693,13 @@ Rectangle {
             objectName: "launchAction"
             width: parent.width
             height: 48
-            text: hero.launchBusy ? "CANCEL PREPARATION"
-                  : hero.gameRunning ? hero.sessionStopping ? "STOPPING EMULATOR…" : "■  STOP EMULATOR"
-                  : hero.canLaunch ? "▶  PLAY"
-                  : hero.prepareBusy ? "PREPARING INSTALL…"
-                  : hero.prepareNeeded ? "PREPARE INSTALL"
+            text: hero.launchBusy ? "Cancel preparation"
+                  : hero.gameRunning ? hero.sessionStopping ? "Stopping emulator…" : "■  Stop emulator"
+                  : hero.canLaunch ? "▶  Play"
+                  : hero.prepareBusy ? "Preparing install…"
+                  : hero.prepareNeeded ? "Prepare install"
                   : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
-                  : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
+                  : hero.emulatorMissing ? "Install an emulator" : "Recheck play setup"
             enabled: !hero.sessionStopping && (hero.launchBusy || hero.gameRunning
                      || (!hero.gameRunning && !hero.discoveryBusy && !hero.prepareBusy)
                      )
@@ -728,8 +728,8 @@ Rectangle {
             height: 32
             visible: !hero.gameRunning
             text: hero.platform.length > 0
-                  ? "MANAGE " + hero.platform.toUpperCase() + " EMULATORS"
-                  : "MANAGE EMULATORS"
+                  ? "Manage " + hero.platform + " emulators"
+                  : "Manage emulators"
             font.pixelSize: 9
             font.weight: Font.Bold
             onClicked: hero.manageEmulatorsRequested()

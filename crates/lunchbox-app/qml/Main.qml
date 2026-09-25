@@ -4004,7 +4004,7 @@ ApplicationWindow {
                     }
                 }
                 HeaderButton {
-                    text: "APPLY REVIEWED CHOICES"
+                    text: "Apply reviewed choices"
                     active: true
                     enabled: !saveSync.busy
                              && saveSync.choice_count === saveSync.conflict_count
@@ -4063,7 +4063,7 @@ ApplicationWindow {
                 }
                 HeaderButton {
                     visible: root.cloudLaunchPending
-                    text: "PLAY WITHOUT SYNC"
+                    text: "Play without sync"
                     active: true
                     onClicked: {
                         root.cloudLaunchPending = false
@@ -7968,6 +7968,13 @@ ApplicationWindow {
                  && !appSettings.controller_busy
         repeat: false
         onTriggered: {
+            const minimum = Number(root.argumentValue("--controller-ui-probe-min-controllers") || "0")
+            if (appSettings.controller_count() < minimum) {
+                restart()
+                return
+            }
+            console.log("LUNCHBOX_CONTROLLER_UI_CHOICES "
+                        + JSON.stringify(controllerAutomaticSetup.controllerChoices(0)))
             if (root.screenshotOutput.length === 0) {
                 console.log("LUNCHBOX_CONTROLLER_UI_READY controllers="
                             + appSettings.controller_count())
@@ -9027,7 +9034,7 @@ ApplicationWindow {
             LbButton {
                 Layout.preferredWidth: 72
                 Layout.preferredHeight: 38
-                text: "CLOSE"
+                text: "Close"
                 onClicked: mediaFullscreen.close()
             }
         }
@@ -12769,7 +12776,7 @@ ApplicationWindow {
                         anchors.top: parent.top
                         anchors.margins: 11
                         visible: root.selectedBoxFrontUrl.toString().length > 0
-                        text: root.selectedBox3d ? "ARTWORK" : "3D BOX"
+                        text: root.selectedBox3d ? "Artwork" : "3D box"
                         highlighted: root.selectedBox3d
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -13001,8 +13008,8 @@ ApplicationWindow {
                         height: 42
                         visible: gameDetails.game_running && !detailsHero.visible
                         text: gameDetails.session_stopping
-                              ? "STOPPING EMULATOR…"
-                              : "■  STOP " + gameDetails.session_title
+                              ? "Stopping emulator…"
+                              : "■  Stop " + gameDetails.session_title
                         enabled: !gameDetails.session_stopping
                         highlighted: false
                         onClicked: gameDetails.stop_emulator()
@@ -13275,10 +13282,10 @@ ApplicationWindow {
                                 font.letterSpacing: 0.8
                                 enabled: gameDetails.session_count > 0
                                 text: gameDetails.session_count > 0
-                                      ? "VIEW " + gameDetails.session_count
+                                      ? "View " + gameDetails.session_count
                                         + (gameDetails.session_count === 1
-                                           ? " SESSION" : " SESSIONS")
-                                      : "NO SESSION RECORDS"
+                                           ? " session" : " sessions")
+                                      : "No session records"
                                 Accessible.name: enabled
                                                  ? "View play-session history"
                                                  : "No play-session history"
@@ -13503,7 +13510,7 @@ ApplicationWindow {
                                     font.letterSpacing: 0.6
                                 }
                                 LbButton {
-                                    text: "START OVER"
+                                    text: "Start over"
                                     enabled: !gameDetails.video_progress_busy
                                     font.pixelSize: 8
                                     font.weight: Font.Bold
@@ -13564,7 +13571,7 @@ ApplicationWindow {
                                     LbButton {
                                         Layout.preferredWidth: 74
                                         Layout.preferredHeight: 32
-                                        text: "OPEN"
+                                        text: "Open"
                                         highlighted: true
                                         font.pixelSize: 8
                                         font.weight: Font.Bold
@@ -13628,7 +13635,7 @@ ApplicationWindow {
                                             Layout.preferredWidth: 74
                                             Layout.preferredHeight: 32
                                             text: gameDetails.manual_transfer_active
-                                                  ? "CANCEL" : "FIND"
+                                                  ? "Cancel" : "Find"
                                             highlighted: !gameDetails.manual_transfer_active
                                             font.pixelSize: 8
                                             font.weight: Font.Bold
@@ -13645,7 +13652,7 @@ ApplicationWindow {
                                             Layout.preferredWidth: 96
                                             Layout.preferredHeight: 32
                                             text: emuMovies.credentials_saved
-                                                  ? "EMUMOVIES" : "SET UP"
+                                                  ? "EmuMovies" : "Set up"
                                             font.pixelSize: 8
                                             font.weight: Font.Bold
                                             enabled: !emuMovies.busy
@@ -13819,17 +13826,17 @@ ApplicationWindow {
                         Row {
                             spacing: 8
                             CatalogLinkButton {
-                                text: "WATCH VIDEO"
+                                text: "Watch video"
                                 destination: gameDetails.catalog_video_url
                                 onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                             }
                             CatalogLinkButton {
-                                text: "WIKIPEDIA"
+                                text: "Wikipedia"
                                 destination: gameDetails.wikipedia_url
                                 onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                             }
                             CatalogLinkButton {
-                                text: "STEAM STORE"
+                                text: "Steam store"
                                 destination: gameDetails.steam_store_url
                                 onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                             }
@@ -14691,7 +14698,7 @@ ApplicationWindow {
                                     id: refreshEmulators
                                     width: 76
                                     height: 30
-                                    text: "REFRESH"
+                                    text: "Refresh"
                                     enabled: !gameDetails.launch_discovery_busy
                                              && !gameDetails.launch_busy
                                     font.pixelSize: 9
@@ -14717,10 +14724,10 @@ ApplicationWindow {
                                              && !gameDetails.launch_busy
                                              && !gameDetails.game_running
                                 positive: highlighted
-                                text: gameDetails.launch_busy ? "CANCEL PREPARATION"
-                                      : gameDetails.session_stopping ? "STOPPING EMULATOR…"
-                                      : gameDetails.game_running ? "■  STOP EMULATOR"
-                                      : "PLAY"
+                                text: gameDetails.launch_busy ? "Cancel preparation"
+                                      : gameDetails.session_stopping ? "Stopping emulator…"
+                                      : gameDetails.game_running ? "■  Stop emulator"
+                                      : "Play"
                                 enabled: !gameDetails.session_stopping
                                          && (gameDetails.launch_busy || gameDetails.game_running
                                              || (gameDetails.can_launch && !gameDetails.prepare_busy))
@@ -14739,9 +14746,9 @@ ApplicationWindow {
                                 width: parent.width
                                 height: 36
                                 highlighted: gameDetails.prepared
-                                text: gameDetails.prepare_busy ? "CANCEL PREPARATION"
-                                      : gameDetails.prepared ? "VERIFY & REFRESH INSTALL"
-                                      : "PREPARE INSTALL"
+                                text: gameDetails.prepare_busy ? "Cancel preparation"
+                                      : gameDetails.prepared ? "Verify & refresh install"
+                                      : "Prepare install"
                                 enabled: gameDetails.preparable || gameDetails.prepare_busy
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
@@ -16916,8 +16923,8 @@ ApplicationWindow {
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 38
                         highlighted: true
-                        text: externalTorrent.ready ? "IMPORT ANOTHER…"
-                                                    : "IMPORT .TORRENT…"
+                        text: externalTorrent.ready ? "Import another…"
+                                                    : "Import .torrent…"
                         enabled: !externalTorrent.busy
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -16966,7 +16973,7 @@ ApplicationWindow {
                         id: externalQbittorrentRefreshButton
                         Layout.preferredWidth: 118
                         Layout.preferredHeight: 38
-                        text: externalTorrent.existing_loading ? "CHECKING…" : "REFRESH"
+                        text: externalTorrent.existing_loading ? "Checking…" : "Refresh"
                         enabled: !externalTorrent.existing_loading
                         onClicked: externalTorrent.refresh_existing_torrents()
                     }
@@ -17008,7 +17015,7 @@ ApplicationWindow {
                     LbButton {
                         Layout.preferredWidth: 150
                         Layout.preferredHeight: 38
-                        text: externalTorrent.busy ? "FETCHING…" : "REVIEW MAGNET"
+                        text: externalTorrent.busy ? "Fetching…" : "Review magnet"
                         enabled: !externalTorrent.busy
                                  && externalMagnet.text.trim().length > 0
                         onClicked: externalTorrent.inspect_magnet(externalMagnet.text)
@@ -17163,7 +17170,7 @@ ApplicationWindow {
                     LbButton {
                         Layout.preferredWidth: 104
                         Layout.preferredHeight: 36
-                        text: "CANCEL"
+                        text: "Cancel"
                         enabled: !externalTorrent.busy
                         onClicked: externalTorrentDialog.close()
                     }
@@ -17175,32 +17182,32 @@ ApplicationWindow {
                                                : externalTorrent.importing_existing ? 232
                                                : queuesPayloadSet ? 196 : 176
                         Layout.preferredHeight: 36
-                        text: externalTorrent.busy ? "WORKING…"
+                        text: externalTorrent.busy ? "Working…"
                               : registersBatch
-                                ? "ADD " + externalTorrent.batch_valid_count
+                                ? "Add " + externalTorrent.batch_valid_count
                                   + (externalTorrent.batch_valid_count === 1
-                                     ? " SOURCE" : " SOURCES")
+                                     ? " source" : " sources")
                               : externalTorrent.collection_mode
                                 ? externalTorrent.batch_valid_count > 0
-                                  ? "ADD " + externalTorrent.batch_valid_count
+                                  ? "Add " + externalTorrent.batch_valid_count
                                     + (externalTorrent.batch_valid_count === 1
-                                       ? " SOURCE" : " SOURCES")
+                                       ? " source" : " sources")
                                   : externalTorrent.importing_existing
-                                  ? "IMPORT + ADD SOURCE"
-                                  : "ADD SOURCE"
+                                  ? "Import + add source"
+                                  : "Add source"
                                 : externalTorrent.importing_existing
                                   ? externalTorrent.register_for_platform
-                                    ? "IMPORT + QUEUE + ADD SOURCE"
+                                    ? "Import + queue + add source"
                                     : queuesPayloadSet
-                                      ? "IMPORT + QUEUE SET"
-                                      : "IMPORT + QUEUE FILE"
+                                      ? "Import + queue set"
+                                      : "Import + queue file"
                                 : externalTorrent.register_for_platform
                                   ? queuesPayloadSet
-                                    ? "QUEUE SET + ADD SOURCE"
-                                    : "QUEUE FILE + ADD SOURCE"
+                                    ? "Queue set + add source"
+                                    : "Queue file + add source"
                                   : queuesPayloadSet
-                                    ? "QUEUE REVIEWED SET"
-                                    : "QUEUE REVIEWED FILE"
+                                    ? "Queue reviewed set"
+                                    : "Queue reviewed file"
                         enabled: externalTorrent.ready
                                  && (registersBatch
                                      || externalTorrent.collection_mode
@@ -19325,7 +19332,7 @@ ApplicationWindow {
                     LbButton {
                         visible: root.artworkProviderNeedsSetup(
                                      root.artworkProvider)
-                        text: "SET UP IN SETTINGS"
+                        text: "Set up in settings"
                         enabled: !root.artworkProviderModel.busy
                         onClicked: root.openSettingsFor(root.artworkProvider)
                     }
@@ -19856,7 +19863,7 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
                 LbButton {
-                    text: "SETUP GUIDE"
+                    text: "Setup guide"
                     flat: true
                     font.pixelSize: 9
                     font.weight: Font.Bold
@@ -20200,7 +20207,7 @@ ApplicationWindow {
                                     width: library.couch_theme_installed_at(
                                                couchThemeCard.index) ? 137 : 203
                                     height: 30
-                                    text: couchThemeCard.selected ? "IN USE" : "USE THEME"
+                                    text: couchThemeCard.selected ? "In use" : "Use theme"
                                     enabled: !couchThemeCard.selected
                                              && !library.couch_theme_busy
                                              && !library.couch_state_saving
@@ -20215,7 +20222,7 @@ ApplicationWindow {
                                                  couchThemeCard.index)
                                     width: visible ? 76 : 0
                                     height: 30
-                                    text: "REMOVE"
+                                    text: "Remove"
                                     enabled: !library.couch_theme_busy
                                     font.pixelSize: 8
                                     onClicked: {
@@ -20232,13 +20239,13 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 9
                         PaneButton {
-                            text: library.couch_theme_busy ? "WORKING…" : "INSTALL THEME PACKAGE"
+                            text: library.couch_theme_busy ? "Working…" : "Install theme package"
                             enabled: !library.couch_theme_busy
                             onClicked: root.chooseCouchThemeFile()
                             Accessible.name: "Install a declarative Couch Mode theme package"
                         }
                         PaneButton {
-                            text: "REFRESH"
+                            text: "Refresh"
                             enabled: !library.couch_theme_busy
                             onClicked: library.refresh_couch_themes()
                             Accessible.name: "Refresh installed Couch Mode themes"
@@ -20474,7 +20481,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                     }
                     HeaderButton {
-                        text: appSettings.busy ? "TESTING…" : "TEST QBITTORRENT"
+                        text: appSettings.busy ? "Testing…" : "Test qBittorrent"
                         active: true
                         enabled: appSettings.initialized && !appSettings.busy
                         onClicked: appSettings.test_connection()
@@ -22656,7 +22663,7 @@ ApplicationWindow {
                                 spacing: 10
                                 PaneButton {
                                     id: profileBackupButton
-                                    text: "BACK UP NOW…"
+                                    text: "Back up now…"
                                     enabled: appSettings.initialized
                                              && !appSettings.profile_busy
                                              && !appSettings.busy
@@ -22667,7 +22674,7 @@ ApplicationWindow {
                                 }
                                 PaneButton {
                                     id: profileRestoreButton
-                                    text: "RESTORE PROFILE…"
+                                    text: "Restore profile…"
                                     enabled: appSettings.initialized
                                              && !appSettings.profile_busy
                                              && !appSettings.profile_restart_required
@@ -22677,14 +22684,14 @@ ApplicationWindow {
                                 Item { Layout.fillWidth: true }
                                 HeaderButton {
                                     visible: appSettings.profile_restart_required
-                                    text: "CANCEL RESTORE"
+                                    text: "Cancel restore"
                                     enabled: !appSettings.profile_busy
                                     onClicked: appSettings.cancel_staged_profile_restore()
                                     Accessible.name: "Cancel the staged Lunchbox profile restore"
                                 }
                                 HeaderButton {
                                     visible: appSettings.profile_restart_required
-                                    text: "QUIT TO APPLY"
+                                    text: "Quit to apply"
                                     active: true
                                     enabled: !appSettings.profile_busy
                                     onClicked: Qt.quit()
@@ -26006,17 +26013,17 @@ ApplicationWindow {
                                              || gameDetails.steam_store_url.toString().length > 0
                                     spacing: 8
                                     CatalogLinkButton {
-                                        text: "WATCH VIDEO"
+                                        text: "Watch video"
                                         destination: gameDetails.catalog_video_url
                                         onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                                     }
                                     CatalogLinkButton {
-                                        text: "WIKIPEDIA"
+                                        text: "Wikipedia"
                                         destination: gameDetails.wikipedia_url
                                         onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                                     }
                                     CatalogLinkButton {
-                                        text: "STEAM STORE"
+                                        text: "Steam store"
                                         destination: gameDetails.steam_store_url
                                         onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                                     }

@@ -226,9 +226,9 @@ ColumnLayout {
         }
         Item { Layout.fillWidth: true }
         LbButton {
-            text: root.providerModel.busy ? "VERIFYING…"
+            text: root.providerModel.busy ? "Verifying…"
                   : provider.currentValue === "local_folder"
-                    ? "SAVE && VERIFY FOLDER" : "SAVE && VERIFY CONNECTION"
+                    ? "Save && verify folder" : "Save && verify connection"
             enabled: !root.providerModel.busy
                      && ((provider.currentValue === "local_folder"
                           && localFolderRoot.text.length > 0)

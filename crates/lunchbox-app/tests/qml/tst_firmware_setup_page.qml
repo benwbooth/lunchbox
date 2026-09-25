@@ -27,7 +27,7 @@ TestCase {
                 property string firmware_summary: "Switch keys and firmware are required."
                 property string firmware_next_package: "switch-keys.zip"
                 property string firmware_setup_action: "choose"
-                property string firmware_setup_label: "SET UP EMULATOR"
+                property string firmware_setup_label: "Set up emulator"
                 property bool switch_prod_keys_imported: false
                 property bool switch_prod_keys_ready: false
                 property bool switch_firmware_imported: false
@@ -75,7 +75,7 @@ TestCase {
         verify(packageLabel)
         verify(action)
         compare(packageLabel.text, "switch-keys.zip")
-        compare(action.text, "CHOOSE FILE")
+        compare(action.text, "Choose file")
         action.click()
         compare(host.chooseSpy.count, 1)
         compare(host.chooseSpy.signalArguments[0][0], "switch-keys.zip")
@@ -110,7 +110,7 @@ TestCase {
                                      "firmwarePackageAction-switch-keys.zip")
         verify(keysAction)
         compare(keysAction.applyAvailable, true)
-        compare(keysAction.text, "APPLY TO EDEN")
+        compare(keysAction.text, "Apply to Eden")
         keysAction.click()
         compare(host.chooseSpy.count, 0)
         compare(host.primarySpy.count, 1)
@@ -155,6 +155,6 @@ TestCase {
         host.details.switch_firmware_ready = true
         const action = findChild(host.page, "firmwarePrimaryAction")
         verify(action)
-        compare(action.text, "▶  PLAY")
+        compare(action.text, "▶  Play")
     }
 }

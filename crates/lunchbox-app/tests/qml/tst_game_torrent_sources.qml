@@ -112,7 +112,7 @@ TestCase {
 
         const expand = findChild(host.sources, "expandTorrentSourcesButton")
         verify(expand)
-        compare(expand.text, "SHOW ALL SOURCES AND MATCHES")
+        compare(expand.text, "Show all sources and matches")
         tryVerify(function() {
             return expand.mapToItem(host.sources, 0, expand.height).y
                    <= findChild(host.sources, "torrentSource-0")
@@ -121,7 +121,7 @@ TestCase {
         expand.click()
         compare(host.sources.visibleSourceCount, 8)
         verify(findChild(host.sources, "torrentSource-7"))
-        compare(expand.text, "SHOW TOP 3 SOURCES")
+        compare(expand.text, "Show top 3 sources")
 
         host.details.game_id = "game-two"
         compare(host.sources.sourcesExpanded, false)
