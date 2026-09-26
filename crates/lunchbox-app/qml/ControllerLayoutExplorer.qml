@@ -26,6 +26,7 @@ LbDialog {
         workflow.startForGame(name, platform, emulator, gameUid)
         open()
     }
+    onOpened: settingsModel.refresh_controllers()
     contentItem: MomentumScrollView {
         id: scroll
         objectName: "controllerSetupScroll"

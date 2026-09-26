@@ -72,7 +72,9 @@ T.ComboBox {
         // A ComboBox inside a modal Dialog otherwise leaves its popup beneath
         // the dialog surface in the live window, even while popup.visible is true.
         parent: C.Overlay.overlay
-        z: 100
+        // KDE's modal Dialog sits at z=300. The menu must be above that
+        // overlay, not merely above the ComboBox inside the dialog.
+        z: 10000
         x: 0
         y: 0
         // mapToItem() does not bind to movement of every ancestor of the

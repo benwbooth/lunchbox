@@ -198,6 +198,25 @@ TestCase {
         compare(guided.playerDevices[0], "sc2")
         verify(!combo.popup.visible)
     }
+    function test_disconnected_saved_player_does_not_hide_connected_choices() {
+        settings.order = ["n30"]
+        const refreshes = settings.refreshCalls
+        explorer.openForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        tryVerify(function() { return explorer.visible })
+        tryVerify(function() { return settings.refreshCalls > refreshes })
+        const guided = findChild(explorer, "controllerSetupWorkflow")
+        const combo = findChild(guided, "playerController0")
+        verify(combo)
+        compare(combo.model.length, 5)
+        compare(combo.currentText, "Saved controller — disconnected")
+        mouseClick(combo, combo.width - 12, combo.height / 2)
+        tryVerify(function() { return combo.popup.visible })
+        tryVerify(function() { return combo.popup.contentItem.count === 5 })
+        verify(combo.popup.height >= 5 * 28,
+               "The popup must display connected controllers even when the saved pad is last")
+        tryVerify(function() { return combo.popup.contentItem.itemAtIndex(1) !== null },
+                  1000, "The first connected controller must be visible")
+    }
     function test_native_mapping_is_automatic_and_existing_buttons_survive() {
         workflow.assignPlayer(0,"sc2")
         compare(settings.automaticCalls,1)
