@@ -28,6 +28,10 @@ pub struct Session {
     pub emulator: String,
     owner: ProcessIdentity,
     pub process: Option<ProcessIdentity>,
+    #[serde(default)]
+    pub save_observation: Option<crate::retroarch_saves::AutoSaveObservation>,
+    #[serde(default)]
+    pub sync_target: Option<serde_json::Value>,
 }
 
 impl Session {
@@ -109,7 +113,7 @@ fn read(path: &Path) -> Result<Option<Session>> {
     }
 }
 
-fn write(path: &Path, session: &Session) -> Result<()> {
+fn write(path: &Path, session: &impl Serialize) -> Result<()> {
     use std::io::Write;
     let parent = path.parent().context("session path has no parent")?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
@@ -171,6 +175,8 @@ fn owned_retroarch_orphan() -> Option<Session> {
             pid,
             started: process.start_time(),
         }),
+        save_observation: None,
+        sync_target: None,
     })
 }
 
@@ -184,7 +190,7 @@ fn active_locked(path: &Path) -> Result<Option<Session>> {
         if valid {
             return Ok(Some(session));
         }
-        fs::remove_file(path).context("removing expired emulator session")?;
+        retire_session(path, &session)?;
     }
     if let Some(orphan) = owned_retroarch_orphan() {
         write(path, &orphan)?;
@@ -212,13 +218,21 @@ pub fn reserve(game_id: &str, title: &str) -> Result<Session> {
             emulator: String::new(),
             owner,
             process: None,
+            save_observation: None,
+            sync_target: None,
         };
         write(path, &session)?;
         Ok(session)
     })
 }
 
-pub fn mark_running(token: &str, pid: u32, emulator: &str) -> Result<()> {
+pub fn mark_running(
+    token: &str,
+    pid: u32,
+    emulator: &str,
+    observation: Option<&crate::retroarch_saves::AutoSaveObservation>,
+    sync_target: Option<&serde_json::Value>,
+) -> Result<()> {
     with_lock(|path| {
         let mut session = read(path)?.context("launch reservation is missing")?;
         ensure!(session.token == token, "launch reservation was replaced");
@@ -226,8 +240,60 @@ pub fn mark_running(token: &str, pid: u32, emulator: &str) -> Result<()> {
             identity(pid).context("emulator process exited before it could be tracked")?;
         session.process = Some(process);
         session.emulator = emulator.to_owned();
+        session.save_observation = observation.cloned();
+        session.sync_target = sync_target.cloned();
         write(path, &session)
     })
+}
+
+fn pending_path(path: &Path) -> PathBuf {
+    path.with_file_name("emulator-session-pending-exits.json")
+}
+
+fn read_pending(path: &Path) -> Result<Vec<Session>> {
+    match fs::read(pending_path(path)) {
+        Ok(bytes) => serde_json::from_slice(&bytes).context("reading pending session exits"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error).context("reading pending session exits"),
+    }
+}
+
+fn queue_recovered_exit(path: &Path, session: &Session) -> Result<()> {
+    if session.save_observation.is_none() && session.sync_target.is_none() {
+        return Ok(());
+    }
+    let mut pending = read_pending(path)?;
+    if !pending.iter().any(|item| item.token == session.token) {
+        pending.push(session.clone());
+        write(&pending_path(path), &pending)?;
+    }
+    Ok(())
+}
+
+fn retire_session(path: &Path, session: &Session) -> Result<()> {
+    // Preserve exit work after the original launch worker died with Lunchbox,
+    // including a game that closed while Lunchbox was not running. A live
+    // owner's worker still handles its own exit.
+    if session.version == 1 && session.process.is_some() && !alive(&session.owner) {
+        queue_recovered_exit(path, session)?;
+    }
+    fs::remove_file(path).context("removing expired emulator session")
+}
+
+/// Kept until the UI has displayed the notice and completed (or explicitly
+/// skipped) backup, so another UI restart cannot silently drop this work.
+pub fn recovered_exits() -> Result<Vec<Session>> {
+    with_lock(read_pending)
+}
+
+pub fn acknowledge_exit(token: &str) -> Result<()> {
+    with_lock(|path| acknowledge_exit_at(path, token))
+}
+
+fn acknowledge_exit_at(path: &Path, token: &str) -> Result<()> {
+    let mut pending = read_pending(path)?;
+    pending.retain(|item| item.token != token);
+    write(&pending_path(path), &pending)
 }
 
 pub fn clear(token: &str) -> Result<()> {
@@ -375,6 +441,8 @@ mod tests {
             emulator: String::new(),
             owner: current,
             process: None,
+            save_observation: None,
+            sync_target: None,
         };
         assert!(session.preparing());
     }
@@ -392,9 +460,65 @@ mod tests {
             emulator: "RetroArch".into(),
             owner: owner.clone(),
             process: Some(owner),
+            save_observation: None,
+            sync_target: None,
         };
         write(&path, &session).unwrap();
         assert_eq!(read(&path).unwrap(), Some(session));
+    }
+
+    #[test]
+    fn recovered_exit_keeps_save_context_until_backup_acknowledges_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("session.json");
+        let mut expired = identity(std::process::id()).unwrap();
+        expired.started += 1; // Simulate the previous Lunchbox process exiting.
+        let session = Session {
+            version: 1,
+            token: "recovered-dkc2".into(),
+            game_id: "dkc2".into(),
+            title: "Donkey Kong Country 2".into(),
+            emulator: "RetroArch".into(),
+            owner: expired.clone(),
+            process: Some(expired),
+            save_observation: crate::retroarch_saves::AutoSaveObservation::for_content(
+                "mesen-s",
+                Path::new("DKC2.sfc"),
+                true,
+                true,
+            ),
+            sync_target: Some(serde_json::json!({"available":true,
+                "emulator_slug":"retroarch-core-mesen-s", "runtime_platform":"linux-flatpak"})),
+        };
+        write(&path, &session).unwrap();
+        retire_session(&path, &session).unwrap();
+        assert!(read(&path).unwrap().is_none());
+        assert_eq!(read_pending(&path).unwrap(), vec![session.clone()]);
+        // Repeated polls/restarts do not consume the exit or duplicate it.
+        queue_recovered_exit(&path, &session).unwrap();
+        assert_eq!(read_pending(&path).unwrap(), vec![session.clone()]);
+        acknowledge_exit_at(&path, "different-session").unwrap();
+        assert_eq!(read_pending(&path).unwrap().len(), 1);
+        acknowledge_exit_at(&path, &session.token).unwrap();
+        assert!(read_pending(&path).unwrap().is_empty());
+
+        let owned = Session {
+            owner: identity(std::process::id()).unwrap(),
+            ..session
+        };
+        write(&path, &owned).unwrap();
+        retire_session(&path, &owned).unwrap();
+        assert!(read_pending(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn older_session_records_without_save_context_still_load() {
+        let json = serde_json::json!({"version":1, "token":"old", "game_id":"dkc2",
+            "title":"DKC2", "emulator":"RetroArch", "owner":{"pid":1,"started":1},
+            "process":{"pid":2,"started":2}});
+        let session: Session = serde_json::from_value(json).unwrap();
+        assert!(session.save_observation.is_none());
+        assert!(session.sync_target.is_none());
     }
 
     #[test]
@@ -412,6 +536,8 @@ mod tests {
             emulator: String::new(),
             owner: current,
             process: Some(invalid),
+            save_observation: None,
+            sync_target: None,
         };
         assert!(stop(&session).is_err());
     }
@@ -432,6 +558,8 @@ mod tests {
             emulator: "sleep".into(),
             owner: identity(std::process::id()).unwrap(),
             process: Some(process),
+            save_observation: None,
+            sync_target: None,
         };
         let result = stop(&session);
         if result.is_err() {

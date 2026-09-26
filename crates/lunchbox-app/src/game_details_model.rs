@@ -135,7 +135,9 @@ pub mod qobject {
         #[qproperty(QString, emulator_summary)]
         #[qproperty(QString, launch_status)]
         #[qproperty(QString, save_file_notice)]
+        #[qproperty(QString, save_file_notice_title)]
         #[qproperty(bool, save_file_notice_success)]
+        #[qproperty(QString, launch_sync_target_json)]
         #[qproperty(QString, emulator_preference_scope)]
         #[qproperty(bool, launch_profile_open)]
         #[qproperty(QString, launch_profile_scope)]
@@ -371,6 +373,10 @@ pub mod qobject {
 
         #[qinvokable]
         fn poll_emulator_session(self: Pin<&mut GameDetailsModel>);
+        #[qinvokable]
+        fn acknowledge_session_exit(self: Pin<&mut GameDetailsModel>, token: QString);
+        #[qsignal]
+        fn recovered_session_exit(self: Pin<&mut GameDetailsModel>, report: QString);
 
         #[qinvokable]
         fn stop_emulator(self: Pin<&mut GameDetailsModel>);
@@ -788,7 +794,9 @@ pub struct GameDetailsModelRust {
     emulator_summary: QString,
     launch_status: QString,
     save_file_notice: QString,
+    save_file_notice_title: QString,
     save_file_notice_success: bool,
+    launch_sync_target_json: QString,
     emulator_preference_scope: QString,
     launch_profile_open: bool,
     launch_profile_scope: QString,
@@ -1046,7 +1054,9 @@ impl Default for GameDetailsModelRust {
             emulator_summary: QString::default(),
             launch_status: QString::default(),
             save_file_notice: QString::default(),
+            save_file_notice_title: QString::default(),
             save_file_notice_success: false,
+            launch_sync_target_json: "null".into(),
             emulator_preference_scope: QString::default(),
             launch_profile_open: false,
             launch_profile_scope: QString::from("game"),
@@ -6155,6 +6165,11 @@ impl qobject::GameDetailsModel {
 
         let game_id = self.as_ref().game_id().to_string();
         let activity_title = self.as_ref().rust().canonical_title.clone();
+        let sync_target = serde_json::from_str::<serde_json::Value>(
+            &self.as_ref().launch_sync_target_json().to_string(),
+        )
+        .ok()
+        .filter(|target| target["available"].as_bool() == Some(true));
         let session = match crate::emulator_session::reserve(&game_id, &activity_title) {
             Ok(session) => session,
             Err(error) => {
@@ -6187,6 +6202,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().session_stop_requested = Some(Arc::clone(&stop_requested));
         self.as_mut().set_launch_busy(true);
         self.as_mut().set_session_title(qstring(&activity_title));
+        self.as_mut()
+            .set_save_file_notice_title(qstring(&activity_title));
         self.as_mut()
             .set_launch_status(qstring(if preparing_archived_playlist {
                 "Preparing the multi-disc playlist and any compressed disc images…"
@@ -6614,7 +6631,8 @@ impl qobject::GameDetailsModel {
                     };
                     let process_id = child.id();
                     if let Err(error) = crate::emulator_session::mark_running(
-                        &worker_session_token, process_id, &emulator_name
+                        &worker_session_token, process_id, &emulator_name,
+                        auto_save_observation.as_ref(), sync_target.as_ref(),
                     ) {
                         let _ = child.kill();
                         let _ = child.wait();
@@ -6922,6 +6940,24 @@ impl qobject::GameDetailsModel {
             .name("lunchbox-session-poll".into())
             .spawn(move || {
                 let result = crate::emulator_session::active().map_err(|error| error.to_string());
+                let exit_reports = crate::emulator_session::recovered_exits().map(|sessions| {
+                    sessions
+                        .into_iter()
+                        .map(|session| {
+                            let notice = session
+                                .save_observation
+                                .as_ref()
+                                .and_then(|observation| observation.exit_notice());
+                            serde_json::json!({
+                                "token": session.token, "title": session.title,
+                                "notice": notice.as_ref().map_or("", |(text, _)| text.as_str()),
+                                "success": notice.as_ref().is_some_and(|(_, good)| *good),
+                                "target": session.sync_target,
+                            })
+                            .to_string()
+                        })
+                        .collect::<Vec<_>>()
+                });
                 let recovered = if attempt_translation_recovery
                     && result
                         .as_ref()
@@ -6969,11 +7005,25 @@ impl qobject::GameDetailsModel {
                             eprintln!("LUNCHBOX_EMULATOR_SESSION_REFRESH_FAILED: {error}")
                         }
                     }
+                    match exit_reports {
+                        Ok(reports) => {
+                            for report in reports {
+                                model.as_mut().recovered_session_exit(qstring(report));
+                            }
+                        }
+                        Err(error) => eprintln!("LUNCHBOX_SESSION_EXIT_RECOVERY_FAILED: {error:#}"),
+                    }
                 });
             });
         if let Err(error) = spawned {
             self.as_mut().rust_mut().session_poll_in_flight = false;
             eprintln!("LUNCHBOX_EMULATOR_SESSION_POLL_FAILED: {error}");
+        }
+    }
+
+    pub fn acknowledge_session_exit(self: Pin<&mut Self>, token: QString) {
+        if let Err(error) = crate::emulator_session::acknowledge_exit(&token.to_string()) {
+            eprintln!("LUNCHBOX_SESSION_EXIT_ACK_FAILED: {error:#}");
         }
     }
 
@@ -7024,13 +7074,11 @@ impl qobject::GameDetailsModel {
     fn show_save_file_notice(
         mut self: Pin<&mut Self>,
         generation: u64,
-        game_id: &str,
+        _game_id: &str,
         notice: String,
         success: bool,
     ) {
-        if generation != self.as_ref().rust().session_generation
-            || self.as_ref().game_id().to_string() != game_id
-        {
+        if generation != self.as_ref().rust().session_generation {
             return;
         }
         self.as_mut().set_save_file_notice_success(success);
@@ -7096,6 +7144,16 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_game_running(false);
         self.as_mut().set_session_stopping(false);
         self.as_mut().set_session_title(QString::default());
+        // Save notices belong to the session, not whichever details card is
+        // selected when the emulator exits.
+        if let Some((notice, success)) = save_notice.as_ref() {
+            self.as_mut().show_save_file_notice(
+                generation,
+                &completed_game_id,
+                notice.clone(),
+                *success,
+            );
+        }
         if self.as_ref().game_id().to_string() != completed_game_id {
             return;
         }
@@ -7117,11 +7175,8 @@ impl qobject::GameDetailsModel {
             Some(warning) => format!("{base_status} {warning}"),
             None => base_status,
         };
-        if let Some((notice, success)) = save_notice {
+        if let Some((notice, _)) = save_notice {
             status.push_str(&format!(" · {notice}"));
-            let game_id = self.as_ref().game_id().to_string();
-            self.as_mut()
-                .show_save_file_notice(generation, &game_id, notice, success);
         }
         self.as_mut().set_launch_status(qstring(status));
         if activity_recorded {

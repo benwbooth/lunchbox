@@ -171,6 +171,7 @@ fn main() {
                 "qml/MediaRetryController.qml",
                 "qml/NativeTextArea.qml",
                 "qml/NotificationHistory.qml",
+                "qml/SessionSaveRecovery.qml",
                 "qml/PaneButton.qml",
                 "qml/PlatformSearchState.qml",
                 "qml/PreviewAudioCompanion.qml",

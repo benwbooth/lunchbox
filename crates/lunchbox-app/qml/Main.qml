@@ -1657,7 +1657,9 @@ ApplicationWindow {
 
     function currentSaveSyncTarget() {
         try {
-            return JSON.parse(gameDetails.save_sync_target_json())
+            const target = JSON.parse(gameDetails.save_sync_target_json())
+            target.title = gameDetails.title
+            return target
         } catch (error) {
             return { available: false,
                      error: "Could not read the selected emulator sync target: " + error }
@@ -2230,6 +2232,7 @@ ApplicationWindow {
 
     GameDetailsModel {
         id: gameDetails
+        launch_sync_target_json: root.cloudActiveTarget ? JSON.stringify(root.cloudActiveTarget) : "null"
         display_output_width: root.screen
                               ? Math.floor(root.screen.width * root.screen.devicePixelRatio) : 0
         display_output_height: root.screen
@@ -3741,15 +3744,38 @@ ApplicationWindow {
 
     Connections {
         target: gameDetails
+        function onRecovered_session_exit(report) {
+            recoveredSaveSync.enqueue(JSON.parse(report))
+        }
         function onSave_file_noticeChanged() {
             if (gameDetails.save_file_notice.length === 0) {
                 return
             }
             root.saveFileToastGood = gameDetails.save_file_notice_success
-            root.saveFileToast = gameDetails.title + ": " + gameDetails.save_file_notice
+            root.saveFileToast = gameDetails.save_file_notice_title + ": " + gameDetails.save_file_notice
             root.rememberNotification(root.saveFileToast, root.saveFileToastGood)
             saveFileToastHideTimer.restart()
         }
+    }
+
+    SessionSaveRecovery {
+        id: recoveredSaveSync
+        backend: saveSync
+        enabled: !root.isProbeRun()
+        gameBusy: gameDetails.game_running || gameDetails.launch_busy
+        onNotice: (title, message, success) => {
+            root.saveFileToast = title + ": " + message
+            root.saveFileToastGood = success
+            root.rememberNotification(root.saveFileToast, success)
+            saveFileToastHideTimer.restart()
+        }
+        onSyncStarting: target => root.cloudLastSyncTarget = target
+        onAcknowledge: token => gameDetails.acknowledge_session_exit(token)
+    }
+
+    function saveSyncGameTitle() {
+        return root.cloudLastSyncTarget && root.cloudLastSyncTarget.title
+                ? root.cloudLastSyncTarget.title : gameDetails.title
     }
 
     Connections {
@@ -3779,7 +3805,7 @@ ApplicationWindow {
                             + root.cloudLastSyncTarget.emulator_slug
                             + "/" + root.cloudLastSyncTarget.runtime_platform
                             + "/current"
-                    root.saveFileToast = gameDetails.title
+                    root.saveFileToast = root.saveSyncGameTitle()
                             + ": Save backup synchronized to " + destination
                             + " (original filenames)"
                     root.saveFileToastGood = true
@@ -3787,7 +3813,7 @@ ApplicationWindow {
                     root.rememberNotification(root.saveFileToast, true)
                 } else {
                     root.rememberNotification(
-                                (gameDetails.title.length > 0 ? gameDetails.title + ": " : "")
+                                (root.saveSyncGameTitle().length > 0 ? root.saveSyncGameTitle() + ": " : "")
                                 + (saveSync.operation === "post_exit" ? "After play: " : "")
                                 + saveSync.message, true)
                 }
@@ -3806,7 +3832,7 @@ ApplicationWindow {
             }
             if (saveSync.status === "error") {
                 if (saveSync.operation === "post_exit") {
-                    root.saveFileToast = gameDetails.title
+                    root.saveFileToast = root.saveSyncGameTitle()
                             + ": Saved locally, but backup failed: " + saveSync.message
                     root.saveFileToastGood = false
                     saveFileToastHideTimer.restart()

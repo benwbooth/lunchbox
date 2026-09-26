@@ -31,6 +31,7 @@ pub fn lunchbox_route_roots(core_name: &str) -> Vec<PathBuf> {
 
 /// Observe the actual files used by RetroArch without claiming that merely
 /// enabling auto-load proves the core consumed a previous state.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AutoSaveObservation {
     state: PathBuf,
     sram: PathBuf,
@@ -323,6 +324,29 @@ mod tests {
                 true
             ))
         );
+    }
+
+    #[test]
+    fn persisted_observation_detects_files_written_after_ui_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("DKC2.state.auto");
+        let sram = directory.path().join("DKC2.srm");
+        let observation = AutoSaveObservation {
+            state: state.clone(),
+            sram: sram.clone(),
+            state_before: None,
+            sram_before: None,
+            auto_state_load_enabled: true,
+            auto_state_save_enabled: true,
+        };
+        let stored = serde_json::to_vec(&observation).unwrap();
+        drop(observation);
+        fs::write(state, b"state after quit").unwrap();
+        fs::write(sram, b"sram after quit").unwrap();
+        let restored: AutoSaveObservation = serde_json::from_slice(&stored).unwrap();
+        let (notice, success) = restored.exit_notice().unwrap();
+        assert!(success);
+        assert!(notice.contains("save state written") && notice.contains("saved RAM written"));
     }
 
     #[test]
