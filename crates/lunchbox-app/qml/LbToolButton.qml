@@ -19,23 +19,9 @@ T.ToolButton {
         enabled: control.enabled
     }
 
-    contentItem: Text {
-        anchors.fill: parent
-        anchors.leftMargin: Math.max(control.leftPadding, control.rightPadding)
-        anchors.rightMargin: anchors.leftMargin
-        anchors.topMargin: Math.max(control.topPadding, control.bottomPadding)
-        anchors.bottomMargin: anchors.topMargin
-        text: control.text
-        font.family: control.font.family
-        font.weight: Font.Medium
-        font.italic: control.font.italic
-        font.letterSpacing: 0
-        font.pixelSize: Math.max(13, control.font.pixelSize)
+    contentItem: LbButtonLabel {
+        control: parent
+        pixelSize: Math.max(13, control.font.pixelSize)
         color: control.enabled ? "#f4f7fb" : "#8d99aa"
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-        fontSizeMode: Text.HorizontalFit
-        minimumPixelSize: 8
-        elide: Text.ElideNone
     }
 }

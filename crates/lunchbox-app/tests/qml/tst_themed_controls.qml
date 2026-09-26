@@ -129,22 +129,22 @@ TestCase {
         verify(toolButton.background !== null)
     }
 
-    function test_fixed_height_button_honors_requested_label_size() {
-        compare(fixedHeightButton.contentItem.font.pixelSize, 8)
-        compare(fixedHeightButton.contentItem.fontInfo.pixelSize, 8)
-        verify(Math.abs(fixedHeightButton.contentItem.y
-                        + fixedHeightButton.contentItem.height / 2
-                        - fixedHeightButton.height / 2) <= 1)
+    function test_fixed_height_button_uses_standard_label_size() {
+        const label = findChild(fixedHeightButton, "buttonLabel")
+        compare(label.font.pixelSize, 13)
+        compare(label.fontInfo.pixelSize, 13)
+        const center = label.mapToItem(fixedHeightButton, label.width / 2, label.height / 2)
+        verify(Math.abs(center.y - fixedHeightButton.height / 2) <= 1)
     }
 
     function test_button_labels_stay_centered_with_asymmetric_padding() {
         const controls = [asymmetricButton, roundButton, toolButton,
                           tabs.itemAt(0)]
         for (const control of controls) {
-            const label = control.contentItem
-            verify(Math.abs(label.x + label.width / 2
-                            - control.width / 2) <= 1,
-                   control.text + " content center=" + (label.x + label.width / 2)
+            const label = findChild(control, "buttonLabel")
+            const center = label.mapToItem(control, label.width / 2, label.height / 2)
+            verify(Math.abs(center.x - control.width / 2) <= 1,
+                   control.text + " content center=" + center.x
                    + " button center=" + control.width / 2)
         }
     }
@@ -158,13 +158,15 @@ TestCase {
     }
 
     function test_button_label_shrinks_to_fit_without_ellipsis() {
-        compare(narrowButton.contentItem.elide, Text.ElideNone)
-        verify(narrowButton.contentItem.fontInfo.pixelSize < 12)
-        verify(narrowButton.contentItem.contentWidth <= narrowButton.contentItem.width)
+        const narrowLabel = findChild(narrowButton, "buttonLabel")
+        compare(narrowLabel.elide, Text.ElideNone)
+        verify(narrowLabel.fontInfo.pixelSize < 13)
+        verify(narrowLabel.contentWidth <= narrowLabel.width)
         const longButton = createTemporaryObject(longButtonComponent, testCase)
         verify(longButton)
         verify(longButton.implicitWidth <= longButton.maximumImplicitWidth)
-        verify(longButton.contentItem.contentWidth <= longButton.contentItem.width)
+        const longLabel = findChild(longButton, "buttonLabel")
+        verify(longLabel.contentWidth <= longLabel.width)
     }
 
     function test_settings_inputs_match_dropdown_surface() {

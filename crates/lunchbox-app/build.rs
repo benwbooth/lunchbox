@@ -102,6 +102,7 @@ fn main() {
                 "qml/LibraryMenu.qml",
                 "qml/LbControlBackground.qml",
                 "qml/LbButton.qml",
+                "qml/LbButtonLabel.qml",
                 "qml/LbComboBox.qml",
                 "qml/LbDialog.qml",
                 "qml/LbItemDelegate.qml",
