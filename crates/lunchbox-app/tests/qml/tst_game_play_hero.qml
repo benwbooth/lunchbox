@@ -13,6 +13,7 @@ TestCase {
         id: heroComponent
         Lunchbox.GamePlayHero {
             width: 440
+            gameId: "game-1"
             local: true
             loading: false
             canLaunch: true
@@ -92,14 +93,60 @@ TestCase {
         verify(hero.implicitHeight > 100)
         const action = findChild(hero, "launchAction")
         verify(action)
+        verify(action.visible)
         verify(action.positive)
         compare(action.background.color, "#237a4d")
+    }
+
+    function test_settings_accordion_hides_advanced_controls_but_not_play() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const toggle = findChild(hero, "settingsAccordionButton")
+        const translation = findChild(hero, "translationOptInButton")
+        const display = findChild(hero, "displaySection")
+        const emulator = findChild(hero, "emulatorSection")
+        const mapping = findChild(hero, "controllerMappingButton")
+        const manage = findChild(hero, "manageEmulatorsButton")
+        const play = findChild(hero, "launchAction")
+        verify(toggle && translation && display && emulator && mapping && manage && play)
+        compare(hero.settingsExpanded, false)
+        compare(translation.visible, false)
+        compare(display.visible, false)
+        compare(emulator.visible, false)
+        compare(mapping.visible, false)
+        compare(manage.visible, false)
+        compare(play.visible, true)
+        verify(play.y < toggle.y)
+        wait(50)
+        const collapsedHeight = hero.implicitHeight
+
+        toggle.clicked()
+        compare(hero.settingsExpanded, true)
+        compare(translation.visible, true)
+        compare(display.visible, true)
+        compare(emulator.visible, true)
+        compare(mapping.visible, true)
+        compare(manage.visible, true)
+        tryVerify(function() { return hero.implicitHeight > collapsedHeight + 100 })
+
+        hero.gameId = "game-2"
+        compare(hero.settingsExpanded, false)
+        compare(play.visible, true)
+        tryCompare(hero, "implicitHeight", collapsedHeight)
+
+        toggle.clicked()
+        compare(hero.settingsExpanded, true)
+        toggle.clicked()
+        compare(hero.settingsExpanded, false)
+        compare(play.visible, true)
+        tryCompare(hero, "implicitHeight", collapsedHeight)
     }
 
     function test_translation_requires_per_game_opt_in() {
         requestedTranslationEnabled = false
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
+        findChild(hero, "settingsAccordionButton").clicked()
         const optIn = findChild(hero, "translationOptInButton")
         verify(optIn)
         compare(optIn.text, "Translate this game: Off")
@@ -147,6 +194,7 @@ TestCase {
         verify(toggle)
         verify(options)
         verify(fullscreen)
+        findChild(hero, "settingsAccordionButton").clicked()
         compare(toggle.width, section.width)
         compare(hero.displayExpanded, false)
         compare(options.visible, false)
@@ -231,6 +279,7 @@ TestCase {
     function test_bezel_popup_renders_long_choices_without_elision() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
+        findChild(hero, "settingsAccordionButton").clicked()
         findChild(hero, "displayAccordionButton").clicked()
         const bezel = findChild(hero, "displayBezelCombo")
         bezel.popup.open()
@@ -284,7 +333,7 @@ TestCase {
         compare(summary.text, "")
     }
 
-    function test_emulator_picker_stays_visible_without_display_features() {
+    function test_emulator_picker_is_available_without_display_features() {
         const hero = createTemporaryObject(heroComponent, testCase, {
             displayFullscreenSupported: false,
             displayShaderSupported: false,
@@ -301,6 +350,9 @@ TestCase {
         compare(findChild(display, "emulatorPicker"), null)
         const section = findChild(hero, "emulatorSection")
         verify(section)
+        compare(section.visible, false)
+        findChild(hero, "settingsAccordionButton").clicked()
+        compare(section.visible, true)
         compare(findChild(section, "emulatorPicker") === null, false)
         const picker = findChild(hero, "emulatorPicker")
         verify(picker)
@@ -352,6 +404,7 @@ TestCase {
     function test_merged_picker_popup_shows_all_labels() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
+        findChild(hero, "settingsAccordionButton").clicked()
         const picker = findChild(hero, "emulatorPicker")
         verify(picker)
         picker.popup.open()

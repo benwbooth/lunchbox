@@ -12918,6 +12918,7 @@ ApplicationWindow {
                     GamePlayHero {
                         id: detailsHero
                         width: parent.width
+                        gameId: gameDetails.game_id
                         local: gameDetails.local || root.selectedDownloadImported
                         loading: gameDetails.loading
                         canLaunch: gameDetails.can_launch

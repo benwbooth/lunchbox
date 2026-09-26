@@ -7,6 +7,7 @@ import QtQuick.Layouts
 Rectangle {
     id: hero
 
+    required property string gameId
     required property bool local
     required property bool loading
     required property bool canLaunch
@@ -100,7 +101,12 @@ Rectangle {
                                                          || displayShaderSupported
                                                          || displayBezelSupported
                                                          || displaySaveStatesSupported)
+    property bool settingsExpanded: false
     property bool displayExpanded: false
+    onGameIdChanged: {
+        settingsExpanded = false
+        displayExpanded = false
+    }
 
     visible: local && !loading
     implicitHeight: contents.implicitHeight + 28
@@ -186,9 +192,58 @@ Rectangle {
         }
 
         LbButton {
+            id: launchAction
+            objectName: "launchAction"
+            width: parent.width
+            height: 48
+            text: hero.launchBusy ? "Cancel preparation"
+                  : hero.gameRunning ? hero.sessionStopping ? "Stopping emulator…" : "■  Stop emulator"
+                  : hero.canLaunch ? "▶  Play"
+                  : hero.prepareBusy ? "Preparing install…"
+                  : hero.prepareNeeded ? "Prepare install"
+                  : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
+                  : hero.emulatorMissing ? "Install an emulator" : "Recheck play setup"
+            enabled: !hero.sessionStopping && (hero.launchBusy || hero.gameRunning
+                     || (!hero.gameRunning && !hero.discoveryBusy && !hero.prepareBusy)
+                     )
+            font.pixelSize: 12
+            font.weight: Font.Bold
+            highlighted: hero.canLaunch && !hero.launchBusy && !hero.gameRunning
+            positive: highlighted
+            onClicked: {
+                if (hero.launchBusy)
+                    hero.cancelLaunchRequested()
+                else if (hero.gameRunning)
+                    hero.stopEmulatorRequested()
+                else if (hero.canLaunch)
+                    hero.playRequested()
+                else if (hero.prepareNeeded)
+                    hero.prepareRequested()
+                else if (hero.firmwareSetupNeeded)
+                    hero.firmwareSetupRequested()
+                else
+                    hero.setupRequested()
+            }
+        }
+
+        LbButton {
+            objectName: "settingsAccordionButton"
+            width: parent.width
+            text: (hero.settingsExpanded ? "▾  " : "▸  ") + "Settings & mappings"
+            flat: true
+            font.pixelSize: 11
+            font.weight: Font.Bold
+            onClicked: hero.settingsExpanded = !hero.settingsExpanded
+            Accessible.name: "Settings and mappings"
+            Accessible.description: hero.settingsExpanded
+                                    ? "Collapse game settings and controller mapping"
+                                    : "Expand game settings and controller mapping"
+        }
+
+        LbButton {
             objectName: "translationOptInButton"
             width: parent.width
-            visible: hero.selectedEmulatorOption >= 0
+            visible: hero.settingsExpanded && hero.selectedEmulatorOption >= 0
                      && hero.emulatorOptionKindAt(hero.selectedEmulatorOption) === "retroarch"
             text: !hero.translationFeatureEnabled
                   ? "Enable game translation in Settings"
@@ -204,7 +259,7 @@ Rectangle {
         Column {
             objectName: "displaySection"
             width: parent.width
-            visible: hero.displaySectionAvailable
+            visible: hero.settingsExpanded && hero.displaySectionAvailable
             spacing: 5
             LbButton {
                 objectName: "displayAccordionButton"
@@ -533,7 +588,7 @@ Rectangle {
             // emulator has no display features: displaySection above hides in
             // that case, and nesting the picker inside it left no way to pick
             // a different emulator (e.g. a standalone auto-pick on SNES).
-            visible: hero.emulatorOptionCount > 0
+            visible: hero.settingsExpanded && hero.emulatorOptionCount > 0
             spacing: 5
             Text {
                 text: "PLAY WITH"
@@ -702,50 +757,18 @@ Rectangle {
         }
 
         LbButton {
+            objectName: "controllerMappingButton"
             width: parent.width
+            visible: hero.settingsExpanded
             text: "Controller mapping…"
             onClicked: hero.controllerMappingRequested()
         }
 
         LbButton {
-            id: launchAction
-            objectName: "launchAction"
-            width: parent.width
-            height: 48
-            text: hero.launchBusy ? "Cancel preparation"
-                  : hero.gameRunning ? hero.sessionStopping ? "Stopping emulator…" : "■  Stop emulator"
-                  : hero.canLaunch ? "▶  Play"
-                  : hero.prepareBusy ? "Preparing install…"
-                  : hero.prepareNeeded ? "Prepare install"
-                  : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
-                  : hero.emulatorMissing ? "Install an emulator" : "Recheck play setup"
-            enabled: !hero.sessionStopping && (hero.launchBusy || hero.gameRunning
-                     || (!hero.gameRunning && !hero.discoveryBusy && !hero.prepareBusy)
-                     )
-            font.pixelSize: 12
-            font.weight: Font.Bold
-            highlighted: hero.canLaunch && !hero.launchBusy && !hero.gameRunning
-            positive: highlighted
-            onClicked: {
-                if (hero.launchBusy)
-                    hero.cancelLaunchRequested()
-                else if (hero.gameRunning)
-                    hero.stopEmulatorRequested()
-                else if (hero.canLaunch)
-                    hero.playRequested()
-                else if (hero.prepareNeeded)
-                    hero.prepareRequested()
-                else if (hero.firmwareSetupNeeded)
-                    hero.firmwareSetupRequested()
-                else
-                    hero.setupRequested()
-            }
-        }
-
-        LbButton {
+            objectName: "manageEmulatorsButton"
             width: parent.width
             height: 32
-            visible: !hero.gameRunning
+            visible: hero.settingsExpanded && !hero.gameRunning
             text: hero.platform.length > 0
                   ? "Manage " + hero.platform + " emulators"
                   : "Manage emulators"
