@@ -2212,35 +2212,29 @@ impl Calibration {
                     .get(target_id)
                     .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id));
                 let input = physical.and_then(|c| self.bindings.get(&c.id)).cloned();
-                // The Linux RetroArch writer can bind a button and an axis to
-                // the same RetroPad direction. Other transports retain only
-                // their proven primary route until they support both inputs.
-                let alternate = (self.os == "linux"
-                    && profile.transport == "retropad"
-                    && profile.retroarch_launch.is_some())
-                .then(|| resolution.directional_alternates.get(target_id))
-                .flatten()
-                .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id))
-                .filter(|candidate| {
-                    input
-                        .as_ref()
-                        .and_then(|binding| binding.native.as_ref())
-                        .map(|native| native.code >> 16)
-                        != self
+                // Both catalog and runtime-inspected RetroArch profiles use
+                // the same writer. Hats and sticks can both be EV_ABS: the
+                // writer routes that pair through spare analog-to-D-pad binds.
+                let alternate = (self.os == "linux" && profile.retroarch_launch.is_some())
+                    .then(|| resolution.directional_alternates.get(target_id))
+                    .flatten()
+                    .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id))
+                    .filter(|candidate| {
+                        let primary = input.as_ref().and_then(|binding| binding.native.as_ref());
+                        let alternate = self
                             .bindings
                             .get(&candidate.id)
-                            .and_then(|binding| binding.native.as_ref())
-                            .map(|native| native.code >> 16)
-                        && input
-                            .as_ref()
-                            .and_then(|binding| binding.native.as_ref())
-                            .is_some()
-                        && self
-                            .bindings
-                            .get(&candidate.id)
-                            .and_then(|binding| binding.native.as_ref())
-                            .is_some()
-                });
+                            .and_then(|binding| binding.native.as_ref());
+                        primary.zip(alternate).is_some_and(|(primary, alternate)| {
+                            primary.code >> 16 != alternate.code >> 16
+                                || (primary.code >> 16 == 3
+                                    && crate::controller_layout::spare_retropad_direction(
+                                        &profile.bindings,
+                                        output,
+                                    )
+                                    .is_some())
+                        })
+                    });
                 let alternate_input = alternate.and_then(|c| self.bindings.get(&c.id)).cloned();
                 if input.is_none() {
                     warnings.push(format!(

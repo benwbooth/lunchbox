@@ -1433,8 +1433,10 @@ fn stage_spare_face_repeat_remap(
         let device: u32 = device
             .parse()
             .context("Invalid generated controller device mode")?;
+        let analog_dpad = cfg_value(config, &format!("input_player{port}_analog_dpad_mode"))?
+            .unwrap_or_else(|| "0".into());
         remap.push_str(&format!(
-            "input_libretro_device_p{port} = \"{device}\"\ninput_remap_port_p{port} = \"{}\"\ninput_player{port}_analog_dpad_mode = \"0\"\n",
+            "input_libretro_device_p{port} = \"{device}\"\ninput_remap_port_p{port} = \"{}\"\ninput_player{port}_analog_dpad_mode = \"{analog_dpad}\"\n",
             port - 1
         ));
     }
@@ -5039,69 +5041,71 @@ fn prepare_player_transport(
                 .iter()
                 .find(|control| control.id == row.target_id)
                 .context("Unknown controller target control")?;
-            let Some(input) = &row.input else {
+            let Some(primary) = &row.input else {
                 ensure!(
                     control.optional,
                     "Required controller control is not mapped"
                 );
                 continue;
             };
-            let native = input
-                .native
-                .as_ref()
-                .context("Recalibrate this controller to capture physical inputs")?;
-            // Validate each physical binding before replacing its numbering.
-            numbering.binding(native)?;
-            let code = (native.code & 0xffff) as u16;
-            let pressure = control.is_pressure();
-            match native.code >> 16 {
-                1 => {
-                    ensure!(
-                        !pressure,
-                        "Proportional trigger output requires a measured physical axis"
-                    );
-                    buttons.insert(code);
-                }
-                3 => {
-                    let measured = input.axis.as_ref().context(
-                        "Recalibrate all mapped axes before using normalized trigger transport",
-                    )?;
-                    measured.validate()?;
-                    if let Some((previous, previous_pressure)) = measured_axes.get(&code) {
-                        let previous: &crate::controller_axis::AxisMeasurement = previous;
-                        ensure!(
-                            *previous_pressure == pressure,
-                            "One physical axis cannot mix pressure and stick/hat output"
-                        );
-                        ensure!(
-                            previous.minimum == measured.minimum
-                                && previous.maximum == measured.maximum
-                                && previous.flat == measured.flat
-                                && previous.fuzz == measured.fuzz
-                                && previous.resolution == measured.resolution
-                                && previous.released == measured.released,
-                            "Mapped directions disagree about physical axis bounds or neutral; recalibrate"
-                        );
+            for input in std::iter::once(primary).chain(row.alternate_input.as_ref()) {
+                let native = input
+                    .native
+                    .as_ref()
+                    .context("Recalibrate this controller to capture physical inputs")?;
+                // Validate each physical binding before replacing its numbering.
+                numbering.binding(native)?;
+                let code = (native.code & 0xffff) as u16;
+                let pressure = control.is_pressure();
+                match native.code >> 16 {
+                    1 => {
                         ensure!(
                             !pressure,
-                            "A physical pressure axis cannot supply independent trigger controls"
+                            "Proportional trigger output requires a measured physical axis"
                         );
-                        continue;
+                        buttons.insert(code);
                     }
-                    let axis = if pressure {
-                        pressure_codes.insert(code);
-                        GamepadAxis::Pressure(PressureAxis::from_measurement(measured)?)
-                    } else {
-                        GamepadAxis::Passthrough {
-                            minimum: measured.minimum,
-                            maximum: measured.maximum,
-                            neutral: measured.released,
+                    3 => {
+                        let measured = input.axis.as_ref().context(
+                            "Recalibrate all mapped axes before using normalized trigger transport",
+                        )?;
+                        measured.validate()?;
+                        if let Some((previous, previous_pressure)) = measured_axes.get(&code) {
+                            let previous: &crate::controller_axis::AxisMeasurement = previous;
+                            ensure!(
+                                *previous_pressure == pressure,
+                                "One physical axis cannot mix pressure and stick/hat output"
+                            );
+                            ensure!(
+                                previous.minimum == measured.minimum
+                                    && previous.maximum == measured.maximum
+                                    && previous.flat == measured.flat
+                                    && previous.fuzz == measured.fuzz
+                                    && previous.resolution == measured.resolution
+                                    && previous.released == measured.released,
+                                "Mapped directions disagree about physical axis bounds or neutral; recalibrate"
+                            );
+                            ensure!(
+                                !pressure,
+                                "A physical pressure axis cannot supply independent trigger controls"
+                            );
+                            continue;
                         }
-                    };
-                    measured_axes.insert(code, (measured.clone(), pressure));
-                    axes.insert(code, axis);
+                        let axis = if pressure {
+                            pressure_codes.insert(code);
+                            GamepadAxis::Pressure(PressureAxis::from_measurement(measured)?)
+                        } else {
+                            GamepadAxis::Passthrough {
+                                minimum: measured.minimum,
+                                maximum: measured.maximum,
+                                neutral: measured.released,
+                            }
+                        };
+                        measured_axes.insert(code, (measured.clone(), pressure));
+                        axes.insert(code, axis);
+                    }
+                    _ => bail!("Unsupported physical controller transport"),
                 }
-                _ => bail!("Unsupported physical controller transport"),
             }
         }
         ensure!(
@@ -5373,6 +5377,7 @@ fn player_config_transport(
         }
     }
     let mut assigned_channels = std::collections::BTreeSet::new();
+    let mut analog_dpad = false;
     for row in plan.rows {
         let Some(input) = row.input else {
             let optional = target
@@ -5426,10 +5431,27 @@ fn player_config_transport(
             && let Some(native) = alternate.native
         {
             let (alternate_suffix, alternate_value) = device.binding(&native)?;
-            let alternate_channel = format!("input_player{player}_{output}_{alternate_suffix}");
-            if assigned_channels.insert(alternate_channel.clone()) {
-                values.insert(alternate_channel, alternate_value);
-            }
+            let alternate_output = if alternate_suffix == suffix {
+                // linuxraw exposes a D-pad hat as an axis too. A second
+                // `_up_axis` would overwrite the first, so keep the primary
+                // direction and OR the spare left analog channel into it.
+                let field = crate::controller_layout::spare_retropad_direction(
+                    &profile.bindings,
+                    &row.output,
+                )
+                .context("No independent channel for the alternate direction")?;
+                analog_dpad = true;
+                field
+            } else {
+                output
+            };
+            let alternate_channel =
+                format!("input_player{player}_{alternate_output}_{alternate_suffix}");
+            ensure!(
+                assigned_channels.insert(alternate_channel.clone()),
+                "Alternate direction conflicts with an assigned RetroPad channel"
+            );
+            values.insert(alternate_channel, alternate_value);
         }
     }
     if let Some((spare_b, spare_a)) = spare_sources {
@@ -5470,7 +5492,13 @@ fn player_config_transport(
             );
         }
     }
-    values.insert(format!("input_player{player}_analog_dpad_mode"), "0".into());
+    values.insert(
+        format!("input_player{player}_analog_dpad_mode"),
+        // Left analog (forced): an arcade wrapper can poll unused analog
+        // channels even for a digital-only game. Ordinary mode then disables
+        // itself. The spare-channel check above proves no game action owns it.
+        if analog_dpad { "3" } else { "0" }.into(),
+    );
     values.insert(
         format!("input_libretro_device_p{player}"),
         requested_mode.to_string(),
@@ -13376,6 +13404,145 @@ mod tests {
                     .iter()
                     .all(|row| { row.alternate_physical_id.is_none() })
             );
+        }
+    }
+
+    /// Most USB pads expose the D-pad as ABS_HAT0X/Y, not EV_KEY buttons.
+    /// Exercise the actual writer, including the runtime-inspected MAME path.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn arcade_directions_accept_hat_and_stick_without_overwriting_either() {
+        for source in ["brawler64", "n64", "xbox", "dualshock"] {
+            let (mut calibration, mut numbering) = calibrated_layout(source);
+            numbering.axes.extend([16, 17]);
+            for (direction, code, sign) in [
+                ("up", 17, -1),
+                ("down", 17, 1),
+                ("left", 16, -1),
+                ("right", 16, 1),
+            ] {
+                let binding = calibration.bindings.get_mut(direction).unwrap();
+                let native = NativeInput {
+                    code: 3 << 16 | code,
+                    direction: sign,
+                };
+                binding.code = native.code;
+                binding.direction = sign;
+                binding.kind = "axis".into();
+                binding.native = Some(native);
+                binding.axis = Some(crate::controller_axis::AxisMeasurement {
+                    minimum: -1,
+                    maximum: 1,
+                    released: 0,
+                    pressed: i32::from(sign),
+                    flat: 0,
+                    fuzz: 0,
+                    resolution: 0,
+                });
+            }
+            for profile_id in [
+                "retroarch:mame:arcade-6",
+                "retroarch:fbneo:arcade-6",
+                "retroarch:flycast:arcade-6",
+            ] {
+                let original = catalog()
+                    .emulator_profiles
+                    .iter()
+                    .find(|profile| profile.id == profile_id)
+                    .unwrap();
+                for inspected in [false, true] {
+                    let mut profile = original.clone();
+                    if inspected {
+                        profile.transport = "retroarch".into();
+                    }
+                    for stick_primary in [false, true] {
+                        calibration.target_mappings.remove(&profile.id);
+                        if stick_primary {
+                            calibration.target_mappings.insert(
+                                profile.id.clone(),
+                                ["up", "down", "left", "right"]
+                                    .map(|direction| {
+                                        (direction.into(), format!("stick_{direction}"))
+                                    })
+                                    .into(),
+                            );
+                        }
+                        let mapping = calibration.plan_profile(&profile).unwrap();
+                        let config = player_config(&calibration, &profile, &numbering, 2).unwrap();
+                        assert!(
+                            config.contains("input_player2_analog_dpad_mode = \"3\""),
+                            "{source}/{profile_id}"
+                        );
+                        for row in mapping
+                            .rows
+                            .iter()
+                            .filter(|row| row.output.starts_with("DPad"))
+                        {
+                            let main = row.input.as_ref().unwrap().native.as_ref().unwrap();
+                            let alternate = row
+                                .alternate_input
+                                .as_ref()
+                                .unwrap()
+                                .native
+                                .as_ref()
+                                .unwrap();
+                            let output =
+                                OUTPUTS.iter().find(|(id, _)| *id == row.output).unwrap().1;
+                            let field = crate::controller_layout::spare_retropad_direction(
+                                &profile.bindings,
+                                &row.output,
+                            )
+                            .unwrap();
+                            for (native, field) in [(main, output), (alternate, field)] {
+                                let (suffix, value) = numbering.binding(native).unwrap();
+                                assert!(
+                                    config.contains(&format!(
+                                        "input_player2_{field}_{suffix} = \"{value}\""
+                                    )),
+                                    "{source}/{profile_id}/{field}"
+                                );
+                            }
+                        }
+                    }
+                    // Two-way games must not lose the alternate or acquire
+                    // directions that their active input contract did not use.
+                    profile.bindings.remove("up");
+                    profile.bindings.remove("down");
+                    calibration.target_mappings.remove(&profile.id);
+                    let config = player_config(&calibration, &profile, &numbering, 1).unwrap();
+                    assert!(config.contains("input_player1_analog_dpad_mode = \"3\""));
+                    assert!(config.contains("input_player1_up_axis = \"nul\""));
+                    assert!(config.contains("input_player1_l_y_minus_axis = \"nul\""));
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn arcade_button_dpad_keeps_direct_button_plus_axis_mapping() {
+        for source in ["brawler64", "xbox"] {
+            let (calibration, numbering) = calibrated_layout(source);
+            let mut profile = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == "retroarch:mame:arcade-6")
+                .unwrap()
+                .clone();
+            profile.transport = "retroarch".into();
+            let config = player_config(&calibration, &profile, &numbering, 1).unwrap();
+            assert!(config.contains("input_player1_analog_dpad_mode = \"0\""));
+            for direction in ["up", "down", "left", "right"] {
+                for physical in [direction.to_owned(), format!("stick_{direction}")] {
+                    let (suffix, value) = numbering
+                        .binding(calibration.bindings[&physical].native.as_ref().unwrap())
+                        .unwrap();
+                    assert!(
+                        config
+                            .contains(&format!("input_player1_{direction}_{suffix} = \"{value}\""))
+                    );
+                }
+            }
         }
     }
 

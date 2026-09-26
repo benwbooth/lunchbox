@@ -7,7 +7,7 @@ use crate::controller_catalog::{Control, Layout};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const POLICY_VERSION: u32 = 9;
+pub const POLICY_VERSION: u32 = 10;
 
 /// Equivalent pressure roles; digital fallback buttons are not aliases.
 pub(crate) fn pressure_role(id: &str) -> Option<&'static str> {
@@ -108,7 +108,8 @@ fn directional_alternates(
             control.group == target_group
                 && directional_cluster(target, control) == Some((false, direction))
         }) else {
-            return BTreeMap::new();
+            // Two-way arcade sticks request only their active directions.
+            continue;
         };
         let Some(primary) = assignments
             .get(&control.id)
@@ -147,6 +148,12 @@ pub(crate) fn single_left_directional_group(
     target: &Layout,
     requested: &BTreeSet<&str>,
 ) -> Option<&'static str> {
+    if target.controls.iter().any(|control| {
+        requested.contains(control.id.as_str())
+            && directional_cluster(target, control).is_some_and(|(right, _)| right)
+    }) {
+        return None;
+    }
     let has_any = |group| {
         target.controls.iter().any(|control| {
             requested.contains(control.id.as_str())
@@ -157,21 +164,35 @@ pub(crate) fn single_left_directional_group(
     if has_any("dpad") == has_any("stick") {
         return None;
     }
-    let has_group = |group| {
-        ["up", "down", "left", "right"].iter().all(|direction| {
-            target.controls.iter().any(|control| {
-                requested.contains(control.id.as_str())
-                    && control.group == group
-                    && directional_cluster(target, control) == Some((false, direction))
-            })
-        })
-    };
-    if has_group("dpad") {
+    if has_any("dpad") {
         Some("dpad")
-    } else if has_group("stick") {
+    } else if has_any("stick") {
         Some("stick")
     } else {
         None
+    }
+}
+
+/// A digital target may use RetroArch's otherwise-unused left analog channels
+/// as a second directional input. Do not steal axes from analog game actions.
+pub(crate) fn spare_retropad_direction(
+    outputs: &BTreeMap<String, String>,
+    output: &str,
+) -> Option<&'static str> {
+    if outputs.values().any(|output| {
+        matches!(
+            output.as_str(),
+            "LeftStickUp" | "LeftStickDown" | "LeftStickLeft" | "LeftStickRight"
+        )
+    }) {
+        return None;
+    }
+    match output {
+        "DPadUp" => Some("l_y_minus"),
+        "DPadDown" => Some("l_y_plus"),
+        "DPadLeft" => Some("l_x_minus"),
+        "DPadRight" => Some("l_x_plus"),
+        _ => None,
     }
 }
 
@@ -1256,6 +1277,20 @@ mod tests {
                 .directional_alternates
                 .is_empty()
         );
+        for target_id in ["mame-twin-digital", "dualshock"] {
+            let target = db.layout(target_id).unwrap();
+            let requested = target
+                .controls
+                .iter()
+                .map(|control| control.id.as_str())
+                .collect();
+            assert!(
+                resolve(source, target, &available, &requested)
+                    .directional_alternates
+                    .is_empty(),
+                "{target_id}"
+            );
+        }
     }
 
     #[test]
