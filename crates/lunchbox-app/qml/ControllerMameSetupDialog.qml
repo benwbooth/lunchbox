@@ -363,7 +363,7 @@ LbDialog {
             enabled: editor.text.trim().length > 0
             onClicked: playerControllers.loadAndOpen()
         }
-        CheckBox {
+        LbCheckBox {
             id: advancedControls
             text: "Advanced controls (analog axes, keyboard and service inputs)"
             checked: false
@@ -453,7 +453,7 @@ LbDialog {
                 }
             }
         }
-        CheckBox {
+        LbCheckBox {
             id: showSetupJson
             text: "Show setup JSON (advanced)"
             checked: false
@@ -1265,7 +1265,7 @@ LbDialog {
                     LbComboBox { id: switchSequence; Layout.fillWidth: true; visible: switchEditor.analogFieldSelected; model: ["Increment", "Decrement"]; onActivated: switchEditor.loadSelection(); Accessible.name: "Button-driven analog direction" }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: switchEditor.analogFieldSelected; text: "Native keydelta, centering, wrapping and sensitivity determine motion. This is incremental button control, not measured analog travel or physical mouse/gun capture. Each direction is edited separately; unassigned directions and the standard axis sequence are disabled while any button direction remains assigned." }
                     Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: !!switchEditor.fields[switchField.currentIndex] && switchEditor.fields[switchField.currentIndex].class === "keyboard"; text: "Keyboard keys require fresh owner/enable-state evidence and emulated keyboard mode. This maps individual keys, not text entry." }
-                    CheckBox { id: switchTechnical; text: "Show native channel details"; checked: false }
+                    LbCheckBox { id: switchTechnical; text: "Show native channel details"; checked: false }
                     LbComboBox { id: switchPort; Layout.fillWidth: true; model: switchEditor.ports.map(port => "Source player " + port); Accessible.name: "Digital source player" }
                     LbComboBox {
                         id: switchChannel
@@ -1305,7 +1305,7 @@ LbDialog {
                         }
                         visible: text.length > 0
                     }
-                    CheckBox {
+                    LbCheckBox {
                         id: keepNumberedChannels
                         visible: switchEditor.numberedFieldSelected
                         checked: true
@@ -1355,7 +1355,7 @@ LbDialog {
                         model: switchEditor.candidatePlayers.map(player => "Player " + player.port + " · " + player.controller)
                         Accessible.name: "Player to inspect in the proposed button mapping"
                     }
-                    CheckBox {
+                    LbCheckBox {
                         visible: switchEditor.candidatePlayers.length > 0
                         text: "Show current draft mapping (before this change)"
                         checked: switchEditor.showOriginalMapping
@@ -1670,14 +1670,14 @@ LbDialog {
                 RowLayout {
                     Label { text: "Output X %" }
                     LbSpinBox { id: relativeGainX; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Per-game output X sensitivity percent" }
-                    CheckBox { id: relativeInvertX; text: "Invert X" }
+                    LbCheckBox { id: relativeInvertX; text: "Invert X" }
                 }
                 RowLayout {
                     Label { text: "Output Y %" }
                     LbSpinBox { id: relativeGainY; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Per-game output Y sensitivity percent" }
-                    CheckBox { id: relativeInvertY; text: "Invert Y" }
+                    LbCheckBox { id: relativeInvertY; text: "Invert Y" }
                 }
-                CheckBox { id: relativeSwap; text: "Swap physical X/Y before scaling" }
+                LbCheckBox { id: relativeSwap; text: "Swap physical X/Y before scaling" }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: relativeTuning.errorText }
                 LbButton {
                     text: "Apply tuning to queued source"
@@ -1774,7 +1774,7 @@ LbDialog {
             LbComboBox { id: relativeField; Layout.fillWidth: true; model: relativePreview.fields.map(entry => dialog.fieldLabel(entry.field, [])); displayText: currentIndex < 0 ? "Choose a relative field" : currentText; Accessible.name: "Native relative field" }
             LbComboBox { id: relativePort; Layout.fillWidth: true; model: relativePreview.ports.map(port => "Source player " + port); displayText: currentIndex < 0 ? "Choose a source player" : currentText; Accessible.name: "Relative source player" }
             LbComboBox { id: relativeAxis; Layout.fillWidth: true; model: ["Output X", "Output Y"]; displayText: currentIndex < 0 ? "Choose an output axis" : currentText; Accessible.name: "Post-transform relative output axis" }
-            CheckBox { id: nativeOnly; text: "Native-only preview (skip saved-device validation)" }
+            LbCheckBox { id: nativeOnly; text: "Native-only preview (skip saved-device validation)" }
             LbComboBox { id: relativeDevice; Layout.fillWidth: true; enabled: !nativeOnly.checked; model: relativePreview.devices.map(device => relativePreview.deviceLabel(device)); displayText: currentIndex < 0 ? "Choose a saved relative device" : currentText; Accessible.name: "Exact saved relative device and tuning" }
             LbComboBox {
                 id: newMouseButtonField
@@ -1900,8 +1900,8 @@ LbDialog {
             LbComboBox { id: analogPort; Layout.fillWidth: true; model: analogEditor.ports.map(port => "Source player " + port); Accessible.name: "Analog source player" }
             LbComboBox { id: analogChannel; Layout.fillWidth: true; model: ["Left stick X", "Left stick Y", "Right stick X", "Right stick Y", "Left pressure (L2)", "Right pressure (R2)"]; Accessible.name: "Analog source channel" }
             LbComboBox { id: analogRange; Layout.fillWidth: true; enabled: analogChannel.currentIndex >= 0 && analogChannel.currentIndex < 4; model: ["Full stick axis", "Reversed full axis", "Positive half → full native range", "Negative half → full native range"]; Accessible.name: "Native stick range" }
-            CheckBox { id: velocityOptIn; text: "Use centered stick displacement as native relative velocity"; visible: analogField.currentIndex >= 0 && /^P[1-8]_(DIAL|DIAL_V|TRACKBALL_[XY]|MOUSE_[XY])$/.test(analogEditor.fields[analogField.currentIndex].input_type) }
-            CheckBox { id: aimOptIn; text: "Use calibrated stick position for native absolute aim"; visible: analogField.currentIndex >= 0 && /^P[1-8]_LIGHTGUN_[XY]$/.test(analogEditor.fields[analogField.currentIndex].input_type) }
+            LbCheckBox { id: velocityOptIn; text: "Use centered stick displacement as native relative velocity"; visible: analogField.currentIndex >= 0 && /^P[1-8]_(DIAL|DIAL_V|TRACKBALL_[XY]|MOUSE_[XY])$/.test(analogEditor.fields[analogField.currentIndex].input_type) }
+            LbCheckBox { id: aimOptIn; text: "Use calibrated stick position for native absolute aim"; visible: analogField.currentIndex >= 0 && /^P[1-8]_LIGHTGUN_[XY]$/.test(analogEditor.fields[analogField.currentIndex].input_type) }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: aimOptIn.visible; text: "This uses controller axes, not a physical gun or screen calibration. Trigger and auxiliary inputs still need mappings. Off-screen/reload behavior must be established for the specific game; this does not add it automatically." }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: velocityOptIn.visible; text: "This is MAME's controller-driven velocity mode: holding the stick produces continuous movement with native sensitivity/reset behavior. It is not trackball, spinner or mouse delta capture." }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Half-axis choices map stick center to the native minimum and one direction to the maximum, useful for pedals. Full axes keep center at midrange. Pressure channels always use their source-defined released-to-pressed range." }
@@ -2087,7 +2087,7 @@ LbDialog {
                     text: (dialog.reviewExceptions.length - 8) + " more unresolved inputs are listed in the technical report."
                     wrapMode: Text.WordWrap
                 }
-                CheckBox {
+                LbCheckBox {
                     id: includeAuxiliarySwitches
                     text: "Include unresolved keyboard and auxiliary switches"
                     visible: dialog.reviewExceptions.some(entry => dialog.editableUnresolvedSwitch(entry.field)
@@ -2346,7 +2346,7 @@ LbDialog {
                     wrapMode: Text.WordWrap
                 }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "The diagram shows saved physical-to-frontend assignments. Native field modifiers and detailed calibration errors are available in the technical report. This is not live input verification." }
-                CheckBox { id: technicalReport; text: "Show complete technical report" }
+                LbCheckBox { id: technicalReport; text: "Show complete technical report" }
                 LbTextArea { id: reviewText; visible: technicalReport.checked; Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap }
             }
         }
@@ -2658,7 +2658,7 @@ LbDialog {
                     }
                 }
             }
-            CheckBox {
+            LbCheckBox {
                 id: inspectNativeMouse
                 text: "Include enabled native mouse evidence in generated request"
                 checked: false
@@ -2704,7 +2704,7 @@ LbDialog {
                 Layout.fillHeight: true
                 LbTextArea { text: dialog.settingsModel.mame_inspection_result; readOnly: true; selectByMouse: true; font.family: "monospace" }
             }
-            CheckBox { id: trustRuntime; text: "I trust this executable/core and want to run this inspection"; enabled: !dialog.settingsModel.mame_inspection_busy }
+            LbCheckBox { id: trustRuntime; text: "I trust this executable/core and want to run this inspection"; enabled: !dialog.settingsModel.mame_inspection_busy }
             RowLayout {
                 LbButton {
                     text: "Run inspection"

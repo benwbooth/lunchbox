@@ -269,7 +269,7 @@ ColumnLayout {
             "Choose the emulator and system. Lunchbox matches each player’s buttons to the target controller.",
             "The left side is your controller; the right side is the system’s controller. Select a target button to inspect or change its assignment."][setup.stage]
     }
-    Frame {
+    LbFrame {
         objectName: "controllerMappingScope"
         visible: setup.stage > 0 && !!setup.gamePlatform && !!setup.gameEmulator
         Layout.fillWidth: true
@@ -299,7 +299,7 @@ ColumnLayout {
         Label { visible: setup.connectedControllers.length === 0; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "No controllers connected. Plug one in or pair it over Bluetooth; it will appear here." }
         Repeater {
             model: setup.playerDevices.length
-            delegate: Frame {
+            delegate: LbFrame {
                 id: playerCard
                 required property int index
                 objectName: "playerCard" + index
@@ -377,7 +377,7 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             LbButton { text: "Refresh"; enabled: !setup.settingsModel.controller_busy; onClicked: setup.settingsModel.refresh_controllers() }
         }
-        CheckBox { id: showVirtual; text: "Include virtual controllers (Steam Input, etc.)" }
+        LbCheckBox { id: showVirtual; text: "Include virtual controllers (Steam Input, etc.)" }
         Label { text: "Player assignments and controller setups are saved as you go and reused across games."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         LbButton { objectName: "nextTarget"; text: "Next: target system"; highlighted: true; enabled: setup.playersReady; onClicked: setup.stage = 1 }
     }

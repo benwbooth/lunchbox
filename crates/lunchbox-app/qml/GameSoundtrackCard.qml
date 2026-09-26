@@ -211,7 +211,7 @@ Rectangle {
                     font.pixelSize: 8
                     font.features: { "tnum": 1 }
                 }
-                Slider {
+                LbSlider {
                     Layout.fillWidth: true
                     from: 0
                     to: mediaPlayer ? Math.max(1, mediaPlayer.duration) : 1

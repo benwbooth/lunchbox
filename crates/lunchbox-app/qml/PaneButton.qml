@@ -5,5 +5,6 @@ import QtQuick.Controls
 LbButton {
     clip: true
     ToolTip.visible: hovered
+    ToolTip.delay: 450
     ToolTip.text: text
 }

@@ -9,10 +9,22 @@ Rectangle {
     property color muted: "#8d99aa"
     property color accentCool: "#62d6c6"
     signal toggled()
+    activeFocusOnTab: true
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: label
+    Accessible.description: description
+    Accessible.checkable: true
+    Accessible.checked: checked
+    Accessible.onPressAction: toggle.toggled()
+    Keys.onSpacePressed: toggle.toggled()
+    Keys.onReturnPressed: toggle.toggled()
+    Keys.onEnterPressed: toggle.toggled()
     width: parent ? parent.width : 320
-    height: 58
+    height: Math.max(58, labels.implicitHeight + 18)
     radius: 8
     color: filterHover.hovered ? "#1b2432" : "transparent"
+    border.width: activeFocus ? 1 : 0
+    border.color: "#ffb454"
 
     HoverHandler { id: filterHover }
     TapHandler { onTapped: toggle.toggled() }
@@ -35,6 +47,7 @@ Rectangle {
         }
     }
     Column {
+        id: labels
         anchors.left: parent.left
         anchors.leftMargin: 42
         anchors.right: parent.right
@@ -45,16 +58,16 @@ Rectangle {
             width: parent.width
             text: toggle.label
             color: toggle.ink
-            font.pixelSize: 12
+            font.pixelSize: 13
             font.weight: Font.DemiBold
-            elide: Text.ElideRight
+            wrapMode: Text.Wrap
         }
         Text {
             width: parent.width
             text: toggle.description
             color: toggle.muted
-            font.pixelSize: 9
-            elide: Text.ElideRight
+            font.pixelSize: 11
+            wrapMode: Text.Wrap
         }
     }
 }

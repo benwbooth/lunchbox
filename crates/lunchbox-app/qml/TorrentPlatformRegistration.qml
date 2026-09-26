@@ -22,7 +22,7 @@ Rectangle {
         anchors.rightMargin: 12
         spacing: 10
 
-        CheckBox {
+        LbCheckBox {
             id: platformSourceCheckBox
             objectName: "torrentPlatformRegistrationCheckBox"
             checked: root.torrent.batch_source_count > 0

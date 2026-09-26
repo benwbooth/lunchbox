@@ -23,13 +23,13 @@ LbDialog {
             Label { text: "Physical input identity path" }
             LbTextField { id: identity; Layout.fillWidth: true; placeholderText: "Exact absolute physical input identity"; Accessible.name: "Relative device physical input identity" }
             RowLayout {
-                CheckBox { id: axisX; text: "X"; checked: true }
-                CheckBox { id: axisY; text: "Y"; checked: true }
-                CheckBox { id: wheelH; text: "Horizontal wheel" }
-                CheckBox { id: wheelV; text: "Vertical wheel" }
+                LbCheckBox { id: axisX; text: "X"; checked: true }
+                LbCheckBox { id: axisY; text: "Y"; checked: true }
+                LbCheckBox { id: wheelH; text: "Horizontal wheel" }
+                LbCheckBox { id: wheelV; text: "Vertical wheel" }
             }
             Label { text: "Output motion sensitivity (%)" }
-            CheckBox { id: exclusive; text: "Exclusively capture the physical source during a session" }
+            LbCheckBox { id: exclusive; text: "Exclusively capture the physical source during a session" }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -42,9 +42,9 @@ LbDialog {
                 LbSpinBox { id: gainY; from: 1; to: 1000; value: 100; editable: true; Accessible.name: "Output Y sensitivity percent" }
             }
             RowLayout {
-                CheckBox { id: swap; text: "Swap X/Y first" }
-                CheckBox { id: invertX; text: "Invert output X" }
-                CheckBox { id: invertY; text: "Invert output Y" }
+                LbCheckBox { id: swap; text: "Swap X/Y first" }
+                LbCheckBox { id: invertX; text: "Invert output X" }
+                LbCheckBox { id: invertY; text: "Invert output Y" }
             }
             Label { text: "Physical button → output button" }
             Repeater {

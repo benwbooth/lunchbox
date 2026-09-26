@@ -41,7 +41,7 @@ ColumnLayout {
     GridLayout {
         Layout.fillWidth: true
         columns: width >= 560 ? 3 : 1
-        Frame {
+        LbFrame {
             Layout.fillWidth: true
             Layout.preferredWidth: 240
             ColumnLayout {
@@ -127,7 +127,7 @@ ColumnLayout {
             horizontalAlignment: Text.AlignHCenter
             Accessible.name: view.buttonRoute ? "Saved physical-to-output button mapping" : "Saved sensitivity and inversion"
         }
-        Frame {
+        LbFrame {
             Layout.fillWidth: true
             Layout.preferredWidth: 240
             ColumnLayout {

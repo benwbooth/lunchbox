@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Frame {
+LbFrame {
     id: feedback
     required property var gamepad
     required property string controllerName

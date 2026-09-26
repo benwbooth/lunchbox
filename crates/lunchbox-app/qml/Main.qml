@@ -52,6 +52,7 @@ ApplicationWindow {
     // Segoe UI on Windows, and the system UI font on macOS), including its
     // default hinting. The native renderer is selected before QML loads.
     font.family: Qt.application.font.family
+    font.pixelSize: 13
     font.kerning: true
     font.preferShaping: true
     font.hintingPreference: Font.PreferDefaultHinting
@@ -9139,25 +9140,25 @@ ApplicationWindow {
             }
             FilterToggle {
                 label: "Installed"
-                description: "Games already present in My Collection"
+                description: "Games installed in your library"
                 checked: root.availability === "local"
                 onToggled: root.selectLibrary(checked ? "" : "local")
             }
             FilterToggle {
                 label: "Downloadable from Minerva"
-                description: "Not installed and covered by an exact platform offer"
+                description: "Games available from Minerva for this system"
                 checked: root.availability === "downloadable"
                 onToggled: root.selectLibrary(checked ? "" : "downloadable")
             }
             FilterToggle {
                 label: "Favorites"
-                description: "Games saved to your personal Favorites list"
+                description: "Games you have marked as favorites"
                 checked: root.availability === "favorites"
                 onToggled: root.selectLibrary(checked ? "" : "favorites")
             }
             FilterToggle {
                 label: "Recently played"
-                description: "Games ordered by your latest play session"
+                description: "Games ordered by when you last played"
                 checked: root.availability === "recent"
                 onToggled: root.selectLibrary(checked ? "" : "recent")
             }
@@ -9440,7 +9441,7 @@ ApplicationWindow {
                                                              Math.round(next))
                     }
                 }
-                Slider {
+                LbSlider {
                     id: zoomSlider
                     width: parent.width - 88
                     anchors.verticalCenter: parent.verticalCenter
@@ -10116,7 +10117,7 @@ ApplicationWindow {
                             }
                             contentItem: RowLayout {
                                 spacing: 10
-                                CheckBox {
+                                LbCheckBox {
                                     checked: facetValueDelegate.facetSelected
                                     onClicked: library.set_list_filter_value_selected(
                                                    facetValueDelegate.facetValue,
@@ -18111,7 +18112,7 @@ ApplicationWindow {
                         Accessible.name: "ROM extension scope"
                         onTextEdited: localImport.clear_active_profile()
                     }
-                    CheckBox {
+                    LbCheckBox {
                         id: importChecksums
                         text: "Exact checksums"
                         checked: true
@@ -18338,7 +18339,7 @@ ApplicationWindow {
                     HoverHandler { id: rowHover }
                     ToolTip.visible: rowHover.hovered
                     ToolTip.text: { importRevision; return localImport.result_path_at(index) }
-                    CheckBox {
+                    LbCheckBox {
                         anchors.left: parent.left
                         anchors.leftMargin: 9
                         anchors.verticalCenter: parent.verticalCenter
@@ -20150,7 +20151,7 @@ ApplicationWindow {
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
                     }
-                    Switch {
+                    LbSwitch {
                         objectName: "minimizeDuringGameSwitch"
                         text: "Minimize Lunchbox while a game is running"
                         checked: appSettings.minimize_during_game
@@ -20404,7 +20405,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
-                        Switch {
+                        LbSwitch {
                             text: "Start when idle"
                             checked: library.couch_attract_enabled
                             enabled: library.ready && !library.couch_state_saving
@@ -20534,7 +20535,7 @@ ApplicationWindow {
                             appSettings.invalidate_qbittorrent_test()
                         }
                     }
-                    Switch {
+                    LbSwitch {
                         text: "HTTPS"
                         checked: appSettings.qbittorrent_use_https
                         onToggled: {
@@ -20742,7 +20743,7 @@ ApplicationWindow {
                         }
                         onActivated: appSettings.file_link_mode = currentValue
                     }
-                    CheckBox {
+                    LbCheckBox {
                         text: "Entire torrent"
                         checked: appSettings.download_entire_torrent
                         onToggled: appSettings.download_entire_torrent = checked
@@ -21416,7 +21417,7 @@ ApplicationWindow {
                         gamepad: gamepadInput
                     }
 
-                    CheckBox { id: advancedControllerTools; text: "Advanced controller tools" }
+                    LbCheckBox { id: advancedControllerTools; text: "Advanced controller tools" }
                     ColumnLayout {
                     Layout.fillWidth: true
                     visible: advancedControllerTools.checked
@@ -21441,7 +21442,7 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                         }
-                        Switch {
+                        LbSwitch {
                             text: "Launch mapping"
                             checked: appSettings.controller_enabled
                             enabled: !appSettings.busy
@@ -22563,7 +22564,7 @@ ApplicationWindow {
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                             }
-                            Switch {
+                            LbSwitch {
                                 text: "Make translation available for RetroArch games"
                                 checked: appSettings.translation_enabled
                                 onToggled: appSettings.translation_enabled = checked
@@ -23822,7 +23823,7 @@ ApplicationWindow {
                                 anchors.leftMargin: 13
                                 anchors.rightMargin: 15
                                 spacing: 12
-                                CheckBox {
+                                LbCheckBox {
                                     checked: {
                                         emulatorUpdateRow.modelRevision
                                         return emulatorUpdates.selected_at(emulatorUpdateRow.index)

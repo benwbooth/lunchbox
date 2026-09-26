@@ -427,7 +427,7 @@ LbDialog {
                         anchors.fill: parent
                         anchors.margins: 10
                         spacing: 12
-                        CheckBox {
+                        LbCheckBox {
                             checked: parent.parent.checked
                             enabled: !parent.parent.same
                             onToggled: fieldModel.setProperty(index, "checked", checked)

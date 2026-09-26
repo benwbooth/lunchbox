@@ -28,6 +28,7 @@ T.ItemDelegate {
         anchors.topMargin: control.topPadding
         anchors.bottomMargin: control.bottomPadding
         text: control.text
+        textFormat: Text.PlainText
         font.family: control.font.family
         font.weight: Font.Medium
         font.italic: control.font.italic

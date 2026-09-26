@@ -1083,6 +1083,7 @@ LbDialog {
                     fillMode: Image.Stretch
                     sourceSize.width: Math.max(1, Math.ceil(width * Screen.devicePixelRatio))
                     sourceSize.height: Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
+                    retainWhileLoading: true
                     source: mappingPreview.layout ? dialog.settingsModel.controller_diagram(mappingPreview.layout.id, mappingPreview.part ? mappingPreview.part.effective_source || "" : "") : ""
                     Accessible.name: "Selected FBNeo physical source control"
                 }
@@ -1166,7 +1167,7 @@ LbDialog {
             }
             RowLayout {
                 Layout.fillWidth: true
-                CheckBox { id: attentionOnly; text: "Needs attention only" }
+                LbCheckBox { id: attentionOnly; text: "Needs attention only" }
                 LbTextField {
                     id: assignmentSearch
                     Layout.fillWidth: true
@@ -1417,6 +1418,7 @@ LbDialog {
                     Layout.fillWidth: true
                     Layout.preferredHeight: width * 500 / 900
                     fillMode: Image.PreserveAspectFit
+                    retainWhileLoading: true
                     source: mouseDestination.visible ? dialog.settingsModel.controller_diagram("fbneo-mouse-channels", mouseDestination.controlId) : ""
                     sourceSize.width: Math.max(1, Math.ceil(width * Screen.devicePixelRatio))
                     sourceSize.height: Math.max(1, Math.ceil(height * Screen.devicePixelRatio))

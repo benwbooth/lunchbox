@@ -34,9 +34,9 @@ ColumnLayout {
     onRowsChanged: { focusedSourceControl = ""; selectedIndex = -1; hoveredIndex = -1; hoveredTwinIndex = -1; connections.requestPaint() }
     onSelectedChanged: { focusedSourceControl = ""; connections.requestPaint() }
     onPhysicalGapsChanged: connections.requestPaint()
-    onSourceLayoutChanged: { focusedSourceControl = ""; Qt.callLater(() => connections.requestPaint()) }
-    onDestinationLayoutChanged: Qt.callLater(() => connections.requestPaint())
-    Component.onCompleted: Qt.callLater(() => connections.requestPaint())
+    onSourceLayoutChanged: { focusedSourceControl = ""; Qt.callLater(() => { if (connections) connections.requestPaint() }) }
+    onDestinationLayoutChanged: Qt.callLater(() => { if (connections) connections.requestPaint() })
+    Component.onCompleted: Qt.callLater(() => { if (connections) connections.requestPaint() })
 
     function sourceOwner(id) {
         const controls = sourceLayout ? sourceLayout.controls : []
@@ -222,14 +222,14 @@ ColumnLayout {
         readonly property real panelHeight: titleHeight + 8 + diagramHeight
         Layout.fillWidth: true
         Layout.preferredHeight: stacked ? panelHeight * 2 + 28 : panelHeight
-        onWidthChanged: Qt.callLater(() => connections.requestPaint())
-        onHeightChanged: Qt.callLater(() => connections.requestPaint())
+        onWidthChanged: Qt.callLater(() => { if (connections) connections.requestPaint() })
+        onHeightChanged: Qt.callLater(() => { if (connections) connections.requestPaint() })
         Item {
             anchors.fill: parent
             Repeater {
                 id: diagrams
                 model: [view.sourceLayout, view.destinationLayout]
-                onItemAdded: Qt.callLater(() => connections.requestPaint())
+                onItemAdded: Qt.callLater(() => { if (connections) connections.requestPaint() })
                 delegate: Item {
                     id: panel
                     required property int index
@@ -254,6 +254,7 @@ ColumnLayout {
                         wrapMode: Text.WordWrap
                     }
                     Image {
+                        objectName: "controllerArtwork" + panel.index
                         visible: !panel.modelData || panel.modelData.id !== "brawler64"
                         y: stage.titleHeight + 8
                         width: parent.width
@@ -261,8 +262,11 @@ ColumnLayout {
                         fillMode: Image.Stretch
                         sourceSize.width: Math.max(1, Math.ceil(width * Screen.devicePixelRatio))
                         sourceSize.height: Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
-                        source: panel.modelData ? view.settingsModel.controller_diagram(panel.modelData.id,
-                            panel.index === 0 ? view.highlightedSourceId() : view.highlightedDestId()) : ""
+                        // Keep the artwork texture stable while inspecting mappings.
+                        // Replacing a data-URL SVG for every hover briefly clears
+                        // the Image and rerasterizes the entire controller.
+                        retainWhileLoading: true
+                        source: panel.modelData ? view.settingsModel.controller_diagram(panel.modelData.id, "") : ""
                         Accessible.name: (panel.index === 0 ? "Source " : "Destination ") + (panel.modelData ? panel.modelData.name : "layout")
                     }
                     Brawler64Diagram {
@@ -276,6 +280,9 @@ ColumnLayout {
                         delegate: AbstractButton {
                             id: controlHotspot
                             required property var modelData
+                            objectName: "controllerControl" + panel.index + "_" + modelData.id
+                            readonly property bool highlighted: modelData.id === (panel.index === 0
+                                ? view.highlightedSourceId() : view.highlightedDestId())
                             readonly property var position: panel.modelData.id === "brawler64" ? brawlerGeometry.point(modelData.id) : {x: modelData.x * 8 + 50, y: modelData.y * 4 + 35}
                             x: position.x * panel.width / 900 - width / 2
                             y: stage.titleHeight + 8 + position.y * stage.diagramHeight / 500 - height / 2
@@ -290,10 +297,27 @@ ColumnLayout {
                             Accessible.description: view.controlTooltip(panel.index, modelData).plain
                             Accessible.onPressAction: controlHotspot.clicked()
                             background: Rectangle {
-                                color: "transparent"
-                                radius: 4
-                                border.width: controlHotspot.activeFocus || view.controlHasGap(panel.index, controlHotspot.modelData.id) ? 2 : 0
-                                border.color: controlHotspot.activeFocus ? "#ffb454" : "#e57474"
+                                color: controlHotspot.highlighted ? "#40ffb454" : "transparent"
+                                radius: Math.min(width, height) / 2
+                                border.width: controlHotspot.highlighted || controlHotspot.activeFocus || view.controlHasGap(panel.index, controlHotspot.modelData.id) ? 2 : 0
+                                border.color: controlHotspot.activeFocus || controlHotspot.highlighted ? "#ffb454" : "#e57474"
+                                // Use the same cap geometry as the vector artwork.
+                                // The input hit area stays small for dense clusters.
+                                Rectangle {
+                                    visible: controlHotspot.highlighted && panel.modelData.id !== "brawler64"
+                                    anchors.centerIn: parent
+                                    readonly property string group: controlHotspot.modelData.group || ""
+                                    width: (group === "shoulder" ? 72 : group === "menu" ? 62
+                                           : group === "dpad" ? 30 : group === "stick" ? 32
+                                           : ["rear", "auxiliary", "pointer", "turbo"].indexOf(group) >= 0 ? 36 : 54) * panel.width / 900
+                                    height: (group === "shoulder" ? 32 : group === "menu" ? 30
+                                            : group === "dpad" ? 30 : group === "stick" ? 32
+                                            : ["rear", "auxiliary", "pointer", "turbo"].indexOf(group) >= 0 ? 36 : 54) * stage.diagramHeight / 500
+                                    radius: Math.min(width, height) / 2
+                                    color: "transparent"
+                                    border.color: "#ffb454"
+                                    border.width: 2
+                                }
                             }
                             onClicked: { view.chooseControl(panel.index, modelData.id); view.controlActivated(panel.index, modelData.id) }
                             onHoveredChanged: {
@@ -328,6 +352,8 @@ ColumnLayout {
                                 view.hoveredTwinIndex = twinAt(modelData.id)
                             }
                             ToolTip {
+                                delay: 450
+                                timeout: 0
                                 visible: controlHotspot.hovered || controlHotspot.activeFocus
                                 text: view.controlTooltip(panel.index, controlHotspot.modelData).plain
                                 contentItem: Text {
@@ -506,7 +532,7 @@ ColumnLayout {
             : view.focusedSourceControl ? "Selected source control: " + view.focusedSourceControl + ". No assignment in this view."
             : view.rows.length ? "Choose a mapped connection." : "No mapping rows available."
     }
-    CheckBox {
+    LbCheckBox {
         id: nativeDetails
         visible: view.nativeRoutes.length > 0
         text: "Show technical native-field details"

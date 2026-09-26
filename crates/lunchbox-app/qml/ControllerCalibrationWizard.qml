@@ -381,6 +381,7 @@ LbDialog {
                     visible: !!wizard.layout && wizard.layout.id !== "brawler64"
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.min(320, width * 500 / 900)
+                    retainWhileLoading: true
                     source: wizard.layout ? wizard.settingsModel.controller_diagram(wizard.layout.id, wizard.currentControl ? wizard.currentControl.id : "") : ""
                     sourceSize.width: Math.max(1, Math.ceil(width * Screen.devicePixelRatio))
                     sourceSize.height: Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
@@ -400,7 +401,7 @@ LbDialog {
                         : wizard.reviewingSaved ? "Saved layout · " + Object.keys(wizard.bindings).length + " recorded inputs"
                         : wizard.currentControl ? wizard.controlPrompt(wizard.currentControl) : "Layout recorded. Save your controller."
                 }
-                ProgressBar { Layout.fillWidth: true; from: 0; to: Math.max(1, wizard.calibrationControls.length); value: wizard.step }
+                InlineProgressBar { Layout.fillWidth: true; from: 0; to: Math.max(1, wizard.calibrationControls.length); value: wizard.step }
                 Label { text: Object.keys(wizard.bindings).length + " inputs recorded"; visible: !!wizard.layout }
                 RowLayout {
                     LbButton {
@@ -441,6 +442,7 @@ LbDialog {
             Image {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(330, wizard.height * 0.40)
+                retainWhileLoading: true
                 source: wizard.layout ? wizard.settingsModel.controller_diagram(wizard.layout.id,
                     wizard.currentControl ? wizard.currentControl.id : "") : ""
                 sourceSize.width: Math.ceil(width * Screen.devicePixelRatio)
@@ -458,7 +460,7 @@ LbDialog {
                 color: "#ffb454"
                 wrapMode: Text.WordWrap
             }
-            ProgressBar {
+            InlineProgressBar {
                 Layout.fillWidth: true
                 visible: wizard.requiredControls.length > 0
                 from: 0; to: Math.max(1, wizard.requiredControls.length)
@@ -578,7 +580,7 @@ LbDialog {
                 }
                 LbButton { text: "Start over"; enabled: !!wizard.layout; onClicked: wizard.resetLayout(wizard.layoutIndex) }
             }
-            CheckBox {
+            LbCheckBox {
                 text: "Preview system / emulator mapping"
                 enabled: !!wizard.layout
                 checked: wizard.showPreview

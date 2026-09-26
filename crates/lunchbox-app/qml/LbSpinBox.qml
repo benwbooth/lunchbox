@@ -7,7 +7,11 @@ Controls.SpinBox {
     implicitHeight: 34
     leftPadding: 11
     rightPadding: 38
-    font.pixelSize: 14
+    font.family: Qt.application.font.family
+    font.pixelSize: 13
+    palette.text: "#f4f7fb"
+    palette.highlight: "#ffb454"
+    palette.highlightedText: "#101318"
 
     background: LbControlBackground {
         hovered: control.hovered

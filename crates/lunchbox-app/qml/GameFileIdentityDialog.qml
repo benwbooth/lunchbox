@@ -276,7 +276,7 @@ LbDialog {
                 }
             }
 
-            CheckBox {
+            LbCheckBox {
                 id: platformScope
                 objectName: "identitySamePlatformOnly"
                 text: "This platform"

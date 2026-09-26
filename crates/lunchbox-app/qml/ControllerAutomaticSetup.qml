@@ -1739,7 +1739,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         text: "Standard six/eight-button arcade layouts require no per-game input inspection. Saved advanced setups still win; dependency discovery below applies to advanced inspected setups. Cabinet-specific layouts and peripherals are outside this mapping scope. Not runtime-tested yet."
     }
-    CheckBox {
+    LbCheckBox {
         text: "Discover MAME dependencies beside the selected archive"
         checked: { setup.revision; return setup.settingsModel.mame_dependency_discovery() }
         onToggled: {
@@ -1864,7 +1864,7 @@ ColumnLayout {
                 ButtonGroup { id: nativeChanges }
                 Repeater {
                     model: nativeCapture.changes
-                    RadioButton {
+                    LbRadioButton {
                         required property int index
                         required property var modelData
                         ButtonGroup.group: nativeChanges
@@ -1971,7 +1971,7 @@ ColumnLayout {
         onClicked: nativeRuntime.loadAndOpen()
     }
 
-    Switch {
+    LbSwitch {
         text: "Automatic selection for existing launch profiles"
         checked: setup.settingsModel.controller_automatic
         onToggled: setup.settingsModel.set_controller_automatic_enabled(checked)
@@ -2031,12 +2031,12 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: "#62d6c6"
     }
-    Switch {
+    LbSwitch {
         text: "Test controller input — pause menu navigation"
         checked: setup.testInput
         onToggled: setup.testInput = checked
     }
-    Switch {
+    LbSwitch {
         text: "Apply saved controller mappings at emulator launch"
         Accessible.description: "Apply saved gamepad calibrations and per-game setups, including relative-only MAME and FBNeo input. Runtime requirements still apply."
         checked: setup.settingsModel.controller_calibrated_launch
@@ -2048,7 +2048,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: "#95a2b6"
     }
-    CheckBox {
+    LbCheckBox {
         id: showVirtualControllers
         text: "Show virtual controllers"
         checked: false

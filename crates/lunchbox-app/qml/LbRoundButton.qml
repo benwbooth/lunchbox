@@ -4,6 +4,7 @@ import QtQuick.Templates as T
 T.RoundButton {
     id: control
     property bool positive: false
+    readonly property bool iconOnly: text.length > 0 && !/[\p{L}\p{N}]/u.test(text)
 
     implicitWidth: Math.max(32, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(32, implicitContentHeight + topPadding + bottomPadding)
@@ -24,8 +25,8 @@ T.RoundButton {
 
     contentItem: LbButtonLabel {
         control: parent
-        pixelSize: Math.max(13, control.font.pixelSize)
-        fontWeight: control.font.weight
+        pixelSize: control.iconOnly ? Math.max(13, control.font.pixelSize) : 13
+        fontWeight: control.iconOnly ? control.font.weight : Font.Medium
         color: !control.enabled ? "#8d99aa"
                : control.positive && (control.highlighted || control.checked) ? "#f4fff7"
                : control.highlighted || control.checked ? "#ffcb84" : "#f4f7fb"

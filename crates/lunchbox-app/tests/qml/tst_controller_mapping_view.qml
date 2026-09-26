@@ -18,7 +18,11 @@ TestCase {
 
             QtObject {
                 id: settingsState
-                function controller_diagram(layoutId, highlight) { return "" }
+                property var diagramRequests: []
+                function controller_diagram(layoutId, highlight) {
+                    diagramRequests.push(layoutId)
+                    return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500"><rect width="900" height="500" fill="#202a39"/></svg>')
+                }
             }
 
             Lunchbox.ControllerMappingView {
@@ -48,6 +52,7 @@ TestCase {
             }
 
             property alias mapping: mapping
+            property alias diagramRequests: settingsState.diagramRequests
         }
     }
 
@@ -88,6 +93,27 @@ TestCase {
         host.mapping.hoveredIndex = -1
         compare(host.mapping.highlightedSourceId(), "b")
         compare(host.mapping.highlightedDestId(), "y")
+    }
+
+    function test_hover_and_selection_do_not_reload_the_artwork() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        tryVerify(() => findChild(host.mapping, "controllerArtwork0") !== null)
+        const artwork = findChild(host.mapping, "controllerArtwork0")
+        const button = findChild(host.mapping, "controllerControl0_a")
+        verify(artwork && button)
+        tryCompare(artwork, "status", Image.Ready)
+        const calls = host.diagramRequests.length
+        const source = artwork.source.toString()
+        for (let index = 0; index < 12; ++index) {
+            host.mapping.hoveredIndex = index % 2
+            compare(button.highlighted, index % 2 === 0)
+            host.mapping.chooseControl(1, index % 2 ? "x" : "y")
+            waitForRendering(host.mapping)
+            compare(artwork.status, Image.Ready)
+            compare(artwork.source.toString(), source)
+        }
+        compare(host.diagramRequests.length, calls)
     }
 
     function test_unmapped_control_clears_the_pin() {

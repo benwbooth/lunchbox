@@ -172,7 +172,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 8
 
-        Switch {
+        LbSwitch {
             text: "Synchronize automatically around game sessions"
             checked: root.providerModel.automatic_enabled
             enabled: root.providerModel.credentials_saved

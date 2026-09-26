@@ -239,6 +239,7 @@ TestCase {
         }
         verify(ok !== null)
         compare(ok.background.color, "#202a39")
+        waitForRendering(testCase)
         mouseClick(ok)
         compare(dialogAccepts, 1)
     }

@@ -20,7 +20,7 @@ Item {
     implicitHeight: 7
     Accessible.role: Accessible.ProgressBar
     Accessible.name: control.indeterminate
-                     ? "Progress in progress"
+                     ? "Operation in progress"
                      : Math.round(control.normalizedValue * 100) + "% complete"
 
     Rectangle {

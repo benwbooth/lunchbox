@@ -18,8 +18,8 @@ LbButton {
         Text {
             text: root.text
             color: "#f4f7fb"
-            font.pixelSize: 14
-            font.weight: Font.DemiBold
+            font.pixelSize: 13
+            font.weight: Font.Medium
             anchors.verticalCenter: parent.verticalCenter
         }
     }

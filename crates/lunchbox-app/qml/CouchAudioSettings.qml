@@ -42,7 +42,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 12
 
-        Switch {
+        LbSwitch {
             text: "Play cached game music automatically"
             checked: settings.library.couch_music_enabled
             enabled: settings.library.ready && !settings.library.couch_state_saving
@@ -70,7 +70,7 @@ ColumnLayout {
             color: settings.inkColor
             font.pixelSize: 12
         }
-        Slider {
+        LbSlider {
             id: volumeSlider
             Layout.fillWidth: true
             from: 0

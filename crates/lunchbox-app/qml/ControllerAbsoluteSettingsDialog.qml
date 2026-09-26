@@ -96,6 +96,7 @@ LbDialog {
                 text: "Advanced absolute calibration. Capture is explicit and Linux64-only; emulator routing is not enabled. The coordinate preview below uses manual samples. Runtime behavior remains unverified."
             }
             GroupBox {
+                background: Rectangle { color: "#17212e"; radius: 10; border.color: "#344358" }
                 title: "Acquire rectangular edges from a selected device"
                 Layout.fillWidth: true
                 ColumnLayout {
@@ -114,7 +115,7 @@ LbDialog {
                         LbSpinBox { id: captureX; from: 0; to: 40; enabled: !dialog.captureActive; Accessible.name: "Physical X ABS code" }
                         Label { text: "Physical Y code" }
                         LbSpinBox { id: captureY; from: 0; to: 40; value: 1; enabled: !dialog.captureActive; Accessible.name: "Physical Y ABS code" }
-                        CheckBox { id: captureSwap; text: "Swap X/Y"; enabled: !dialog.captureActive }
+                        LbCheckBox { id: captureSwap; text: "Swap X/Y"; enabled: !dialog.captureActive }
                     }
                     Flow {
                         Layout.fillWidth: true

@@ -72,7 +72,7 @@ Rectangle {
 
     HoverHandler { id: emulatorHover }
 
-    ProgressBar {
+    InlineProgressBar {
         objectName: "emulatorInstallProgress"
         anchors.left: parent.left
         anchors.right: parent.right

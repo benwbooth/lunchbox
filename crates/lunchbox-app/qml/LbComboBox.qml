@@ -13,6 +13,7 @@ T.ComboBox {
     implicitHeight: Math.max(34, implicitContentHeight + topPadding + bottomPadding)
     font.family: Qt.application.font.family
     font.pixelSize: 13
+    hoverEnabled: true
 
     background: LbControlBackground {
         pressed: control.down
@@ -29,6 +30,7 @@ T.ComboBox {
         anchors.topMargin: control.topPadding
         anchors.bottomMargin: control.bottomPadding
         text: control.displayText
+        textFormat: Text.PlainText
         font.family: control.font.family
         font.weight: Font.Medium
         font.italic: control.font.italic
@@ -65,6 +67,7 @@ T.ComboBox {
     delegate: LbItemDelegate {
         required property int index
         width: control.popup.width - control.popup.leftPadding - control.popup.rightPadding
+               - (popupScroll.visible ? popupScroll.width + 4 : 0)
         text: control.textAt(index)
         highlighted: control.highlightedIndex === index
     }
@@ -81,13 +84,24 @@ T.ComboBox {
         // mapToItem() does not bind to movement of every ancestor of the
         // ComboBox. Calculate the overlay position when the menu opens, after
         // its containing dialog has settled but before the menu is painted.
-        onAboutToShow: {
+        function positionMenu() {
+            if (!parent) return
             const origin = control.mapToItem(parent, 0, control.height + 2)
-            x = origin.x
-            y = origin.y
+            const above = control.mapToItem(parent, 0, -height - 2).y
+            x = Math.max(8, Math.min(origin.x, parent.width - width - 8))
+            y = origin.y + height <= parent.height - 8 ? origin.y
+                : above >= 8 ? above : Math.max(8, parent.height - height - 8)
         }
-        width: control.width
-        implicitHeight: Math.min(360, contentItem.implicitHeight + topPadding + bottomPadding)
+        onAboutToShow: positionMenu()
+        onOpened: {
+            positionMenu()
+            popupList.positionViewAtIndex(control.highlightedIndex, ListView.Contain)
+        }
+        onHeightChanged: if (visible) positionMenu()
+        width: Math.min(control.width, parent ? parent.width - 16 : control.width)
+        implicitHeight: Math.max(0, Math.min(360, parent ? parent.height - 16 : 360,
+                                            contentItem.implicitHeight + topPadding + bottomPadding))
+        margins: 8
         padding: 4
         background: Rectangle {
             radius: 8
@@ -100,8 +114,18 @@ T.ComboBox {
             implicitHeight: contentHeight
             model: control.popup.visible ? control.delegateModel : null
             currentIndex: control.highlightedIndex
+            boundsBehavior: Flickable.StopAtBounds
+            highlightMoveDuration: 0
+            C.ScrollBar.vertical: LbScrollBar {
+                id: popupScroll
+                z: 20
+                policy: C.ScrollBar.AsNeeded
+            }
             MouseArea {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: parent.width - (popupScroll.visible ? popupScroll.width + 4 : 0)
                 z: 10
                 preventStealing: false
                 onWheel: function(wheel) { wheel.accepted = false }

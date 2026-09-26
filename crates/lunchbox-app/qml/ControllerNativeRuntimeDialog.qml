@@ -275,7 +275,7 @@ LbDialog {
             contentWidth: availableWidth
             ColumnLayout {
                 width: nativePreviewScroll.availableWidth
-            CheckBox {
+            LbCheckBox {
                 id: savedSdlPreview
                 text: "Restrict to saved logical SDL calibration"
                 enabled: nativeLayouts.logicalError.length === 0
@@ -382,7 +382,7 @@ LbDialog {
             LbTextField { id: probeProgram; Layout.fillWidth: true; placeholderText: "Absolute path to lunchbox-controller-probe"; Accessible.name: "Controller probe executable" }
             Label { text: "This runtime's SDL2 shared library" }
             LbTextField { id: sdlLibrary; Layout.fillWidth: true; placeholderText: "Absolute SDL2 library path"; Accessible.name: "SDL2 library" }
-            CheckBox { id: directMono; text: "Invoke Mono directly with a shared probe/emulator environment" }
+            LbCheckBox { id: directMono; text: "Invoke Mono directly with a shared probe/emulator environment" }
             Label {
                 Layout.fillWidth: true
                 visible: directMono.checked
@@ -465,14 +465,14 @@ LbDialog {
             }
             RowLayout {
                 visible: !runtime.isDigitalCore
-                CheckBox { id: firstTap; text: "Physical port 1 multitap" }
-                CheckBox { id: secondTap; text: "Physical port 2 multitap" }
+                LbCheckBox { id: firstTap; text: "Physical port 1 multitap" }
+                LbCheckBox { id: secondTap; text: "Physical port 2 multitap" }
             }
             RowLayout {
                 visible: runtime.fixedPcePorts !== null
                 Repeater {
                     model: runtime.fixedPcePorts !== null ? 5 : 0
-                    delegate: CheckBox {
+                    delegate: LbCheckBox {
                         required property int index
                         text: "P" + (index + 1) + " connected"
                         checked: runtime.fixedPcePorts ? runtime.fixedPcePorts[index] : false
@@ -489,7 +489,7 @@ LbDialog {
                 visible: runtime.isGpgx
                 Repeater {
                     model: runtime.isGpgx ? 2 : 0
-                    delegate: CheckBox {
+                    delegate: LbCheckBox {
                         required property int index
                         text: index === 0 ? "Left pad connected" : "Right pad connected"
                         checked: runtime.isGpgx && runtime.gpgxTopology.ports[index]
@@ -511,7 +511,7 @@ LbDialog {
                 visible: runtime.isGpgx
                 Repeater {
                     model: runtime.isGpgx ? 2 : 0
-                    delegate: CheckBox {
+                    delegate: LbCheckBox {
                         required property int index
                         text: index === 0 ? "Left Team Player" : "Right Team Player"
                         checked: runtime.isGpgx && !!(runtime.gpgxTopology.team_players || [false, false])[index]
@@ -522,7 +522,7 @@ LbDialog {
                         }
                     }
                 }
-                CheckBox {
+                LbCheckBox {
                     text: "4-Way Play (both connectors)"
                     checked: runtime.isGpgx && !!runtime.gpgxTopology.wayplay
                     onToggled: runtime.editGpgxTopology({ wayplay: checked })
@@ -532,7 +532,7 @@ LbDialog {
                 visible: runtime.isGpgx
                 Repeater {
                     model: runtime.isGpgx ? 2 : 0
-                    delegate: CheckBox {
+                    delegate: LbCheckBox {
                         required property int index
                         text: index === 0 ? "Left Activator" : "Right Activator"
                         checked: runtime.isGpgx && !!(runtime.gpgxTopology.activators || [false, false])[index]
@@ -560,7 +560,7 @@ LbDialog {
                     + (runtime.gpgxTopologyValid ? "" : " Adapter/connector choices conflict; recording is blocked.")
                     + (runtime.gpgxPlayersComplete ? "" : " Fill every connected pad slot before recording.")
             }
-            CheckBox {
+            LbCheckBox {
                 visible: runtime.isTurboNyma
                 text: "TurboNyma multitap (required for P2–P5)"
                 checked: runtime.isTurboNyma && runtime.turbonymaTopology.multitap
@@ -655,7 +655,7 @@ LbDialog {
             }
             Repeater {
                 model: runtime.players
-                Frame {
+                LbFrame {
                     id: playerRow
                     required property int index
                     required property var modelData
@@ -717,7 +717,7 @@ LbDialog {
                                 onActivated: runtime.editMode(playerRow.index, currentIndex)
                                 Accessible.name: "Emulated PlayStation controller mode"
                             }
-                            CheckBox {
+                            LbCheckBox {
                                 text: "Rumble"
                                 enabled: playerRow.modelData.dualshock && !playerRow.modelData.normalized_input
                                 checked: playerRow.modelData.rumble
@@ -741,7 +741,7 @@ LbDialog {
                             wrapMode: Text.WordWrap
                             text: "SNES joypad: D-pad, A/B/X/Y, L/R, Start and Select. Preview shows calibration candidates, not verified native bindings."
                         }
-                        CheckBox {
+                        LbCheckBox {
                             text: "Normalize through a session virtual gamepad (no rumble)"
                             checked: !!playerRow.modelData.normalized_input
                             onToggled: runtime.editPlayer(playerRow.index, "normalized_input", checked)
@@ -757,7 +757,7 @@ LbDialog {
                             }
                             Label { text: "Core movement limits still apply" }
                         }
-                        CheckBox {
+                        LbCheckBox {
                             visible: !runtime.isDigitalCore && (playerRow.modelData.pointer === "gun_con" || playerRow.modelData.pointer === "justifier")
                             text: "Aim with the desktop cursor; keep buttons on this controller (one player only)"
                             checked: !!playerRow.modelData.desktop_cursor
