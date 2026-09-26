@@ -2954,6 +2954,66 @@ value"
         assert!(!plan.automatic_launch_ready);
     }
     #[test]
+    fn n64_family_arcade_rows_survive_emulator_specific_wiring() {
+        for source in ["n64", "brawler64"] {
+            let mut cal = calibration(source);
+            for profile in [
+                "retroarch:mame:arcade-6",
+                "retroarch:fbneo:arcade-6",
+                "retroarch:flycast:arcade-6",
+            ] {
+                let plan = cal.plan(profile).unwrap();
+                for (number, physical) in ["b", "c_left", "c_up", "a", "c_down", "c_right"]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let target = format!("button{}", number + 1);
+                    let row = plan
+                        .rows
+                        .iter()
+                        .find(|row| row.target_id == target)
+                        .unwrap();
+                    assert_eq!(
+                        row.physical_id.as_deref(),
+                        Some(physical),
+                        "{source}: {profile}: {target}"
+                    );
+                    assert_eq!(row.input.as_ref(), cal.bindings.get(physical));
+                }
+                // An ergonomic default must never replace an explicit choice.
+                cal.target_mappings.insert(
+                    profile.into(),
+                    BTreeMap::from([
+                        ("button1".into(), "a".into()),
+                        ("button4".into(), "b".into()),
+                    ]),
+                );
+                let custom = cal.plan(profile).unwrap();
+                assert_eq!(
+                    custom
+                        .rows
+                        .iter()
+                        .find(|row| row.target_id == "button1")
+                        .unwrap()
+                        .physical_id
+                        .as_deref(),
+                    Some("a")
+                );
+                assert_eq!(
+                    custom
+                        .rows
+                        .iter()
+                        .find(|row| row.target_id == "button4")
+                        .unwrap()
+                        .physical_id
+                        .as_deref(),
+                    Some("b")
+                );
+            }
+        }
+    }
+
+    #[test]
     fn brawler_calibration_reuses_controls_without_inventing_sega_mode() {
         let cal = calibration("brawler64");
         let plan = cal.plan("retroarch:genesis_plus_gx:md6").unwrap();

@@ -7,7 +7,7 @@ use crate::controller_catalog::{Control, Layout};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const POLICY_VERSION: u32 = 8;
+pub const POLICY_VERSION: u32 = 9;
 
 /// Equivalent pressure roles; digital fallback buttons are not aliases.
 pub(crate) fn pressure_role(id: &str) -> Option<&'static str> {
@@ -242,6 +242,10 @@ fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
             return match source.family.as_str() {
                 "diamond" | "horizontal-four" => ["y", "x", "r", "b", "a", "l", "l2", "r2"][slot],
                 "six-button" | "three-button" => ["x", "y", "z", "a", "b", "c", "l", "r"][slot],
+                // N64's six face buttons form two staggered arcade rows:
+                // B / C-left / C-up above A / C-down / C-right. This is
+                // physical layout policy, independent of emulator wiring.
+                "n64" => ["b", "c_left", "c_up", "a", "c_down", "c_right", "l", "r"][slot],
                 "four-button-row" => [
                     "a", "b", "c", "d", "button5", "button6", "button7", "button8",
                 ][slot],
@@ -1092,6 +1096,39 @@ mod tests {
         let pairs = assignments(layout("nes"), layout("n64"));
         assert!(!pairs.contains_key("stick_up"));
     }
+    #[test]
+    fn n64_family_preserves_six_button_arcade_rows() {
+        let db = catalog();
+        for source in db.layouts.iter().filter(|layout| layout.family == "n64") {
+            for target in ["arcade-six-button", "arcade-eight-button"] {
+                let target = db.layout(target).unwrap();
+                let result = full_resolution(source, target);
+                for (number, physical) in ["b", "c_left", "c_up", "a", "c_down", "c_right"]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let button = format!("button{}", number + 1);
+                    assert_eq!(
+                        result.assignments[&button], physical,
+                        "{} -> {}",
+                        source.id, target.id
+                    );
+                    assert_eq!(result.rules[&button], Rule::FamilyPreference);
+                }
+                // Choosing the six face buttons must not sacrifice either
+                // directional cluster or move gameplay onto Start.
+                assert_eq!(result.assignments["start"], "start");
+                for direction in ["up", "down", "left", "right"] {
+                    assert_eq!(result.assignments[direction], direction);
+                    assert_eq!(
+                        result.directional_alternates[direction],
+                        format!("stick_{direction}")
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn horizontal_n30_pairs_do_not_inherit_the_diamond_run_jump_swap() {
         let source = crate::controller_catalog::catalog()
