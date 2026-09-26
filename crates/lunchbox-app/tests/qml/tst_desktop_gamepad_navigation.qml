@@ -14,6 +14,7 @@ TestCase {
     property int backs: 0
     property int clicked: 0
     property int activated: -1
+    property int navigationStarts: 0
 
     Item { id: contents; anchors.fill: parent }
     Item { id: windowFocusContainer; parent: contents; anchors.fill: parent }
@@ -101,10 +102,12 @@ TestCase {
         applicationWindow: host
         gamepad: gamepad
         libraryView: grid
+        onNavigationStarted: testCase.navigationStarts++
         onOpenGame: item => testCase.opened++
         onBackRequested: testCase.backs++
     }
     function init() {
+        navigationStarts = 0
         router.enabled = true
         host.active = true
         router.openCombo = null
@@ -263,6 +266,10 @@ TestCase {
         verify(!router.handle("accept")); compare(testCase.opened, 0)
         host.active = true; router.enabled = false
         verify(!router.handle("right")); compare(grid.currentIndex, 0)
+        compare(navigationStarts, 0)
+        router.enabled = true
+        router.handle("right")
+        compare(navigationStarts, 1)
     }
     function test_buttons_and_checkboxes_activate() {
         host.activeFocusItem = button

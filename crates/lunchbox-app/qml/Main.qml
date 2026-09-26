@@ -2257,6 +2257,11 @@ ApplicationWindow {
         focusScope: settingsDialog.visible ? settingsDialog.contentItem : null
         overlayItem: Overlay.overlay
         enabled: !root.couchModeActive
+        onNavigationStarted: {
+            const view = gameViewLoader.item
+            if (view && view.controllerInputStarted)
+                view.controllerInputStarted()
+        }
         onOpenGame: item => {
             if (item.gameId !== undefined)
                 root.openGame(item.gameId, item.gameDatabaseId, item.gameTitle,
@@ -10185,6 +10190,7 @@ ApplicationWindow {
 
     component GameGrid: MomentumGridView {
         id: grid
+        GridHoverFocusState { id: hoverFocusState }
         defaultWheelMomentum: false
         function startupArtworkReady() {
             let visibleTiles = 0
@@ -10277,9 +10283,14 @@ ApplicationWindow {
         }
 
         function clearUnfocusedPreview() {
-            if (activeFocus && root.hoverPreviewTile
+            if (activeFocus && !hoverFocusState.pointerActive
+                    && root.hoverPreviewTile
                     && root.hoverPreviewTile !== currentItem)
                 root.disarmGridPreview(root.hoverPreviewTile)
+        }
+        function controllerInputStarted() {
+            hoverFocusState.navigationFocused()
+            clearUnfocusedPreview()
         }
         onActiveFocusChanged: clearUnfocusedPreview()
         onCurrentIndexChanged: clearUnfocusedPreview()
@@ -10316,6 +10327,10 @@ ApplicationWindow {
         }
 
         Keys.onPressed: event => {
+            if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
+                 Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End]
+                    .indexOf(event.key) >= 0)
+                grid.controllerInputStarted()
             if (handleNavigationKey(event))
                 event.accepted = true
         }
@@ -10360,12 +10375,15 @@ ApplicationWindow {
             readonly property real previewArtworkLayer: coverImage.z
             readonly property real previewStatusLayer: previewStatus.z
             readonly property real previewFavoriteLayer: favoriteButton.z
-            readonly property bool controllerFocusElsewhere: grid.activeFocus
-                                                           && grid.currentIndex !== tile.index
+            readonly property bool controllerFocusElsewhere:
+                hoverFocusState.controllerFocusElsewhere(grid.activeFocus,
+                                                        grid.currentIndex, tile.index)
             // One visual target: controller focus wins over pointer hover,
-            // and pointer hover wins over the game retained in Details.
-            readonly property bool focusedHighlight: grid.activeFocus
-                                                     && grid.currentIndex === tile.index
+            // until the pointer moves again. Pointer hover wins over the game
+            // retained in Details without producing a second focus outline.
+            readonly property bool focusedHighlight:
+                hoverFocusState.focusedCard(grid.activeFocus,
+                                            grid.currentIndex, tile.index)
             readonly property bool hoverEmphasis: {
                 if (!cardHover.hovered || controllerFocusElsewhere)
                     return false
@@ -10377,9 +10395,11 @@ ApplicationWindow {
                 return cardGeometry.hoverContainsViewportPoint(pointer.x,
                                                                 pointer.y)
             }
-            readonly property bool hoverHighlight: !grid.activeFocus
+            readonly property bool hoverHighlight: (!grid.activeFocus
+                                                    || hoverFocusState.pointerActive)
                                                    && root.hoverPreviewTile === tile
-            readonly property bool selectedHighlight: !grid.activeFocus
+            readonly property bool selectedHighlight: (!grid.activeFocus
+                                                       || hoverFocusState.pointerActive)
                                                       && !root.hoverPreviewTile
                                                       && root.selectedGameId === tile.gameId
             readonly property bool previewRequested: root.hoverPreviewTile === tile
@@ -10497,7 +10517,11 @@ ApplicationWindow {
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
             onFavoriteProbeReadyChanged: runFavoriteProbe()
             onCollectionProbeReadyChanged: runCollectionProbe()
-            onActiveFocusChanged: updatePreviewInterest()
+            onActiveFocusChanged: {
+                if (activeFocus)
+                    hoverFocusState.navigationFocused()
+                updatePreviewInterest()
+            }
             onHoverEmphasisChanged: updatePreviewInterest()
             width: grid.cellWidth
             height: grid.cellHeight
@@ -10508,7 +10532,7 @@ ApplicationWindow {
             TapHandler {
                 onTapped: {
                     grid.currentIndex = tile.index
-                    tile.forceActiveFocus()
+                    hoverFocusState.pointerActivated()
                     root.openGame(tile.gameId, tile.gameDatabaseId,
                                   tile.gameTitle, tile.gamePlatform,
                                   tile.gameLocal, tile.gameDownloadable)
@@ -10539,6 +10563,11 @@ ApplicationWindow {
 
                 HoverHandler {
                     id: cardHover
+                    onPointChanged: {
+                        if (hovered)
+                            hoverFocusState.pointerMoved(point.scenePosition.x,
+                                                         point.scenePosition.y)
+                    }
                 }
             }
 

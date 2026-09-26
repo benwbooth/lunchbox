@@ -13,6 +13,7 @@ Item {
     signal openGame(var item)
     signal backRequested()
     signal menuRequested()
+    signal navigationStarted()
 
     function within(item, parentItem) {
         for (let cursor = item; cursor; cursor = cursor.parent)
@@ -179,6 +180,7 @@ Item {
 
     function handle(action) {
         if (!enabled || !applicationWindow.active) return false
+        navigationStarted()
         if (action === "back") {
             if (openCombo && openCombo.popup.visible) {
                 openCombo.popup.close(); openCombo.forceActiveFocus(); openCombo = null

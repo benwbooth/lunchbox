@@ -143,6 +143,7 @@ fn main() {
                 "qml/GameSoundtrackCard.qml",
                 "qml/GameTorrentSources.qml",
                 "qml/GameWindowBehavior.qml",
+                "qml/GridHoverFocusState.qml",
                 "qml/HeaderButton.qml",
                 "qml/HorizontalWheelHandler.qml",
                 "qml/HoverPreviewPresentation.qml",
