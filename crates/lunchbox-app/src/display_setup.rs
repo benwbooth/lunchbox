@@ -110,6 +110,12 @@ pub struct BezelChoice {
 /// Artwork choices are explicit sources, rather than an opaque "pack" whose
 /// per-game fallback can silently change its appearance.
 pub fn bezel_choices(platform: &str) -> Vec<BezelChoice> {
+    if crate::bezel_project::arcade_bezels_supported(platform) {
+        return vec![BezelChoice {
+            id: "themed",
+            label: "Bezel Project · game-specific arcade art",
+        }];
+    }
     let mut choices = Vec::new();
     if crate::bezel_project::theme_for_platform(platform).is_some() {
         choices.push(BezelChoice {
@@ -142,6 +148,17 @@ pub fn bezel_choices(platform: &str) -> Vec<BezelChoice> {
         });
     }
     choices
+}
+
+/// Arcade's built-in default is an exact per-ROM bezel when one exists.
+/// Explicit opt-outs and other artwork selections continue to take precedence.
+pub(crate) fn effective_bezel_choice<'a>(platform: &str, requested: &'a str) -> &'a str {
+    if crate::bezel_project::arcade_bezels_supported(platform) && matches!(requested, "" | "system")
+    {
+        "themed"
+    } else {
+        requested
+    }
 }
 
 /// Adapters with a trustworthy automatic save-state mechanism. RetroArch
@@ -443,12 +460,14 @@ pub fn attach_launch_display_configuration(
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
     let mut black_sidebars = false;
-    let inherited_bezel = customization
-        .display_bezel
+    let requested_bezel = effective_bezel_choice(platform, &customization.display_bezel);
+    let automatic_arcade = customization.display_bezel.is_empty()
+        && crate::bezel_project::arcade_bezels_supported(platform);
+    let inherited_bezel = requested_bezel
         .is_empty()
         .then(|| inherited_ultrawide_bezel(executable))
         .flatten();
-    let display_bezel = inherited_bezel.unwrap_or(&customization.display_bezel);
+    let display_bezel = inherited_bezel.unwrap_or(requested_bezel);
     match customization.display_fullscreen.as_str() {
         "true" | "false" => {
             lines.push_str(&format!(
@@ -487,13 +506,14 @@ pub fn attach_launch_display_configuration(
                     // Custom viewports use RetroArch's render-buffer pixels;
                     // this can differ from the monitor mode under fractional
                     // scaling. The overlay itself remains full-screen.
-                    let dimensions = if ultrawide {
+                    let known_dimensions = output_dimensions.filter(|(w, h)| *w > 0 && *h > 0);
+                    let dimensions = if ultrawide || known_dimensions.is_none() {
                         Some(probe_retroarch_output_dimensions(
                             executable,
-                            output_dimensions,
+                            known_dimensions,
                         )?)
                     } else {
-                        output_dimensions
+                        known_dimensions
                     };
                     let output_aspect = dimensions
                         .filter(|(_, height)| *height > 0)
@@ -522,6 +542,13 @@ pub fn attach_launch_display_configuration(
                 lines.push_str("input_overlay_auto_scale = \"false\"\n");
                 lines.push_str("input_overlay_scale_landscape = \"1.000000\"\n");
                 lines.push_str("input_overlay_aspect_adjust_landscape = \"0.000000\"\n");
+                lines.push_str("input_overlay_x_offset_landscape = \"0.000000\"\ninput_overlay_y_offset_landscape = \"0.000000\"\n");
+                lines.push_str("input_overlay_scale_portrait = \"1.000000\"\ninput_overlay_aspect_adjust_portrait = \"0.000000\"\ninput_overlay_x_offset_portrait = \"0.000000\"\ninput_overlay_y_offset_portrait = \"0.000000\"\n");
+                if crate::bezel_project::arcade_bezels_supported(platform) && viewport.is_none() {
+                    // Arcade packs use the core's horizontal/vertical aspect,
+                    // never stale custom dimensions from a console bezel.
+                    lines.push_str("aspect_ratio_index = \"22\"\n");
+                }
                 if let Some((x, y, width, height)) = viewport {
                     // RetroArch's current custom-aspect index is 23. The
                     // Duimon's transparent opening is centered and exactly
@@ -541,7 +568,9 @@ pub fn attach_launch_display_configuration(
             Ok(None) => {
                 lines.push_str("input_overlay_enable = \"false\"\n");
                 lines.push_str("aspect_ratio_index = \"22\"\n");
-                warnings.push("The selected bezel source has no artwork for this game or system, so the game started without one".to_owned());
+                if !automatic_arcade {
+                    warnings.push("The selected bezel source has no artwork for this game or system, so the game started without one".to_owned());
+                }
             }
             Err(error) => {
                 lines.push_str("input_overlay_enable = \"false\"\n");
@@ -679,7 +708,7 @@ fn parse_sdl3_display_dimensions(report: &str) -> Option<(u32, u32)> {
 }
 
 /// Place fixed-aspect artwork inside a wider (or taller) output without
-/// stretching the console artwork. The overlay itself remains full-screen;
+/// stretching the artwork. The overlay itself remains full-screen;
 /// its rectangle is centered within that screen. RetroArch's documented
 /// overlay0_rect coordinates are normalized to the full-screen rectangle.
 fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<(PathBuf, bool)> {
@@ -719,7 +748,7 @@ fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<(Pat
     fitted.push_str(&format!(
         "overlay0_rect = \"{x:.6},{y:.6},{w:.6},{h:.6}\"\n"
     ));
-    Ok((write_launch_display_config(&fitted)?, w < 1.0))
+    Ok((write_launch_display_config(&fitted)?, w < 1.0 || h < 1.0))
 }
 
 fn fitted_overlay_rect(
@@ -952,6 +981,48 @@ mod tests {
         let (same_aspect, no_sidebars) = aspect_fitted_overlay(&source, Some(16.0 / 9.0)).unwrap();
         assert_eq!(same_aspect, source);
         assert!(!no_sidebars);
+    }
+
+    #[test]
+    fn arcade_bezel_default_is_game_specific_and_respects_opt_outs() {
+        for platform in ["Arcade", "MAME", "FinalBurn Neo", "SNK Neo Geo MVS"] {
+            assert_eq!(effective_bezel_choice(platform, ""), "themed");
+            assert_eq!(effective_bezel_choice(platform, "system"), "themed");
+            assert_eq!(effective_bezel_choice(platform, "off"), "off");
+            assert_eq!(effective_bezel_choice(platform, "ultrawide"), "ultrawide");
+            assert_eq!(
+                bezel_choices(platform)
+                    .iter()
+                    .map(|choice| choice.id)
+                    .collect::<Vec<_>>(),
+                ["themed"]
+            );
+            assert!(bezels_supported(platform, "retroarch"));
+            assert!(!bezels_supported(platform, "native"));
+        }
+        assert_eq!(
+            effective_bezel_choice("Nintendo Entertainment System", ""),
+            ""
+        );
+        assert_eq!(
+            effective_bezel_choice("Nintendo Entertainment System", "system"),
+            "system"
+        );
+    }
+
+    #[test]
+    fn arcade_bezel_fit_preserves_art_aspect_for_wide_and_tall_outputs() {
+        for output in [(5120, 2160), (3440, 1440), (5120, 1440), (1080, 1920)] {
+            let aspect = f64::from(output.0) / f64::from(output.1);
+            let (x, y, width, height) = fitted_overlay_rect(1920, 1080, aspect).unwrap();
+            assert!(
+                (width * f64::from(output.0) / (height * f64::from(output.1)) - 16.0 / 9.0).abs()
+                    < 0.000001
+            );
+            assert!((2.0 * x + width - 1.0).abs() < 0.000001);
+            assert!((2.0 * y + height - 1.0).abs() < 0.000001);
+            assert!(width <= 1.0 && height <= 1.0);
+        }
     }
 
     #[test]

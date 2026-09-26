@@ -1,4 +1,4 @@
-//! The Bezel Project system bezels for RetroArch launches.
+//! The Bezel Project console and per-game arcade bezels for RetroArch launches.
 //!
 //! Packs are plain GitHub repos (`thebezelproject/bezelprojectsa-<Theme>`) of
 //! per-ROM RetroArch overlay configs plus PNG artwork. Only the overlay file
@@ -23,6 +23,7 @@ const INDEX_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 const MAX_CONFIG_BYTES: usize = 64 * 1024;
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
+const ARCADE_RAW_BASE: &str = "https://raw.githubusercontent.com/thebezelproject/bezelproject-MAME/master/retroarch/overlay/ArcadeBezels";
 
 /// Platform names are matched exactly after normalization; no fuzzy title
 /// matching decides which artwork a game receives.
@@ -94,9 +95,8 @@ const THEME_ALIASES: &[(&str, &str)] = &[
     ("trs 80", "TRS-80"),
 ];
 
-/// Bezel Project themes exist for console and handheld systems; arcade
-/// platforms are excluded because their packs use a different artwork
-/// layout and MAME already carries native artwork support.
+/// Console/handheld theme packs. Arcade artwork has its own ROM-set lookup
+/// under ArcadeBezels rather than the console GameBezels directory layout.
 pub fn theme_for_platform(platform: &str) -> Option<&'static str> {
     let normalized = normalize_name(platform);
     if normalized.is_empty() {
@@ -166,6 +166,9 @@ pub fn system_bezel_overlay(platform: &str, rom_stem: &str) -> Result<Option<Pat
 }
 
 pub fn bezel_overlay(platform: &str, rom_stem: &str, style: PackStyle) -> Result<Option<PathBuf>> {
+    if arcade_bezels_supported(platform) {
+        return arcade_bezel_overlay(rom_stem);
+    }
     let Some(theme) = theme_for_platform(platform) else {
         return Ok(None);
     };
@@ -197,6 +200,109 @@ pub fn bezel_overlay(platform: &str, rom_stem: &str, style: PackStyle) -> Result
     let config_path = storage.join(&selection.name);
     let png_name = ensure_local_png(theme, &storage, &config_path, selection.system, style)?;
     rewrite_overlay_path(&config_path, &png_name)?;
+    Ok(Some(config_path))
+}
+
+pub fn arcade_bezels_supported(platform: &str) -> bool {
+    matches!(
+        normalize_name(platform).as_str(),
+        "arcade"
+            | "arcade pinball"
+            | "arcade laserdisc"
+            | "mame"
+            | "finalburn neo"
+            | "fbneo"
+            | "snk neo geo mvs"
+            | "neo geo mvs"
+            | "sega naomi"
+            | "sega naomi 2"
+            | "sammy atomiswave"
+            | "sega model 2"
+            | "sega model 3"
+    )
+}
+
+fn arcade_romset_key(name: &str) -> Option<String> {
+    let name = name.trim();
+    (!name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')))
+    .then(|| name.to_ascii_lowercase())
+}
+
+pub fn arcade_bezel_overlay(rom_stem: &str) -> Result<Option<PathBuf>> {
+    let storage = bezel_storage_directory()?.join("game-art").join("Arcade");
+    arcade_bezel_at(&storage, rom_stem, &mut |url, limit| {
+        fetch_optional_bytes(url, limit, Duration::from_secs(5))
+    })
+}
+
+/// Fetch two exact files, never the enormous (and truncated) recursive MAME
+/// pack index. A cached miss avoids repeating a network request every launch.
+fn arcade_bezel_at(
+    storage: &Path,
+    rom_stem: &str,
+    fetch: &mut impl FnMut(&str, u64) -> Result<Option<Vec<u8>>>,
+) -> Result<Option<PathBuf>> {
+    let Some(key) = arcade_romset_key(rom_stem) else {
+        return Ok(None);
+    };
+    fs::create_dir_all(storage)?;
+    let config_path = storage.join(format!("{key}.cfg"));
+    let missing = storage.join(format!(".{key}.missing"));
+    let cached = fs::read_to_string(&config_path).ok();
+    if cached.is_none()
+        && fs::read_to_string(&missing)
+            .ok()
+            .and_then(|text| text.parse::<u64>().ok())
+            .is_some_and(|when| unix_timestamp().saturating_sub(when) < INDEX_TTL_SECS)
+    {
+        return Ok(None);
+    }
+    let config = match cached {
+        Some(config) => config,
+        None => {
+            let Some(bytes) = fetch(
+                &format!("{ARCADE_RAW_BASE}/{key}.cfg"),
+                MAX_CONFIG_BYTES as u64,
+            )?
+            else {
+                fs::write(missing, unix_timestamp().to_string())?;
+                return Ok(None);
+            };
+            String::from_utf8(bytes).context("the arcade bezel config was not UTF-8")?
+        }
+    };
+    let image = png_reference(&config).context("the arcade bezel references no image")?;
+    let image_stem = image
+        .strip_suffix(".png")
+        .context("the arcade bezel image is not a PNG")?;
+    anyhow::ensure!(
+        arcade_romset_key(image_stem).as_deref() == Some(image_stem),
+        "the arcade bezel references an unsafe image path"
+    );
+    let image_path = storage.join(&image);
+    if !image_path.is_file() {
+        let bytes = fetch(&format!("{ARCADE_RAW_BASE}/{image}"), MAX_IMAGE_BYTES)?
+            .context("the arcade bezel's image is unavailable")?;
+        anyhow::ensure!(
+            crate::bezel_orionsangel::png_dimensions(&bytes).is_some(),
+            "the arcade bezel image has no valid PNG dimensions"
+        );
+        fs::write(image_path, bytes)?;
+    }
+    // Import artwork only, not the pack's emulator paths, input bindings or
+    // viewport overrides. Clones may legitimately reference a parent's PNG.
+    if !config_path.is_file() {
+        fs::write(
+            &config_path,
+            format!(
+                "overlays = 1\noverlay0_overlay = \"{image}\"\noverlay0_full_screen = true\noverlay0_descs = 0\n"
+            ),
+        )?;
+    }
     Ok(Some(config_path))
 }
 
@@ -495,10 +601,10 @@ fn bezel_storage_directory() -> Result<PathBuf> {
         .context("could not determine the Lunchbox data directory")
 }
 
-fn http_agent() -> Result<ureq::Agent> {
+fn http_agent(timeout: Duration) -> Result<ureq::Agent> {
     Ok(ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(10)))
-        .timeout_global(Some(DOWNLOAD_TIMEOUT))
+        .timeout_global(Some(timeout))
         .http_status_as_error(false)
         .user_agent("Lunchbox/0.1 system bezel client")
         .build()
@@ -511,11 +617,18 @@ fn fetch_text(url: &str, limit: u64) -> Result<String> {
 }
 
 fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
-    let agent = http_agent()?;
+    fetch_optional_bytes(url, limit, DOWNLOAD_TIMEOUT)?.context("download returned HTTP 404")
+}
+
+fn fetch_optional_bytes(url: &str, limit: u64, timeout: Duration) -> Result<Option<Vec<u8>>> {
+    let agent = http_agent(timeout)?;
     let mut response = agent
         .get(url)
         .call()
         .with_context(|| format!("downloading {url}"))?;
+    if response.status().as_u16() == 404 {
+        return Ok(None);
+    }
     if !response.status().is_success() {
         bail!("download returned HTTP {}", response.status());
     }
@@ -528,7 +641,7 @@ fn fetch_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
     if bytes.len() as u64 > limit {
         bail!("download exceeded the size limit");
     }
-    Ok(bytes)
+    Ok(Some(bytes))
 }
 
 fn percent_encode(value: &str) -> String {
@@ -554,6 +667,127 @@ fn unix_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_png() -> Vec<u8> {
+        let mut header = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        header.extend_from_slice(&1920_u32.to_be_bytes());
+        header.extend_from_slice(&1080_u32.to_be_bytes());
+        header
+    }
+
+    #[test]
+    fn arcade_bezels_use_exact_romsets_and_cache_their_art() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut requests = Vec::new();
+        let mut fetch = |url: &str, _: u64| {
+            requests.push(url.to_owned());
+            Ok(Some(if url.ends_with(".cfg") {
+                b"overlay0_overlay = sf2.png\nvideo_scale = 99\n".to_vec()
+            } else {
+                test_png()
+            }))
+        };
+        let path = arcade_bezel_at(temporary.path(), "SF2CEUA", &mut fetch)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            requests,
+            [
+                format!("{ARCADE_RAW_BASE}/sf2ceua.cfg"),
+                format!("{ARCADE_RAW_BASE}/sf2.png")
+            ]
+        );
+        let config = fs::read_to_string(&path).unwrap();
+        assert!(config.contains("overlay0_overlay = \"sf2.png\""));
+        assert!(!config.contains("video_scale"));
+        assert_eq!(
+            arcade_bezel_at(temporary.path(), "sf2ceua", &mut |_, _| panic!(
+                "cache hit must not use network"
+            ))
+            .unwrap(),
+            Some(path)
+        );
+    }
+
+    #[test]
+    fn arcade_bezel_misses_are_cached_but_network_errors_are_not() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut calls = 0;
+        for _ in 0..2 {
+            assert!(
+                arcade_bezel_at(temporary.path(), "missinggame", &mut |_, _| {
+                    calls += 1;
+                    Ok(None)
+                })
+                .unwrap()
+                .is_none()
+            );
+        }
+        assert_eq!(calls, 1);
+        fs::write(temporary.path().join(".missinggame.missing"), "0").unwrap();
+        assert!(
+            arcade_bezel_at(temporary.path(), "missinggame", &mut |_, _| {
+                calls += 1;
+                Ok(None)
+            })
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(calls, 2);
+        for _ in 0..2 {
+            assert!(
+                arcade_bezel_at(temporary.path(), "offlinegame", &mut |_, _| {
+                    calls += 1;
+                    bail!("offline")
+                })
+                .is_err()
+            );
+        }
+        assert_eq!(calls, 4);
+    }
+
+    #[test]
+    fn arcade_bezel_lookup_never_uses_display_titles_or_unsafe_paths() {
+        let temporary = tempfile::tempdir().unwrap();
+        for name in ["", "../sf2", "/sf2", "sf2\\child", "Street Fighter II"] {
+            assert!(
+                arcade_bezel_at(temporary.path(), name, &mut |_, _| panic!(
+                    "invalid ROM-set name"
+                ))
+                .unwrap()
+                .is_none()
+            );
+        }
+        assert!(
+            arcade_bezel_at(temporary.path(), "sf2", &mut |_, _| {
+                Ok(Some(b"overlay0_overlay = ../outside.png".to_vec()))
+            })
+            .is_err()
+        );
+        for platform in [
+            "Arcade",
+            "MAME",
+            "FinalBurn Neo",
+            "Arcade Laserdisc",
+            "SNK Neo Geo MVS",
+        ] {
+            assert!(arcade_bezels_supported(platform));
+        }
+        assert!(!arcade_bezels_supported("SNK Neo Geo Pocket"));
+        assert!(!arcade_bezels_supported("Nintendo Entertainment System"));
+    }
+
+    #[test]
+    #[ignore = "downloads only Bezel Project artwork, never games"]
+    fn arcade_bezel_live_horizontal_and_vertical_game_art() {
+        for romset in ["mslug", "pacman"] {
+            let path = arcade_bezel_overlay(romset).unwrap().unwrap();
+            let image = png_reference(&fs::read_to_string(&path).unwrap()).unwrap();
+            let image = image::open(path.parent().unwrap().join(image)).unwrap();
+            assert_eq!((image.width(), image.height()), (1920, 1080));
+            println!("ARCADE_BEZEL romset={romset} config={}", path.display());
+        }
+    }
 
     #[test]
     fn platform_themes_match_on_exact_normalized_aliases() {

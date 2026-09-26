@@ -1673,6 +1673,7 @@ struct DisplayValueLabels {
 fn display_value_labels(
     option: &crate::emulator::RomEmulatorOption,
     resolved: &crate::settings::ResolvedLaunchCustomization,
+    platform: &str,
 ) -> DisplayValueLabels {
     let retroarch = option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch;
     let base_value = |key: &str| {
@@ -1706,7 +1707,12 @@ fn display_value_labels(
             .map(|choice| choice.label.to_owned())
             .unwrap_or_else(|| resolved.display_shader.clone())
     };
-    let bezel = match resolved.display_bezel.as_str() {
+    let bezel_choice = if retroarch {
+        crate::display_setup::effective_bezel_choice(platform, &resolved.display_bezel)
+    } else {
+        &resolved.display_bezel
+    };
+    let bezel = match bezel_choice {
         "" if !retroarch => "Emulator default".to_owned(),
         "" => {
             if base_value("input_overlay_enable").as_deref() == Some("true")
@@ -1722,6 +1728,9 @@ fn display_value_labels(
             }
         }
         "system" => "Bezel Project · system art".to_owned(),
+        "themed" if crate::bezel_project::arcade_bezels_supported(platform) => {
+            "Game-specific arcade art when available · aspect preserved".to_owned()
+        }
         "themed" => "Bezel Project · game art".to_owned(),
         "orionsangel" => "Orionsangel · console".to_owned(),
         "orionsangel-plain" => "Orionsangel · plain console".to_owned(),
@@ -5519,7 +5528,7 @@ impl qobject::GameDetailsModel {
         let Ok(resolved) = resolved else {
             return std::array::from_fn(|_| "Inherit (value unavailable)".to_owned());
         };
-        let labels = display_value_labels(option, &resolved);
+        let labels = display_value_labels(option, &resolved, &self.platform().to_string());
         [
             format!("Inherit → {}", labels.fullscreen),
             format!("Inherit → {}", labels.shader),
@@ -5548,7 +5557,7 @@ impl qobject::GameDetailsModel {
             )
         })()
         .unwrap_or_default();
-        let labels = display_value_labels(option, &resolved);
+        let labels = display_value_labels(option, &resolved, &self.platform().to_string());
         format!(
             "Effective: CRT {} · Bezel {} · States {} · Fullscreen {}",
             labels.shader, labels.bezel, labels.states, labels.fullscreen
