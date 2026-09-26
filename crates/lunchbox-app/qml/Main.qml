@@ -2608,27 +2608,31 @@ ApplicationWindow {
         }
     }
 
-    AudioOutput {
-        id: hoverPreviewAudio
-        muted: root.hoverPreviewAudioMuted
-        volume: 0.34
+    PreviewAudioCompanion {
+        id: hoverPreviewSound
+        videoSource: hoverPreviewPlayer.source
+        videoPosition: hoverPreviewPlayer.position
+        previewPlaying: root.hoverPreviewPlaying
+        unmuted: !root.hoverPreviewAudioMuted
+        onPlaybackError: function(message) {
+            console.warn("LUNCHBOX_HOVER_PREVIEW_AUDIO_FAILED " + message)
+            root.hoverPreviewAudioMuted = true
+        }
     }
 
     RetryingMediaPlayer {
         id: hoverPreviewPlayer
-        property real unmuteResumePosition: -1
         property bool positionApplied: false
         source: root.hoverPreviewTile
                 ? root.hoverPreviewTile.previewResolvedVideoUrl : ""
         autoPlay: root.hoverPreviewTile
                   && root.hoverPreviewTile.previewRequested
-        activeAudioTrack: root.hoverPreviewAudioMuted ? -1 : 0
-        audioOutput: root.hoverPreviewAudioMuted ? null : hoverPreviewAudio
+        activeAudioTrack: -1
+        audioOutput: null
         videoOutput: root.hoverPreviewTile
                      ? root.hoverPreviewTile.previewVideoOutput : null
         loops: MediaPlayer.Infinite
         onSourceChanged: {
-            unmuteResumePosition = -1
             positionApplied = false
             root.hoverPreviewPlaying = false
             root.hoverPreviewPlaybackError = ""
@@ -2638,9 +2642,7 @@ ApplicationWindow {
         onMediaStatusChanged: {
             if (!positionApplied && (mediaStatus === MediaPlayer.LoadedMedia
                     || mediaStatus === MediaPlayer.BufferedMedia)) {
-                position = unmuteResumePosition >= 0
-                           ? Math.min(unmuteResumePosition, duration) : 0
-                unmuteResumePosition = -1
+                position = 0
                 positionApplied = true
             }
         }
@@ -10842,16 +10844,11 @@ ApplicationWindow {
                         text: root.hoverPreviewAudioMuted ? "M" : "♫"
                         flat: true
                         highlighted: !root.hoverPreviewAudioMuted
+                        // A pointer click must not turn on GridView's controller
+                        // focus, which suppresses hover previews on other cards.
+                        focusPolicy: Qt.TabFocus
                         font.pixelSize: 16 * card.expansion
-                        onClicked: {
-                            const unmuting = root.hoverPreviewAudioMuted
-                            root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
-                            if (unmuting && hoverPreviewPlayer.source.toString().length > 0) {
-                                hoverPreviewPlayer.unmuteResumePosition = hoverPreviewPlayer.position
-                                hoverPreviewPlayer.positionApplied = false
-                                hoverPreviewPlayer.reloadPipeline()
-                            }
-                        }
+                        onClicked: root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
                     }
                 }
 

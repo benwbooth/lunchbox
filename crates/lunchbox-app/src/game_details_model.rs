@@ -6172,6 +6172,7 @@ impl qobject::GameDetailsModel {
             .stack_size(64 * 1024 * 1024)
             .spawn(move || {
                 let launch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<(String, bool)>)> {
+                    let preparation_started = Instant::now();
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
@@ -6219,6 +6220,7 @@ impl qobject::GameDetailsModel {
                         }
                     };
                     let emulator_name = plan.emulator_name.clone();
+                    eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING plan_ms={}", preparation_started.elapsed().as_millis());
                     let cleanup_paths = plan.cleanup_paths.clone();
                     let _cleanup_guard = LaunchCleanupGuard(cleanup_paths);
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
@@ -6269,6 +6271,7 @@ impl qobject::GameDetailsModel {
                             }
                         }
                     }
+                    eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING controller_ms={}", preparation_started.elapsed().as_millis());
                     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
                     let mut steam_route = None;
                     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
@@ -6431,6 +6434,17 @@ impl qobject::GameDetailsModel {
                         && let Ok(settings) = &controller_settings
                         && settings.translation.enabled
                     {
+                        let warming_game_id = game_id.clone();
+                        let _ = started_thread.queue(move |mut model| {
+                            if generation == model.as_ref().rust().launch_generation
+                                && model.as_ref().game_id().to_string() == warming_game_id
+                                && *model.as_ref().launch_busy()
+                            {
+                                model.as_mut().set_launch_status(qstring(
+                                    "Warming GPU OCR and translation model…",
+                                ));
+                            }
+                        });
                         let snapshot = plan.clone();
                         match crate::translation::TranslationSession::attach(
                             &mut plan,
@@ -6454,6 +6468,7 @@ impl qobject::GameDetailsModel {
                             }
                         }
                     }
+                    eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING display_translation_ms={}", preparation_started.elapsed().as_millis());
                     let command_summary = plan.command_summary();
                     // Only one mapping layer may own this launch.
                     let controller_activation = if let Some(session) = &calibrated_session {
@@ -6537,6 +6552,7 @@ impl qobject::GameDetailsModel {
                             std::thread::sleep(Duration::from_millis(25));
                         }
                     }
+                    eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING ready_to_spawn_ms={}", preparation_started.elapsed().as_millis());
                     let starting_game_id = game_id.clone();
                     let starting_cancel = Arc::clone(&launch_cancel);
                     let _ = started_thread.queue(move |mut model| {

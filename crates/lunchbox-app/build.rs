@@ -162,6 +162,7 @@ fn main() {
                 "qml/NotificationHistory.qml",
                 "qml/PaneButton.qml",
                 "qml/PlatformSearchState.qml",
+                "qml/PreviewAudioCompanion.qml",
                 "qml/RomDownloadStatus.qml",
                 "qml/RomScanScheduleCard.qml",
                 "qml/RetryingMediaPlayer.qml",
