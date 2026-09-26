@@ -75,4 +75,15 @@ TestCase {
         verify(pane.height > 500 && pane.height < testCase.height)
         grabImage(testCase).save("/tmp/lunchbox-community-patches.png")
     }
+    function test_github_source_accepts_author_repository() {
+        const pane = createTemporaryObject(component, testCase)
+        pane.expanded = true
+        findChild(pane, "patchSource").currentIndex = 2
+        const query = findChild(pane, "patchQuery")
+        verify(query.placeholderText.indexOf("owner/repository") >= 0)
+        query.text = "Dimedime-d/kptranslation"
+        wait(50)
+        mouseClick(findChild(pane, "searchCommunityPatches"))
+        compare(backend.lastSearch.join("|"), "github|Dimedime-d/kptranslation|translations")
+    }
 }

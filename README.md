@@ -378,9 +378,23 @@ selected game; change the title for alternate/Japanese names or select Mods.
   Connect an account API key with `entries:read` and `entries:download` scopes
   inside the section; it is stored in the OS credential vault, not the database.
   Searches/downloads respect API rate limits. No website scraping is used.
-- **GitHub author releases** searches public translation/mod repositories and
-  offers supported files from the latest stable release. Verify the intended
-  game/system; repository search is not a curated compatibility database.
+- **GitHub inspected patch releases** checks releases before listing results,
+  rejecting source-only projects, tool/installer packages and known wrong-system
+  matches. It checks patch signatures inside ZIPs using bounded byte-range reads,
+  without downloading a large archive; 7z inspection downloads at most 4 MiB.
+  Only inspected files are offered. Releases are pinned to the version shown,
+  including an older stable release if newer releases have no usable patches.
+  Search an alternate title or paste `owner/repository` / its GitHub URL to check
+  an author's project directly. Metadata is cached for 15 minutes; inspection
+  results for 6 hours, keyed by the asset version. Inspection is bounded to
+  24 MiB per search / 2 MiB per ZIP; uninspectable packages are omitted, not shown
+  as installable. Patch presence does not prove ROM revision compatibility.
+
+The Plaza API catalog is separate from its RHDN preservation archive. The
+original Internet Archive `romhacking.net-20240801` item currently flags its
+payload ZIPs and torrent as private (checked September 26, 2026), so Lunchbox
+does not offer that dead torrent as a working download. An accessible published
+archive or an authorized local copy is needed before adding the full dataset.
 
 Select a result, review requirements, download its package, then choose a
 variant. **Apply & enable** checks the active patch stack and builds a separate

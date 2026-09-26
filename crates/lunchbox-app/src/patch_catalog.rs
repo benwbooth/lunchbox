@@ -15,6 +15,8 @@ use std::{
     time::{Duration, Instant},
 };
 use url::Url;
+#[path = "patch_catalog_github.rs"]
+mod github;
 
 const ARCHIVE: &str = "https://raw.githubusercontent.com/zach-morris/romhack_db/69ac23facd2983d1fd31190aa6a6ea08d72c759c";
 const PLAZA: &str = "https://romhackplaza.org/api/v1";
@@ -37,6 +39,7 @@ pub struct Entry {
     pub source_url: String,
     pub bases: Vec<BaseRom>,
     pub files: Vec<Download>,
+    pub verification: String,
     #[serde(skip)]
     pub archive_set: String,
     #[serde(skip)]
@@ -48,6 +51,8 @@ pub struct Entry {
 pub struct Download {
     pub name: String,
     pub size: u64,
+    #[serde(default)]
+    pub patches: Vec<String>,
     #[serde(skip)]
     pub url: String,
 }
@@ -135,6 +140,34 @@ fn fetch(
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<Vec<u8>> {
+    fetch_part(url, secret, maximum, cancel, progress, None)
+}
+
+#[derive(Debug)]
+struct SourceStatus(u16);
+impl std::fmt::Display for SourceStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            401 | 403 => write!(
+                f,
+                "Source access denied (HTTP {}). Check API permissions or wait for the request limit to reset.",
+                self.0
+            ),
+            429 => write!(f, "Source request limit reached. Wait before trying again."),
+            code => write!(f, "Patch source returned HTTP {code}"),
+        }
+    }
+}
+impl std::error::Error for SourceStatus {}
+
+fn fetch_part(
+    url: &str,
+    secret: Option<&str>,
+    maximum: u64,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+    range: Option<(u64, u64, u64)>,
+) -> Result<Vec<u8>> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .max_redirects(0)
         .http_status_as_error(false)
@@ -150,6 +183,11 @@ fn fetch(
             "User-Agent",
             concat!("Lunchbox/", env!("CARGO_PKG_VERSION")),
         );
+        if let Some((start, end, _)) = range {
+            request = request
+                .header("Range", &format!("bytes={start}-{end}"))
+                .header("Accept-Encoding", "identity");
+        }
         // Never forward the API key to GitHub, a file CDN or a redirected host.
         if current.host_str() == Some("romhackplaza.org")
             && let Some(secret) = secret
@@ -168,15 +206,27 @@ fn fetch(
             current = allowed_url(current.join(target)?.as_str())?;
             continue;
         }
-        match response.status().as_u16() {
-            401 | 403 => bail!(
-                "Source access was denied. Romhack Plaza needs a valid API key with entries:read and entries:download scopes; GitHub may also rate-limit anonymous requests."
-            ),
-            429 => {
-                bail!("The source's request limit was reached. Wait a minute before trying again.")
+        let partial = response.status().as_u16() == 206;
+        if response.status().as_u16() != 200 && !(partial && range.is_some()) {
+            return Err(SourceStatus(response.status().as_u16()).into());
+        }
+        if let Some((start, end, size)) = range {
+            if partial {
+                let expected = format!("bytes {start}-{end}/{size}");
+                ensure!(
+                    response
+                        .headers()
+                        .get("content-range")
+                        .and_then(|v| v.to_str().ok())
+                        == Some(expected.as_str()),
+                    "Source returned an inconsistent byte range"
+                );
+            } else {
+                ensure!(
+                    size <= maximum,
+                    "Source does not support bounded package inspection"
+                );
             }
-            200 => {}
-            code => bail!("Patch source returned HTTP {code}; no patch was installed"),
         }
         let total = response
             .headers()
@@ -202,6 +252,20 @@ fn fetch(
                 "Download exceeds the size limit"
             );
             progress(bytes.len() as u64, total);
+        }
+        if let Some((start, end, size)) = range {
+            if partial {
+                ensure!(
+                    bytes.len() as u64 == end - start + 1,
+                    "Incomplete package inspection response"
+                );
+            } else {
+                ensure!(
+                    bytes.len() as u64 == size,
+                    "Package size changed since the release was published"
+                );
+                return Ok(bytes[start as usize..=end as usize].to_vec());
+            }
         }
         return Ok(bytes);
     }
@@ -309,36 +373,7 @@ pub fn search(
                 })
                 .collect())
         }
-        "github" => {
-            let term = if kind == "translations" {
-                "translation"
-            } else {
-                "romhack"
-            };
-            let mut url = Url::parse("https://api.github.com/search/repositories")?;
-            url.query_pairs_mut()
-                .append_pair("q", &format!("\"{}\" {term}", clean_title(query)))
-                .append_pair("per_page", "20");
-            let value = json(url.as_str(), None, cancel)?;
-            Ok(array(&value["items"])
-                .iter()
-                .filter_map(|v| {
-                    let id = text(v, "full_name");
-                    if id.split('/').count() != 2 {
-                        return None;
-                    }
-                    Some(Entry {
-                        id,
-                        provider: provider.into(),
-                        title: text(v, "name"),
-                        description: text(v, "description"),
-                        source_url: text(v, "html_url"),
-                        kind: kind.into(),
-                        ..Default::default()
-                    })
-                })
-                .collect())
-        }
+        "github" => github::search(query, platform, kind, cancel).map(|r| r.entries),
         "archive" => {
             let set = archive_set(platform, kind).context("The 2019 community archive has no collection for this system/category. Try Romhack Plaza or GitHub.")?;
             let bytes = cached_archive(
@@ -351,6 +386,26 @@ pub fn search(
         }
         _ => bail!("Unknown community patch source"),
     }
+}
+
+pub struct SearchReport {
+    pub entries: Vec<Entry>,
+    pub note: String,
+}
+pub fn search_report(
+    provider: &str,
+    query: &str,
+    platform: &str,
+    kind: &str,
+    cancel: &AtomicBool,
+) -> Result<SearchReport> {
+    if provider == "github" {
+        return github::search(query, platform, kind, cancel);
+    }
+    Ok(SearchReport {
+        entries: search(provider, query, platform, kind, cancel)?,
+        note: String::new(),
+    })
 }
 fn archive_set(platform: &str, kind: &str) -> Option<&'static str> {
     match (platform, kind) {
@@ -542,40 +597,17 @@ pub fn details(mut entry: Entry, cancel: &AtomicBool) -> Result<Entry> {
                     name: text(f, "filename"),
                     size: f["filesize"].as_u64().unwrap_or(0),
                     url: text(f, "download"),
+                    ..Default::default()
                 })
                 .collect();
         }
         "github" => {
+            // Search already selected and inspected a specific release. Do not
+            // replace it with a different/latest release when the user clicks.
             ensure!(
-                entry.id.split('/').count() == 2
-                    && entry
-                        .id
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b"-_./".contains(&b))
-                    && !entry.id.contains(".."),
-                "Invalid GitHub repository"
+                !entry.verification.is_empty(),
+                "Search again to inspect this release"
             );
-            let releases = json(
-                &format!(
-                    "https://api.github.com/repos/{}/releases?per_page=5",
-                    entry.id
-                ),
-                None,
-                cancel,
-            )?;
-            let release = array(&releases).iter().find(|r| r["draft"].as_bool() != Some(true) && r["prerelease"].as_bool() != Some(true)).context("This project has no stable GitHub release assets. Try another result or import the author's patch file.")?;
-            entry.description = text(release, "body");
-            entry.version = text(release, "tag_name");
-            entry.source_url = text(release, "html_url");
-            entry.files = array(&release["assets"])
-                .iter()
-                .filter(|a| package_extension(&text(a, "name")))
-                .map(|a| Download {
-                    name: text(a, "name"),
-                    size: a["size"].as_u64().unwrap_or(0),
-                    url: text(a, "browser_download_url"),
-                })
-                .collect();
         }
         "archive" => {
             let ext = if entry.archive_set == "SNES_romhacks" {
@@ -587,6 +619,7 @@ pub fn details(mut entry: Entry, cancel: &AtomicBool) -> Result<Entry> {
                 name: format!("{}.{}", entry.archive_set, ext),
                 size: 0,
                 url: format!("{ARCHIVE}/{}.{}", entry.archive_set, ext),
+                ..Default::default()
             }];
         }
         _ => bail!("Unknown patch source"),
@@ -872,7 +905,7 @@ pub fn import_variant(package: &Package, index: usize) -> Result<game_mods::Patc
 mod tests {
     use super::*;
     const IPS: &[u8] = b"PATCH\0\0\x01\0\x01XEOF";
-    fn zip(members: &[(&str, &[u8])]) -> Vec<u8> {
+    pub(super) fn zip(members: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         for (name, bytes) in members {
             writer
@@ -1013,6 +1046,7 @@ mod tests {
             name: "a.ips".into(),
             url: "signed-secret".into(),
             size: 10,
+            ..Default::default()
         };
         assert!(
             !serde_json::to_string(&file)

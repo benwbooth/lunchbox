@@ -98,7 +98,7 @@ impl Drop for PatchCatalogModelRust {
     }
 }
 enum Outcome {
-    Search(Vec<Entry>),
+    Search(catalog::SearchReport),
     Details(Entry),
     Package(Package),
     Retry(Package, String),
@@ -174,11 +174,12 @@ impl qobject::PatchCatalogModel {
                 model.as_mut().set_applying(false);
                 if model.rust().generation != generation { return; }
                 match result {
-                    Ok(Outcome::Search(entries)) => {
+                    Ok(Outcome::Search(report)) => {
+                        let entries = report.entries;
                         let count = entries.len();
                         model.as_mut().set_results_json(serde_json::to_string(&entries).unwrap().into());
                         model.as_mut().rust_mut().results = entries;
-                        model.as_mut().set_message(if count == 0 { "No matching entries. Try an alternate/Japanese title or another source.".into() } else { format!("{count} results. Choose one to review its requirements and files.").into() });
+                        model.as_mut().set_message(if !report.note.is_empty() { report.note.into() } else if count == 0 { "No matching entries. Try an alternate/Japanese title or another source.".into() } else { format!("{count} results. Choose one to review its requirements and files.").into() });
                     }
                     Ok(Outcome::Details(entry)) => {
                         model.as_mut().set_details_json(serde_json::to_string(&entry).unwrap().into());
@@ -219,7 +220,7 @@ impl qobject::PatchCatalogModel {
         let platform = self.rust().platform.clone();
         let (source, query, kind) = (source.to_string(), query.to_string(), kind.to_string());
         self.work("Searching community patches…", move |cancel, _| {
-            catalog::search(&source, &query, &platform, &kind, &cancel).map(Outcome::Search)
+            catalog::search_report(&source, &query, &platform, &kind, &cancel).map(Outcome::Search)
         });
     }
     pub fn show_entry(mut self: Pin<&mut Self>, index: i32) {

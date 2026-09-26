@@ -48,7 +48,7 @@ Rectangle {
                 id: source
                 objectName: "patchSource"
                 width: parent.width
-                model: ["RHDN community archive (2019, partial)", "Romhack Plaza (API key)", "GitHub author releases"]
+                model: ["RHDN community archive (2019, partial)", "Romhack Plaza (API key)", "GitHub inspected patch releases"]
                 enabled: !pane.backend.busy
             }
             Text {
@@ -56,8 +56,8 @@ Rectangle {
                 text: source.currentIndex === 0
                       ? "An older, partial Romhacking.net collection preserved by zach-morris/romhack_db. It includes translations for NES, SNES and Game Boy, plus selected mods. Versions and language metadata may be incomplete; read the author notes."
                       : source.currentIndex === 1
-                      ? "Current community translations and mods. Connect your Romhack Plaza API key below (entries:read and entries:download). Requests follow the site's rate limits."
-                      : "Searches public translation/mod projects, then lists their latest stable release files. Results may target another system; verify the game and required revision."
+                      ? "Current community translations and mods, not the separate complete RHDN archive. Connect your Romhack Plaza API key below (entries:read and entries:download). Requests follow the site's rate limits."
+                      : "Only stable releases with inspected patch downloads are listed. Search a game title or paste owner/repository. Small byte-range checks avoid downloading full ZIPs; 7z inspection is limited to 4 MiB. ROM compatibility still depends on the required revision."
             }
             RowLayout {
                 width: parent.width
@@ -65,7 +65,7 @@ Rectangle {
                     id: query
                     objectName: "patchQuery"
                     Layout.fillWidth: true; Layout.minimumWidth: 0
-                    placeholderText: "Game title or alternate/Japanese title"
+                    placeholderText: source.currentIndex === 2 ? "Game title or GitHub owner/repository" : "Game title or alternate/Japanese title"
                     enabled: !pane.backend.busy
                     onAccepted: searchButton.clicked()
                 }
@@ -121,6 +121,11 @@ Rectangle {
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: "#6bd4c7"
                     text: pane.details ? [pane.details.platform, pane.details.language, pane.details.version].filter(Boolean).join(" · ") : ""
+                }
+                Text {
+                    width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: "#6bd4c7"
+                    visible: text.length > 0
+                    text: pane.details && pane.details.verification ? pane.details.verification : ""
                 }
                 MomentumScrollView {
                     id: descriptionScroll
