@@ -14,6 +14,8 @@ pub mod qobject {
         #[qinvokable]
         fn select_game(self: Pin<&mut GameModsModel>, game: QString);
         #[qinvokable]
+        fn reload_profile(self: Pin<&mut GameModsModel>);
+        #[qinvokable]
         fn import_patch(self: Pin<&mut GameModsModel>, path: QString);
         #[qinvokable]
         fn import_cheats(self: Pin<&mut GameModsModel>, path: QString);
@@ -59,6 +61,11 @@ impl Default for GameModsModelRust {
     }
 }
 impl qobject::GameModsModel {
+    pub fn reload_profile(mut self: Pin<&mut Self>) {
+        let game = self.rust().game.clone();
+        self.as_mut().rust_mut().game.clear();
+        self.select_game(game.into());
+    }
     pub fn select_game(mut self: Pin<&mut Self>, game: QString) {
         if self.rust().game == game.to_string() {
             return;

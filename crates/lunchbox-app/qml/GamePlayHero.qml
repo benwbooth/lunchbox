@@ -104,6 +104,7 @@ Rectangle {
     property bool settingsExpanded: false
     property bool displayExpanded: false
     property var modsBackend: null
+    property bool modsLocked: false
     property var achievementsBackend: null
     signal achievementsSetupRequested()
     property var pickPatchFile: function() { return "" }
@@ -277,7 +278,7 @@ Rectangle {
             visible: hero.settingsExpanded && hero.modsBackend !== null
             backend: hero.modsBackend
             gameId: hero.gameId
-            locked: hero.launchBusy || hero.gameRunning
+            locked: hero.launchBusy || hero.gameRunning || hero.modsLocked
             retroarch: hero.selectedEmulatorOption >= 0 && hero.emulatorOptionKindAt(hero.selectedEmulatorOption) === "retroarch"
             pickPatchFile: hero.pickPatchFile
             pickCheatFile: hero.pickCheatFile

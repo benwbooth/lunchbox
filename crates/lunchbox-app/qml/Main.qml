@@ -1665,7 +1665,7 @@ ApplicationWindow {
     }
 
     function requestGameLaunch() {
-        if (gameDetails.launch_busy || gameDetails.game_running)
+        if (gameDetails.launch_busy || gameDetails.game_running || patchCatalog.applying)
             return
         root.cloudActiveTarget = null
         if (root.isProbeRun()) {
@@ -2189,6 +2189,7 @@ ApplicationWindow {
     }
 
     GameModsModel { id: gameMods }
+    PatchCatalogModel { id: patchCatalog; onInstalled: gameMods.reload_profile() }
     RetroAchievementsModel { id: retroAchievements; Component.onCompleted: refresh() }
 
     LibraryModel {
@@ -12954,7 +12955,7 @@ ApplicationWindow {
                         gameId: gameDetails.game_id
                         local: gameDetails.local || root.selectedDownloadImported
                         loading: gameDetails.loading
-                        canLaunch: gameDetails.can_launch
+                        canLaunch: gameDetails.can_launch && !patchCatalog.applying
                         discoveryBusy: gameDetails.launch_discovery_busy
                         launchBusy: gameDetails.launch_busy
                         gameRunning: gameDetails.game_running
@@ -12971,6 +12972,7 @@ ApplicationWindow {
                         translationOptedIn: gameDetails.translation_opted_in
                         translationFeatureEnabled: appSettings.translation_enabled
                         modsBackend: gameMods
+                        modsLocked: patchCatalog.applying
                         achievementsBackend: retroAchievements
                         onAchievementsSetupRequested: root.openSettingsFor("achievements")
                         pickPatchFile: function() {
@@ -13076,6 +13078,21 @@ ApplicationWindow {
                         enabled: !gameDetails.session_stopping
                         highlighted: false
                         onClicked: gameDetails.stop_emulator()
+                    }
+
+                    CommunityPatchesPane {
+                        width: parent.width
+                        visible: !gameDetails.loading && gameDetails.game_id.length > 0
+                        backend: patchCatalog
+                        gameId: gameDetails.game_id
+                        gameTitle: gameDetails.title
+                        platform: gameDetails.platform
+                        romPath: {
+                            gameDetails.detail_revision
+                            gameDetails.local_file_count
+                            return gameDetails.local_file_path_at(gameDetails.selected_local_file)
+                        }
+                        locked: gameDetails.launch_busy || gameDetails.game_running
                     }
 
                     Item {

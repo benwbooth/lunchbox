@@ -26,6 +26,20 @@ pub struct Patch {
     pub sha256: String,
     pub format: String,
     pub enabled: bool,
+    #[serde(default)]
+    pub source_url: String,
+    #[serde(default)]
+    pub source_name: String,
+    #[serde(default)]
+    pub expected_inputs: Vec<BaseRom>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BaseRom {
+    pub name: String,
+    pub crc32: String,
+    pub sha1: String,
+    pub md5: String,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Cheat {
@@ -131,6 +145,9 @@ pub fn import_patch(path: &Path) -> Result<Patch> {
         sha256: hash,
         format,
         enabled: false,
+        source_url: String::new(),
+        source_name: String::new(),
+        expected_inputs: Vec::new(),
     })
 }
 
@@ -201,6 +218,7 @@ fn prepare_in(
         let path = root.join("patches").join(&patch.file);
         identity.push(fingerprint(&path)?);
         identity.push(patch.sha256.clone());
+        identity.push(serde_json::to_string(&patch.expected_inputs)?);
         paths.push(path);
     }
     if let Ok(saved) = fs::read(&receipt)
@@ -225,6 +243,7 @@ fn prepare_in(
             "Imported patch changed or was damaged. Re-import {}",
             active[index].name
         );
+        validate_base(&input, &active[index].expected_inputs, cancel)?;
         let next = work.path().join(format!("step-{index}.{extension}"));
         lunchbox_patching::apply(&input, path, &next, cancel)?;
         if input.starts_with(work.path()) {
@@ -246,6 +265,48 @@ fn prepare_in(
         serde_json::to_vec(&(identity, fingerprint(&output)?))?,
     )?;
     Ok(output)
+}
+
+/// Author-supplied hashes are alternatives of complete ROM identities, not
+/// interchangeable hash fields. Do not silently strip headers or pad a mismatch.
+pub fn validate_base(path: &Path, bases: &[BaseRom], cancel: &AtomicBool) -> Result<()> {
+    let bases: Vec<_> = bases
+        .iter()
+        .filter(|b| !b.crc32.is_empty() || !b.sha1.is_empty() || !b.md5.is_empty())
+        .collect();
+    if bases.is_empty() {
+        return Ok(());
+    }
+    let mut crc = crc32fast::Hasher::new();
+    let mut sha = sha1::Sha1::new();
+    let mut md5 = md5::Md5::new();
+    let mut file = fs::File::open(path)?;
+    let mut buffer = vec![0; 1024 * 1024];
+    loop {
+        ensure!(
+            !cancel.load(Ordering::Relaxed),
+            "Patch preparation cancelled"
+        );
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        crc.update(&buffer[..n]);
+        sha.update(&buffer[..n]);
+        md5.update(&buffer[..n]);
+    }
+    let crc = format!("{:08x}", crc.finalize());
+    let sha = hex::encode(sha.finalize());
+    let md5 = format!("{:x}", md5.finalize());
+    let matches =
+        |expected: &str, actual: &str| expected.is_empty() || expected.eq_ignore_ascii_case(actual);
+    ensure!(
+        bases
+            .iter()
+            .any(|b| matches(&b.crc32, &crc) && matches(&b.sha1, &sha) && matches(&b.md5, &md5)),
+        "The selected ROM does not match the patch's required input. Check its region, revision and header. Your original file was not changed (CRC32 {crc}, SHA1 {sha})."
+    );
+    Ok(())
 }
 
 const CHEAT_FIELDS: &[&str] = &[
@@ -490,6 +551,50 @@ pub fn core_identity_helper() -> i32 {
 mod tests {
     use super::*;
     #[test]
+    fn community_base_hashes_match_complete_alternatives_and_cancel() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        fs::write(file.path(), b"abc").unwrap();
+        let mut base = BaseRom {
+            crc32: "352441C2".into(),
+            sha1: "a9993e364706816aba3e25717850c26c9cd0d89d".into(),
+            md5: "900150983cd24fb0d6963f7d28e17f72".into(),
+            ..Default::default()
+        };
+        let cancel = AtomicBool::new(false);
+        validate_base(file.path(), &[base.clone()], &cancel).unwrap();
+        base.md5 = "bad".into();
+        assert!(validate_base(file.path(), &[base.clone()], &cancel).is_err());
+        validate_base(
+            file.path(),
+            &[
+                base,
+                BaseRom {
+                    crc32: "352441c2".into(),
+                    ..Default::default()
+                },
+            ],
+            &cancel,
+        )
+        .unwrap();
+        cancel.store(true, Ordering::Relaxed);
+        assert!(
+            validate_base(
+                file.path(),
+                &[BaseRom {
+                    crc32: "352441c2".into(),
+                    ..Default::default()
+                }],
+                &cancel
+            )
+            .is_err()
+        );
+        let old: Patch = serde_json::from_str(
+            r#"{"name":"p","file":"p.ips","sha256":"a","format":"IPS","enabled":false}"#,
+        )
+        .unwrap();
+        assert!(old.expected_inputs.is_empty());
+    }
+    #[test]
     fn cheat_import_is_opt_in_and_retains_memory_fields() {
         let cheats = import_cheats("cheats = 1\ncheat0_desc = \"Lives\"\ncheat0_code = \"\"\ncheat0_enable = true\ncheat0_handler = 1\ncheat0_address = 123\ncheat0_value = 9\n").unwrap();
         assert!(!cheats[0].enabled);
@@ -537,13 +642,16 @@ mod tests {
         fs::create_dir(dir.path().join("patches")).unwrap();
         let bytes = b"PATCH\0\0\x01\0\x01XEOF";
         fs::write(dir.path().join("patches/p.ips"), bytes).unwrap();
-        let profile = Profile {
+        let mut profile = Profile {
             patches: vec![Patch {
                 name: "p".into(),
                 file: "p.ips".into(),
                 sha256: digest(bytes),
                 format: "IPS".into(),
                 enabled: true,
+                source_url: String::new(),
+                source_name: String::new(),
+                expected_inputs: Vec::new(),
             }],
             ..Profile::default()
         };
@@ -557,6 +665,13 @@ mod tests {
             output
         );
         assert_eq!(fingerprint(&output).unwrap(), old);
+        // Adding metadata to an already cached patch must revalidate the ROM.
+        profile.patches[0].expected_inputs = vec![BaseRom {
+            crc32: "00000000".into(),
+            ..Default::default()
+        }];
+        assert!(prepare_in(&source, &profile, "one", &cancel, dir.path()).is_err());
+        profile.patches[0].expected_inputs.clear();
         fs::write(&source, b"1234").unwrap();
         prepare_in(&source, &profile, "one", &cancel, dir.path()).unwrap();
         assert_eq!(fs::read(&output).unwrap(), b"1X34");

@@ -238,6 +238,8 @@ mod game_details;
 pub mod game_details_model;
 mod game_mods;
 pub mod game_mods_model;
+mod patch_catalog;
+pub mod patch_catalog_model;
 mod retroachievements;
 pub mod retroachievements_model;
 pub mod gamepad_input;

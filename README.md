@@ -365,7 +365,36 @@ the launch continues without the ultrawide overlay and reports why.
 
 ### Translation/mod patches and cheats
 
-Open **Game details → Settings & mappings → Patches & cheats**. Import a patch,
+Open **Game details → Translations & mods** to find, download, and apply community
+patches without leaving Lunchbox. The search starts with translations for the
+selected game; change the title for alternate/Japanese names or select Mods.
+
+- **RHDN community archive (2019, partial)** works without an account, using the
+  published [romhack_db snapshot](https://github.com/zach-morris/romhack_db).
+  It is not a current or complete RHDN mirror. NES/SNES/Game Boy translations
+  and selected system mod collections are available. Language/version metadata
+  may be incomplete; review the author's notes and required ROM hashes.
+- **Romhack Plaza** uses its [official API](https://community.romhackplaza.org/threads/api-usage.4782/).
+  Connect an account API key with `entries:read` and `entries:download` scopes
+  inside the section; it is stored in the OS credential vault, not the database.
+  Searches/downloads respect API rate limits. No website scraping is used.
+- **GitHub author releases** searches public translation/mod repositories and
+  offers supported files from the latest stable release. Verify the intended
+  game/system; repository search is not a curated compatibility database.
+
+Select a result, review requirements, download its package, then choose a
+variant. **Apply & enable** checks the active patch stack and builds a separate
+playable copy immediately; **Import disabled** saves the patch for later.
+ZIP/7z packages are unpacked automatically; alternatives are never automatically
+stacked and executable patchers/ROMs are not imported. Original content is never
+overwritten. Source-provided CRC32/SHA1/MD5 requirements are checked against each
+patch's input. Wrong-region/revision/header errors leave the profile unchanged.
+Packages are limited to 128 MiB downloaded / 256 MiB expanded. Larger patch files
+can still be imported locally. The archive's per-system bundle is cached once,
+but only the selected entry's patch is imported.
+
+To manage the stack or import your own file, open
+**Game details → Settings & mappings → Patches & cheats**. Import a patch,
 enable it, and arrange enabled patches in the author's required order. Lunchbox
 applies them before launching, never writes to the original ROM/disc, and caches
 the result. Patches run in the launch worker and can be cancelled. Unchanged
@@ -376,7 +405,7 @@ are built in for inputs/outputs up to 512 MiB. PPF streams raw disc images;
 xdelta uses the cross-platform `xdelta3` executable (included in the Nix package
 and dev shell). For other packages install xdelta3 on PATH or set
 `LUNCHBOX_XDELTA3` to its executable. Disc output is limited to 128 GiB.
-Extract downloaded patch ZIP/7z archives first. Game archives are prepared by
+For manual file imports, extract patch ZIP/7z archives first. Game archives are prepared by
 the existing launch extractor; compressed disc containers and cue/playlists
 are not patch inputs. Use the author's exact raw ISO/BIN or ROM and readme.
 Lunchbox does not guess which track to modify or silently strip ROM headers.
