@@ -1132,6 +1132,7 @@ pub struct LibraryModelRust {
     alphabet_index: AlphabetIndex,
     filtered_platform_indices: Vec<usize>,
     load_generation: u64,
+    load_preserves_catalog: bool,
     filter_generation: u64,
     reload_pending: bool,
     load_started: Option<std::time::Instant>,
@@ -1363,6 +1364,7 @@ impl Default for LibraryModelRust {
             alphabet_index: AlphabetIndex::default(),
             filtered_platform_indices: Vec::new(),
             load_generation: 0,
+            load_preserves_catalog: false,
             filter_generation: 0,
             reload_pending: false,
             load_started: None,
@@ -2248,51 +2250,66 @@ impl qobject::LibraryModel {
             ));
             return;
         };
+        // The small startup preview is useful only before the first full
+        // catalog is visible. A download-triggered reload must keep the old
+        // filtered grid on screen until its replacement is complete.
+        let preserves_catalog = *self.as_ref().ready();
 
         self.as_mut().rust_mut().load_generation =
             self.as_ref().rust().load_generation.wrapping_add(1);
+        self.as_mut().rust_mut().load_preserves_catalog = preserves_catalog;
         self.as_mut().rust_mut().filter_generation =
             self.as_ref().rust().filter_generation.wrapping_add(1);
         self.as_mut().rust_mut().load_started = Some(std::time::Instant::now());
         let generation = self.as_ref().rust().load_generation;
         self.as_mut()
             .set_database_path(qstring(path.to_string_lossy()));
-        self.as_mut().set_ready(false);
+        if !preserves_catalog {
+            self.as_mut().set_ready(false);
+        }
         self.as_mut().set_filtering(false);
         self.as_mut().set_loading(true);
-        self.as_mut().set_session_state_ready(false);
+        if !preserves_catalog {
+            self.as_mut().set_session_state_ready(false);
+            self.as_mut()
+                .rust_mut()
+                .active_presentation_collection_id
+                .clear();
+            self.as_mut().apply_active_collection_summary(None);
+        }
         self.as_mut()
-            .rust_mut()
-            .active_presentation_collection_id
-            .clear();
-        self.as_mut().apply_active_collection_summary(None);
-        self.as_mut()
-            .set_status_message(qstring("Loading the catalog…"));
+            .set_status_message(qstring(if preserves_catalog {
+                "Refreshing the catalog…"
+            } else {
+                "Loading the catalog…"
+            }));
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-catalog-load".into())
             .spawn(move || {
-                let preview_session = SettingsStore::open_default()
-                    .and_then(|store| store.load_library_session_preferences())
-                    .map_err(|error| error.to_string());
-                let preview_focus = preview_session
-                    .as_ref()
-                    .map(|preferences| catalog::CatalogPreviewFocus {
-                        platform: preferences.platform.clone(),
-                        game_uid: preferences.selected_game_uid.clone(),
-                    })
-                    .unwrap_or_default();
-                match catalog::load_preview(&path, &preview_focus) {
-                    Ok(Some(preview)) => {
-                        let _ = qt_thread.queue(move |mut model| {
-                            model
-                                .as_mut()
-                                .finish_preview(generation, preview, preview_session);
-                        });
+                if !preserves_catalog {
+                    let preview_session = SettingsStore::open_default()
+                        .and_then(|store| store.load_library_session_preferences())
+                        .map_err(|error| error.to_string());
+                    let preview_focus = preview_session
+                        .as_ref()
+                        .map(|preferences| catalog::CatalogPreviewFocus {
+                            platform: preferences.platform.clone(),
+                            game_uid: preferences.selected_game_uid.clone(),
+                        })
+                        .unwrap_or_default();
+                    match catalog::load_preview(&path, &preview_focus) {
+                        Ok(Some(preview)) => {
+                            let _ = qt_thread.queue(move |mut model| {
+                                model
+                                    .as_mut()
+                                    .finish_preview(generation, preview, preview_session);
+                            });
+                        }
+                        Ok(None) => {}
+                        Err(error) => eprintln!("Could not build catalog preview: {error}"),
                     }
-                    Ok(None) => {}
-                    Err(error) => eprintln!("Could not build catalog preview: {error}"),
                 }
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
@@ -2380,12 +2397,12 @@ impl qobject::LibraryModel {
             });
         if spawn_result.is_ok() {
             // Cached artwork and videos do not depend on the catalog query.
-            // Index them alongside catalog hydration so the preview grid can
-            // paint real media as soon as it appears instead of waiting for
-            // every game and user preference to finish loading first.
+            // Index them alongside catalog hydration so the visible grid can
+            // paint media without waiting for every game and user preference.
             self.as_mut().start_media_load();
         }
         if let Err(error) = spawn_result {
+            self.as_mut().rust_mut().load_preserves_catalog = false;
             self.as_mut().set_loading(false);
             self.as_mut()
                 .set_status_message(qstring(format!("Could not start catalog loader: {error}")));
@@ -2511,6 +2528,8 @@ impl qobject::LibraryModel {
         if generation != self.as_ref().rust().load_generation {
             return;
         }
+        let preserved_catalog = self.as_ref().rust().load_preserves_catalog;
+        self.as_mut().rust_mut().load_preserves_catalog = false;
         self.as_mut().rust_mut().filter_generation =
             self.as_ref().rust().filter_generation.wrapping_add(1);
         self.as_mut().set_loading(false);
@@ -2964,9 +2983,13 @@ impl qobject::LibraryModel {
                 }
             }
             Err(error) => {
-                self.as_mut().set_ready(false);
-                self.as_mut()
-                    .set_status_message(qstring(format!("Could not load the catalog: {error}")));
+                if !preserved_catalog {
+                    self.as_mut().set_ready(false);
+                }
+                self.as_mut().set_status_message(qstring(format!(
+                    "Could not {} the catalog: {error}",
+                    if preserved_catalog { "refresh" } else { "load" }
+                )));
             }
         }
     }
