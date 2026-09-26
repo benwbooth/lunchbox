@@ -21,11 +21,11 @@ TestCase {
         Flickable {
             property bool loading: false
             property real headerHeight: 90
-            width: 440; height: 200; contentHeight: column.height
+            width: 440; height: 200; contentHeight: column.height; clip: true
             Column {
                 id: column
                 width: parent.width
-                Rectangle { width: parent.width; height: headerHeight }
+                Rectangle { width: parent.width; height: headerHeight; color: "#131923" }
                 Column {
                     visible: !loading
                     width: parent.width
@@ -148,10 +148,25 @@ TestCase {
     }
 
     function verifyPaintedCenter(button) {
-        const pixels = grabImage(button)
+        // QuickTest's image pixel coordinates differ from its reported size
+        // at fractional DPR. Check ink at 1x; the transform/position checks
+        // above still exercise every scroll/reload at fractional scaling.
+        if (testCase.Window.window.devicePixelRatio !== 1)
+            return
+        // Capture the containing scene: grabImage on a nested Flickable child
+        // can read the wrong rectangle after its parent moves.
+        const pixels = grabImage(testCase)
+        const origin = button.mapToItem(testCase, 0, 0)
+        const sx = pixels.width / testCase.width
+        const sy = pixels.height / testCase.height
+        const x0 = Math.round(origin.x * sx)
+        const y0 = Math.round(origin.y * sy)
+        const width = Math.round(button.width * sx)
+        const height = Math.round(button.height * sy)
         let left = pixels.width, right = -1, top = pixels.height, bottom = -1
-        for (let y = 0; y < pixels.height; ++y) {
-            for (let x = 0; x < pixels.width; ++x) {
+        const margin = Math.ceil(7 * Math.max(sx, sy))
+        for (let y = y0 + margin; y < y0 + height - margin; ++y) {
+            for (let x = x0 + margin; x < x0 + width - margin; ++x) {
                 const c = pixels.pixel(x, y)
                 if (c.r > 0.75 && c.g > 0.75 && c.b > 0.75) {
                     left = Math.min(left, x); right = Math.max(right, x)
@@ -160,10 +175,10 @@ TestCase {
             }
         }
         verify(right >= left, "The label must actually be drawn")
-        verify(Math.abs((left + right + 1 - pixels.width) / 2) <= 2,
-               "Painted horizontal center: " + [left, right, pixels.width])
-        verify(Math.abs((top + bottom + 1 - pixels.height) / 2) <= 2,
-               "Painted vertical center: " + [top, bottom, pixels.height])
+        verify(Math.abs((left + right + 1 - width) / 2 - x0) <= 2,
+               "Painted horizontal center: " + [left, right, x0, width])
+        verify(Math.abs((top + bottom + 1 - height) / 2 - y0) <= 2,
+               "Painted vertical center: " + [top, bottom, y0, height])
     }
 
     function test_release_change_after_scrolling() {
@@ -178,6 +193,7 @@ TestCase {
             pane.loading = false
             pane.contentY = 0
             waitForRendering(button)
+            wait(20) // Allow the column and the next scene-graph sync to settle.
             verifyCentered(button)
             verifyPaintedCenter(button)
         }
