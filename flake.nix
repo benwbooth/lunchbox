@@ -133,6 +133,16 @@
             mkdir -p "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
             QT_QPA_PLATFORM=offscreen qmltestrunner \
               -input crates/lunchbox-app/tests/qml
+            # Include Lunchbox's C++ text snapping, which ordinary QML tests
+            # do not install. Repeated release changes must not drift labels.
+            "$QT_LIBEXEC_PATH/moc" crates/lunchbox-app/tests/button_labels.cpp \
+              -o "$TMPDIR/button_labels.moc"
+            $CXX -std=c++17 -fPIC crates/lunchbox-app/tests/button_labels.cpp \
+              -Icrates/lunchbox-app/include -I"$TMPDIR" \
+              $(pkg-config --cflags --libs Qt6QuickTest Qt6Quick Qt6Qml Qt6Gui Qt6Core) \
+              -o "$TMPDIR/button-label-tests"
+            QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=1.3 "$TMPDIR/button-label-tests" \
+              -input crates/lunchbox-app/tests/qml/tst_button_labels.qml
             cargo test --package lunchbox-app --lib --release \
               ${pkgs.lib.optionalString (system == "x86_64-linux") "--features rocm-ocr"} \
               --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget}

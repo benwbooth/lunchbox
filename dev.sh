@@ -73,7 +73,7 @@ watchexec --restart --shell=none \
   --watch vendor \
   --watch Cargo.toml \
   --watch Cargo.lock \
-  --exts rs,qml,json,toml,lock \
+  --exts rs,qml,json,toml,lock,h,cpp,slang,slangp \
   -- bash -c 'ocr_feature_args=(); if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then ocr_feature_args=(--features rocm-ocr); fi; if cargo build -p lunchbox-app --bin lunchbox "${ocr_feature_args[@]}"; then echo LUNCHBOX_DEV_BUILT; fi' \
   | while IFS= read -r line; do
       printf '[dev] %s\n' "$line"

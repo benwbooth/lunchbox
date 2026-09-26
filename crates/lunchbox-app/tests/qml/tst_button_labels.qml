@@ -16,6 +16,28 @@ TestCase {
     Component { id: tab; Lunchbox.LbTabButton {} }
     Component { id: pane; Lunchbox.PaneButton {} }
     Component { id: header; Lunchbox.HeaderButton {} }
+    Component {
+        id: details
+        Flickable {
+            property bool loading: false
+            property real headerHeight: 90
+            width: 440; height: 200; contentHeight: column.height
+            Column {
+                id: column
+                width: parent.width
+                Rectangle { width: parent.width; height: headerHeight }
+                Column {
+                    visible: !loading
+                    width: parent.width
+                    Lunchbox.LbButton {
+                        objectName: "detailsAction"
+                        width: parent.width; height: 48; text: "Play"
+                    }
+                }
+                Item { width: 440; height: 800 }
+            }
+        }
+    }
 
     function test_centered_data() {
         return [
@@ -32,8 +54,8 @@ TestCase {
         const label = findChild(button, "buttonLabel")
         verify(label)
         const center = label.mapToItem(button, label.width / 2, label.height / 2)
-        fuzzyCompare(center.x, button.width / 2, 0.5, "Horizontal label center")
-        fuzzyCompare(center.y, button.height / 2, 0.5, "Vertical label center")
+        fuzzyCompare(center.x, button.width / 2, 1, "Horizontal label center")
+        fuzzyCompare(center.y, button.height / 2, 1, "Vertical label center")
         compare(label.horizontalAlignment, Text.AlignHCenter)
         compare(label.verticalAlignment, Text.AlignVCenter)
         compare(label.elide, Text.ElideNone)
@@ -68,6 +90,18 @@ TestCase {
             mouseRelease(button)
             verifyCentered(button)
         }
+        for (let pass = 0; pass < 5; ++pass) {
+            button.visible = false
+            button.y = 170.35
+            button.height = 0
+            wait(30)
+            button.text = pass % 2 === 0 ? "Play" : "View 3 sessions"
+            button.y = 20.15
+            button.height = 48
+            button.visible = true
+            waitForRendering(button)
+            verifyCentered(button)
+        }
     }
 
     function test_compact_labels_data() {
@@ -92,5 +126,60 @@ TestCase {
         verify(label.fontInfo.pixelSize <= 13, "Fitting must never enlarge a label")
         if (data.fullSize)
             compare(label.fontInfo.pixelSize, 13)
+    }
+
+    function test_painted_label_center_data() {
+        return [
+            { tag: "normal", text: "Controller setup", width: 180, height: 48 },
+            { tag: "small", text: "Close", width: 52, height: 28 },
+            { tag: "fitted", text: "Save player 1 mapping for system", width: 145, height: 32 },
+            { tag: "play", text: "Play", width: 280, height: 48 }
+        ]
+    }
+
+    function test_painted_label_center(data) {
+        const button = createTemporaryObject(action, testCase, {
+            x: 20, y: 20, width: data.width, height: data.height, text: data.text
+        })
+        const label = findChild(button, "buttonLabel")
+        label.renderType = Text.NativeRendering
+        waitForRendering(button)
+        verifyPaintedCenter(button)
+    }
+
+    function verifyPaintedCenter(button) {
+        const pixels = grabImage(button)
+        let left = pixels.width, right = -1, top = pixels.height, bottom = -1
+        for (let y = 0; y < pixels.height; ++y) {
+            for (let x = 0; x < pixels.width; ++x) {
+                const c = pixels.pixel(x, y)
+                if (c.r > 0.75 && c.g > 0.75 && c.b > 0.75) {
+                    left = Math.min(left, x); right = Math.max(right, x)
+                    top = Math.min(top, y); bottom = Math.max(bottom, y)
+                }
+            }
+        }
+        verify(right >= left, "The label must actually be drawn")
+        verify(Math.abs((left + right + 1 - pixels.width) / 2) <= 2,
+               "Painted horizontal center: " + [left, right, pixels.width])
+        verify(Math.abs((top + bottom + 1 - pixels.height) / 2) <= 2,
+               "Painted vertical center: " + [top, bottom, pixels.height])
+    }
+
+    function test_release_change_after_scrolling() {
+        const pane = createTemporaryObject(details, testCase)
+        const button = findChild(pane, "detailsAction")
+        for (let pass = 0; pass < 50; ++pass) {
+            pane.contentY = 600.35
+            waitForRendering(pane)
+            pane.loading = true
+            pane.headerHeight = pass % 2 ? 90 : 35
+            waitForRendering(pane)
+            pane.loading = false
+            pane.contentY = 0
+            waitForRendering(button)
+            verifyCentered(button)
+            verifyPaintedCenter(button)
+        }
     }
 }

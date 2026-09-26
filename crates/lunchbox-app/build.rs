@@ -58,6 +58,10 @@ fn main() {
         &PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"))
             .join("qml"),
     );
+    rerun_on_source_changes(
+        &PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"))
+            .join("include"),
+    );
     generate_arcade_lookup();
     generate_platform_record_index();
     generate_retroarch_core_index();

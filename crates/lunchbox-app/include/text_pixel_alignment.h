@@ -17,17 +17,34 @@ public:
     void applyTo(QMatrix4x4* matrix) const override { matrix->translate(offset.x(), offset.y()); }
     void align(QQuickItem* item, qreal dpr) {
         const QPointF baseline(0, item->baselineOffset());
+        const auto currentScene = item->mapToScene(baseline);
+        if (hasAlignment && currentScene == lastScene && baseline == lastBaseline && dpr == lastDpr)
+            return;
+
+        // Recompute from the unshifted item, never increment the last offset.
+        // Flickable/Column relayouts (e.g. switching releases) can otherwise
+        // accumulate rounding corrections even though QML x/y stay centered.
+        if (!offset.isNull()) {
+            offset = {};
+            update();
+        }
         const auto scene = item->mapToScene(baseline);
         const QPointF snapped(std::round(scene.x() * dpr) / dpr,
                               std::round(scene.y() * dpr) / dpr);
-        const auto next = offset + item->mapFromScene(snapped) - baseline;
-        if (std::abs(next.x() - offset.x()) > 0.00001 || std::abs(next.y() - offset.y()) > 0.00001) {
-            offset = next;
+        offset = item->mapFromScene(snapped) - baseline;
+        if (!offset.isNull())
             update();
-        }
+        lastScene = item->mapToScene(baseline);
+        lastBaseline = baseline;
+        lastDpr = dpr;
+        hasAlignment = true;
     }
 private:
     QPointF offset;
+    QPointF lastScene;
+    QPointF lastBaseline;
+    qreal lastDpr = 0;
+    bool hasAlignment = false;
 };
 
 inline void alignWindowText(QQuickItem* item, qreal dpr) {
