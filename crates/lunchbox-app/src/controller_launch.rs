@@ -947,6 +947,51 @@ impl CalibratedLaunch {
         Ok(())
     }
 
+    /// Retain only the known resume transformation. Original inspected files
+    /// remain verified; never refresh their hashes to accept unrelated changes.
+    pub(crate) fn retain_mame_resume(
+        &mut self,
+        before: &LaunchPlan,
+        after: &LaunchPlan,
+        files: &[std::path::PathBuf],
+    ) -> Result<()> {
+        self.check_launch_inputs()?;
+        let Some(input) = self.mame.as_mut() else {
+            return Ok(());
+        };
+        ensure!(
+            before
+                .retroarch_content
+                .as_ref()
+                .is_some_and(|content| content.content == input.command_path),
+            "MAME resume does not target the retained controller session"
+        );
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+        if let Some(prepared) = &input.relative_launch_plan {
+            ensure!(
+                prepared == before,
+                "MAME relative plan changed before resume attachment"
+            );
+        }
+        let new_command = after
+            .retroarch_content
+            .as_ref()
+            .context("Missing resumed MAME content")?
+            .content
+            .clone();
+        let hashes = files
+            .iter()
+            .map(|path| Ok((path.clone(), lunchbox_controller_probe::file_hash(path)?)))
+            .collect::<Result<Vec<_>>>()?;
+        input.files.extend(hashes);
+        input.command_path = new_command;
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+        if input.relative_launch_plan.is_some() {
+            input.relative_launch_plan = Some(after.clone());
+        }
+        Ok(())
+    }
+
     /// Transfer native MAME file ownership to the same object that keeps the
     /// calibrated physical transports alive. Call after the launch adapter has
     /// routed the final command and configuration, before spawning the child.

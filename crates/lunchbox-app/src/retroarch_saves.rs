@@ -15,6 +15,8 @@ use anyhow::{Context, Result};
 
 use crate::emulator::{EmulatorExecutable, LaunchPlan};
 
+pub(crate) mod mame_resume;
+
 /// Per-core save/state roots owned by Lunchbox. The sync layer treats these
 /// as the exact physical route for `retroarch-core-<name>` slugs.
 pub fn lunchbox_route_roots(core_name: &str) -> Vec<PathBuf> {
@@ -42,6 +44,10 @@ pub struct AutoSaveObservation {
 }
 
 impl AutoSaveObservation {
+    pub(crate) fn resume_state(&self) -> Option<&Path> {
+        (self.auto_state_load_enabled && self.state_before.is_some()).then_some(&self.state)
+    }
+
     pub fn for_content(
         core_name: &str,
         content: &Path,

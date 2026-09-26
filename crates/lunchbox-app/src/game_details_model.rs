@@ -6557,6 +6557,18 @@ impl qobject::GameDetailsModel {
                     let _achievement_session = if let (Some(policy), LaunchInput::Rom { option, .. }) = (&achievements, &launch_input) {
                         policy.attach(&mut plan, &option.executable)?
                     } else { None };
+                    // MAME must restore through its scheduler after startup
+                    // timers have drained, not RetroArch's immediate load.
+                    // Retain the transient native-state copy until exit; the
+                    // original .state.auto remains the save/sync destination.
+                    let _mame_resume = if let LaunchInput::Rom { option, .. } = &launch_input
+                        && option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                    {
+                        crate::retroarch_saves::mame_resume::MameResume::attach(
+                            &mut plan, &option.executable, &option.core_name,
+                            auto_save_observation.as_ref(), calibrated_session.as_mut(),
+                        ).context("Preparing safe MAME auto-resume")?
+                    } else { None };
                     eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING display_translation_ms={}", preparation_started.elapsed().as_millis());
                     let command_summary = plan.command_summary();
                     // Only one mapping layer may own this launch.
