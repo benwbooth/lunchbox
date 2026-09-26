@@ -104,6 +104,8 @@ Rectangle {
     property bool settingsExpanded: false
     property bool displayExpanded: false
     property var modsBackend: null
+    property var achievementsBackend: null
+    signal achievementsSetupRequested()
     property var pickPatchFile: function() { return "" }
     property var pickCheatFile: function() { return "" }
     property var pickCheatExport: function() { return "" }
@@ -258,6 +260,16 @@ Rectangle {
             highlighted: hero.translationOptedIn
             onClicked: hero.translationOptInSelected(!hero.translationOptedIn)
             Accessible.description: "Remembered for this game. Other games launch without translation."
+        }
+
+        RetroAchievementsPane {
+            width: parent.width
+            visible: hero.settingsExpanded && hero.achievementsBackend !== null
+            backend: hero.achievementsBackend
+            gameId: hero.gameId
+            locked: hero.launchBusy || hero.gameRunning
+            retroarch: hero.selectedEmulatorOption >= 0 && hero.emulatorOptionKindAt(hero.selectedEmulatorOption) === "retroarch"
+            onSetupRequested: hero.achievementsSetupRequested()
         }
 
         GameModsPane {

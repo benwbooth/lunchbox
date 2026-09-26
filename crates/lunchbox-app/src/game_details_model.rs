@@ -6207,6 +6207,12 @@ impl qobject::GameDetailsModel {
                 let launch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<(String, bool)>)> {
                     let preparation_started = Instant::now();
                     let mods = crate::game_mods::Profile::load(&crate::settings::SettingsStore::open_default()?, &game_id)?;
+                    let achievements = crate::retroachievements::LaunchPolicy::load(
+                        &crate::settings::SettingsStore::open_default()?, &game_id,
+                        match &launch_input { LaunchInput::Rom { option, .. } => Some(option), _ => None },
+                        &mods,
+                    )?;
+                    let achievement_hardcore = achievements.as_ref().is_some_and(|policy| policy.hardcore);
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
@@ -6431,7 +6437,7 @@ impl qobject::GameDetailsModel {
                                     crate::retroarch_saves::AutoSaveObservation::for_content(
                                         &option.core_name,
                                         &content.content,
-                                        auto_load,
+                                        auto_load && !achievement_hardcore,
                                         auto_save,
                                     );
                             }
@@ -6498,6 +6504,12 @@ impl qobject::GameDetailsModel {
                             }
                         }
                     }
+                    // Attach after display/translation so Hardcore cannot be
+                    // overridden by a saved auto-resume preference. Keep its
+                    // private token file alive until the emulator exits.
+                    let _achievement_session = if let (Some(policy), LaunchInput::Rom { option, .. }) = (&achievements, &launch_input) {
+                        policy.attach(&mut plan, &option.executable)?
+                    } else { None };
                     eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING display_translation_ms={}", preparation_started.elapsed().as_millis());
                     let command_summary = plan.command_summary();
                     // Only one mapping layer may own this launch.

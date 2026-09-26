@@ -76,6 +76,8 @@ fn main() {
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
                 "qml/GameModsPane.qml",
+                "qml/RetroAchievementsPane.qml",
+                "qml/RetroAchievementsSettings.qml",
                 "qml/LbCheckBox.qml",
                 "qml/MomentumWheelHandler.qml",
                 "qml/MomentumFlickable.qml",
@@ -207,6 +209,7 @@ fn main() {
     .file("src/firmware_audit_model.rs")
     .file("src/game_details_model.rs")
     .file("src/game_mods_model.rs")
+    .file("src/retroachievements_model.rs")
     .file("src/gamepad_input.rs")
     .file("src/igdb_model.rs")
     .file("src/launch_profile_manager_model.rs")

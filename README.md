@@ -407,6 +407,36 @@ Automatic loading currently requires RetroArch; standalone emulators have
 different cheat formats and must use their own cheat interface. Enabled cheats
 on an unsupported runtime produce an explicit error, not an ignored setting.
 
+### RetroAchievements
+
+Settings → RetroAchievements signs in using the official HTTPS `login2`
+protocol. Only the returned login token is saved in the operating system's
+credential store; the password is not persisted. Choose Casual or Hardcore as
+the default for RetroArch games. The initial “Keep RetroArch's own settings”
+selection leaves existing emulator account settings alone. Each game's
+Settings & mappings → RetroAchievements accordion can inherit the named
+default or override it with Off, Casual, Hardcore or emulator-managed settings.
+Settings save automatically and apply on the next launch.
+
+RetroArch handles exact content hashing, achievement evaluation, unlock popups,
+progress and leaderboards. View the list in Quick Menu → Achievements or open
+your profile from Lunchbox. Support depends on the
+[core and game version](https://docs.retroachievements.org/general/emulator-support-and-issues.html).
+Patched games are checked using their actual patched content, never the base
+ROM's identity; they need a recognized set for that version. Lunchbox does not
+currently display a synchronized achievement list or configure standalone
+emulators' accounts.
+
+Hardcore blocks enabled Lunchbox cheats and disables auto-state loading and
+rewind; SRAM and creating save states remain available. RetroArch enforces the
+remaining Hardcore restrictions and core-option eligibility. Explicit managed
+achievement sessions disable automatic RetroArch core/game config overrides
+so they cannot undo the selected mode. A private per-launch config is appended
+last, has user-only permissions on Unix, and is removed at normal emulator exit.
+No account login or game-matching network request is added to launch preparation.
+Expired tokens require signing in again. See the
+[RetroAchievements FAQ](https://docs.retroachievements.org/general/faq.html).
+
 Local game translation is opt-in under Settings → Game translation. The setup
 wizard guides the user through choosing a GPU backend, installing the selected
 TranslateGemma 4B, 12B, or 27B and Japanese-capable PP-OCRv6 small OCR models,

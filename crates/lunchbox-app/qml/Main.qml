@@ -823,6 +823,7 @@ ApplicationWindow {
              : requestedSettingsSection === "emulators" ? emulatorSettingsSection
              : requestedSettingsSection === "controllers" ? controllerSection
              : requestedSettingsSection === "translation" ? translationSettingsSection
+             : requestedSettingsSection === "achievements" ? achievementSettingsSection
              : null
     }
 
@@ -2188,6 +2189,7 @@ ApplicationWindow {
     }
 
     GameModsModel { id: gameMods }
+    RetroAchievementsModel { id: retroAchievements; Component.onCompleted: refresh() }
 
     LibraryModel {
         id: library
@@ -12969,6 +12971,8 @@ ApplicationWindow {
                         translationOptedIn: gameDetails.translation_opted_in
                         translationFeatureEnabled: appSettings.translation_enabled
                         modsBackend: gameMods
+                        achievementsBackend: retroAchievements
+                        onAchievementsSetupRequested: root.openSettingsFor("achievements")
                         pickPatchFile: function() {
                             return nativeFileDialog.pick_open_file("Import a translation or mod patch", "ROM/disc patches", "ips,ips32,bps,ups,ppf,xdelta,xdelta3,vcdiff")
                         }
@@ -20017,6 +20021,14 @@ ApplicationWindow {
                         }
                     }
                     SettingsNavButton {
+                        text: "RetroAchievements"
+                        active: root.requestedSettingsSection === "achievements"
+                        onClicked: {
+                            root.requestedSettingsSection = "achievements"
+                            root.positionSettingsItem(achievementSettingsSection)
+                        }
+                    }
+                    SettingsNavButton {
                         text: "Cloud saves & states"
                         active: root.requestedSettingsSection === "savecloud"
                         onClicked: {
@@ -22461,6 +22473,12 @@ ApplicationWindow {
                     }
                 }
 
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                RetroAchievementsSettings {
+                    id: achievementSettingsSection
+                    Layout.fillWidth: true
+                    backend: retroAchievements
+                }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 ColumnLayout {
                     id: translationSettingsSection

@@ -6416,7 +6416,7 @@ pub fn save_igdb_credentials(client_id: &str, client_secret: &str) -> Result<()>
     save_secret(IGDB_KEYRING_ACCOUNT, &encoded, "IGDB Twitch credentials")
 }
 
-fn load_secret(account: &str, label: &str) -> Result<Option<String>> {
+pub(crate) fn load_secret(account: &str, label: &str) -> Result<Option<String>> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, account)
         .context("opening the operating system credential store")?;
     match entry.get_password() {
@@ -6426,7 +6426,7 @@ fn load_secret(account: &str, label: &str) -> Result<Option<String>> {
     }
 }
 
-fn save_secret(account: &str, secret: &str, label: &str) -> Result<()> {
+pub(crate) fn save_secret(account: &str, secret: &str, label: &str) -> Result<()> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, account)
         .context("opening the operating system credential store")?;
     if secret.is_empty() {
@@ -6975,6 +6975,10 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS local_rom_hash_cache_root
              ON local_rom_hash_cache(root_id);
+         CREATE TABLE IF NOT EXISTS achievement_preferences (
+             scope TEXT PRIMARY KEY,
+             mode TEXT NOT NULL CHECK(mode IN ('emulator','off','casual','hardcore'))
+         );
          CREATE TABLE IF NOT EXISTS game_mod_profiles (
              game_uid TEXT PRIMARY KEY,
              profile_json TEXT NOT NULL
