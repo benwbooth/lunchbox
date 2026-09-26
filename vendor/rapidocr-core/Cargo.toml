@@ -51,6 +51,10 @@ name = "library_usage"
 path = "examples/library_usage.rs"
 
 [[example]]
+name = "recognize_crops"
+path = "examples/recognize_crops.rs"
+
+[[example]]
 name = "tokio_usage"
 path = "examples/tokio_usage.rs"
 required-features = ["tokio"]

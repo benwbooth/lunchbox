@@ -1283,19 +1283,27 @@ fn nearby_text(a: TextGroup, b: TextGroup, allow_multiline: bool) -> bool {
 }
 
 fn group_text_regions(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextGroup> {
-    if let Some((grid_top, line_height)) = dense_grid_start(&boxes, width, height) {
-        // A character picker or similarly dense menu grid is not dialogue.
-        // OCRing its full table produces speculative English and obscures the
-        // controls. Keep the separate labels above it, not the grid itself.
-        boxes.retain(|rect| {
-            rect.y1 < grid_top
-                && !(rect.width() > width / 2 && rect.y2.saturating_add(line_height) >= grid_top)
-        });
-    }
-    // Dialogue boxes often have more than four OCR lines. The dense character
-    // grid has already been removed above, so do not split longer dialogue
-    // into isolated lines and discard its lower half.
-    let allow_multiline = true;
+    // Repeated short columns are independent text cells, not a paragraph.
+    // This is layout-only: it applies to any language or kind of screen.
+    let short_columns = boxes
+        .iter()
+        .copied()
+        .filter(|rect| {
+            rect.width() <= width / 3
+                && rect.width() <= rect.height() * 8
+                && boxes
+                    .iter()
+                    .filter(|other| {
+                        other.width() <= width / 3
+                            && other.width() <= other.height() * 8
+                            && rect.x1.abs_diff(other.x1) <= rect.height() / 2
+                            && rect.height().abs_diff(other.height()) <= rect.height() / 2
+                            && rect.y1.abs_diff(other.y1) <= rect.height() * 6
+                    })
+                    .count()
+                    >= 3
+        })
+        .collect::<Vec<_>>();
     boxes.sort_by_key(|rect| (rect.y1, rect.x1));
     let mut groups: Vec<TextGroup> = Vec::new();
     for rect in boxes {
@@ -1309,7 +1317,11 @@ fn group_text_regions(mut boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<
         while let Some(index) = groups.iter().position(|other| {
             let merged = group.rect.union(other.rect);
             let line_height = group.line_height.max(other.line_height);
-            nearby_text(*other, group, allow_multiline)
+            let independent = short_columns
+                .iter()
+                .any(|label| *label == group.rect || *label == other.rect);
+            !independent
+                && nearby_text(*other, group, true)
                 && merged.height() <= line_height.saturating_mul(5)
                 && text_region_allowed(merged, width, height)
         }) {
@@ -1333,46 +1345,38 @@ fn group_text_boxes(boxes: Vec<TextRect>, width: u32, height: u32) -> Vec<TextRe
         .collect()
 }
 
-fn dense_grid_start(boxes: &[TextRect], width: u32, height: u32) -> Option<(u32, u32)> {
-    if boxes.len() < 12 {
-        return None;
-    }
-    let mut candidates = boxes
-        .iter()
-        .filter(|rect| rect.width() < width / 2 && rect.height() < height / 8)
-        .copied()
-        .collect::<Vec<_>>();
-    if candidates.len() < 12 {
-        return None;
-    }
-    let mut heights = candidates
-        .iter()
-        .map(|rect| rect.height())
-        .collect::<Vec<_>>();
-    heights.sort_unstable();
-    let line_height = heights[heights.len() / 2].max(8);
-    candidates.sort_by_key(|rect| rect.y1);
-    let mut rows: Vec<(u32, u32)> = Vec::new();
-    for rect in candidates {
-        if let Some((row_y, count)) = rows.last_mut()
-            && rect.y1.abs_diff(*row_y) <= line_height / 2
-        {
-            *count += 1;
-        } else {
-            rows.push((rect.y1, 1));
-        }
-    }
-    let dense_rows = rows
+fn group_recognized_lines(
+    mut lines: Vec<(TextRect, String)>,
+    width: u32,
+    height: u32,
+) -> Vec<(TextGroup, String)> {
+    // Remove counters before grouping, otherwise they turn adjacent Japanese
+    // choices into one broad HUD block and consume the region budget.
+    lines.retain(|(_, text)| !is_numeric_hud_label(text));
+    let groups = group_text_regions(lines.iter().map(|(rect, _)| *rect).collect(), width, height);
+    groups
         .into_iter()
-        .filter(|(_, count)| *count >= 3)
-        .map(|(y, _)| y)
-        .collect::<Vec<_>>();
-    dense_rows.windows(4).find_map(|window| {
-        window
-            .windows(2)
-            .all(|pair| pair[1] - pair[0] <= line_height * 3)
-            .then_some((window[0], line_height))
-    })
+        .filter_map(|group| {
+            let mut members = lines
+                .iter()
+                .filter(|(rect, _)| {
+                    let center_x = (rect.x1 + rect.x2) / 2;
+                    let center_y = (rect.y1 + rect.y2) / 2;
+                    center_x >= group.rect.x1
+                        && center_x <= group.rect.x2
+                        && center_y >= group.rect.y1
+                        && center_y <= group.rect.y2
+                })
+                .collect::<Vec<_>>();
+            members.sort_by_key(|(rect, _)| (rect.y1, rect.x1));
+            let source = members
+                .into_iter()
+                .map(|(_, text)| text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            (!source.is_empty()).then_some((group, source))
+        })
+        .collect()
 }
 
 fn detect_text_regions(ocr: &mut RapidOcr, image: &RgbImage) -> Result<Vec<(TextGroup, String)>> {
@@ -1415,30 +1419,7 @@ fn detect_text_regions(ocr: &mut RapidOcr, image: &RgbImage) -> Result<Vec<(Text
             text_region_allowed(rect, width, height).then_some((rect, line.text))
         })
         .collect::<Vec<_>>();
-    let groups = group_text_regions(lines.iter().map(|(rect, _)| *rect).collect(), width, height);
-    Ok(groups
-        .into_iter()
-        .filter_map(|group| {
-            let mut members = lines
-                .iter()
-                .filter(|(rect, _)| {
-                    let center_x = (rect.x1 + rect.x2) / 2;
-                    let center_y = (rect.y1 + rect.y2) / 2;
-                    center_x >= group.rect.x1
-                        && center_x <= group.rect.x2
-                        && center_y >= group.rect.y1
-                        && center_y <= group.rect.y2
-                })
-                .collect::<Vec<_>>();
-            members.sort_by_key(|(rect, _)| (rect.y1, rect.x1));
-            let source = members
-                .into_iter()
-                .map(|(_, text)| text.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
-            (!source.is_empty()).then_some((group, source))
-        })
-        .collect())
+    Ok(group_recognized_lines(lines, width, height))
 }
 
 fn sample_text_background(image: &RgbImage, rect: TextRect) -> [u8; 3] {
@@ -1511,6 +1492,15 @@ fn is_numeric_hud_label(source: &str) -> bool {
         && source
             .bytes()
             .all(|byte| byte.is_ascii() && !byte.is_ascii_lowercase())
+}
+
+fn unchanged_translation(source: &str, english: &str) -> bool {
+    let source = source.trim();
+    let english = english.trim();
+    source.eq_ignore_ascii_case(english)
+        || english.split_once('(').is_some_and(|(label, explanation)| {
+            source.eq_ignore_ascii_case(label.trim()) && explanation.ends_with(')')
+        })
 }
 
 fn render_translation(
@@ -1607,6 +1597,10 @@ fn render_translation(
             continue;
         }
         memory.insert(&source, &english);
+        // Already-English text and abbreviations need no replacement panel.
+        if unchanged_translation(&source, &english) {
+            continue;
+        }
         regions.push(TranslatedRegion {
             rect,
             source_line_height: detected.line_height,
@@ -2097,29 +2091,55 @@ fn wrap_caption_pixels(
     (!lines.is_empty() && lines.len() <= max_lines).then_some(lines)
 }
 
+fn translation_prompt(settings: &TranslationSettings, source: &str) -> String {
+    // TranslateGemma is a translation model, not a JSON/instruction model.
+    // Follow its documented prompt, including the two blank lines before text:
+    // https://ollama.com/library/translategemma
+    let source_code = if settings.source_language != "auto" {
+        settings.source_language.as_str()
+    } else if source
+        .chars()
+        .any(|ch| matches!(ch, '\u{3040}'..='\u{30ff}' | '\u{ff66}'..='\u{ff9d}'))
+    {
+        "ja"
+    } else if source
+        .chars()
+        .any(|ch| matches!(ch, '\u{ac00}'..='\u{d7af}' | '\u{1100}'..='\u{11ff}'))
+    {
+        "ko"
+    } else if source
+        .chars()
+        .any(|ch| matches!(ch, '\u{3400}'..='\u{9fff}'))
+    {
+        "zh"
+    } else {
+        "auto"
+    };
+    let source_name = match source_code {
+        "ja" => "Japanese",
+        "zh" => "Chinese",
+        "ko" => "Korean",
+        "fr" => "French",
+        "de" => "German",
+        "es" => "Spanish",
+        "en" => "English",
+        _ => "source language",
+    };
+    format!(
+        "You are a professional {source_name} ({source_code}) to English (en) translator. Your goal is to accurately convey the meaning and nuances of the original {source_name} text while adhering to English grammar, vocabulary, and cultural sensitivities.\nProduce only the English translation, without any additional explanations or commentary. Please translate the following {source_name} text into English:\n\n\n{source}"
+    )
+}
+
 fn translate_text_at(
     settings: &TranslationSettings,
     source_text: &str,
     base_url: &str,
 ) -> Result<String> {
-    let (source_name, source_code) = if settings.source_language == "auto" {
-        ("source language".to_owned(), "auto".to_owned())
-    } else {
-        let name = match settings.source_language.as_str() {
-            "ja" => "Japanese",
-            "zh" => "Chinese",
-            "ko" => "Korean",
-            "fr" => "French",
-            "de" => "German",
-            "es" => "Spanish",
-            _ => "source language",
-        };
-        (name.to_owned(), settings.source_language.clone())
-    };
-    let prompt = format!(
-        "You are a professional {source_name} ({source_code}) to English (en) translator. Translate the following game dialogue or menu text accurately into natural English. Preserve names and the order of lines. Return only the exact English text that should replace the source. Do not add labels such as Text or Translation, explanations, extra punctuation, or commentary.\n\n{source_text}"
-    );
-    let raw = ollama_chat(&settings.model, &prompt, base_url)?;
+    let raw = ollama_chat(
+        &settings.model,
+        &translation_prompt(settings, source_text),
+        base_url,
+    )?;
     Ok(english_only_translation(&raw))
 }
 
@@ -2134,20 +2154,24 @@ fn translate_texts_at(
             .map(|source| translate_text_at(settings, source, base_url))
             .collect();
     }
-    let source_language = if settings.source_language == "auto" {
-        "Detect each item's language"
-    } else {
-        settings.source_language.as_str()
-    };
-    let prompt = format!(
-        "Translate each game dialogue or menu item in this JSON array from {source_language} to natural English. Preserve names, array order, and array length. Return ONLY a valid JSON array of English strings, with no markdown or explanation: {}",
-        serde_json::to_string(sources)?
-    );
-    let raw = ollama_chat(&settings.model, &prompt, base_url)?;
-    if let Some(translated) = parse_translation_array(&raw, sources.len()) {
+    // One physical line per region preserves correspondence without asking the
+    // model to manufacture JSON. Dialogue line breaks inside a region are joined.
+    let text = sources
+        .iter()
+        .map(|source| source.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let raw = ollama_chat(
+        &settings.model,
+        &translation_prompt(settings, &text),
+        base_url,
+    )?;
+    if let Some(translated) = parse_translation_lines(&raw, sources.len()) {
         return Ok(translated);
     }
-    eprintln!("LUNCHBOX_TRANSLATION_BATCH_FALLBACK: model did not return the requested array");
+    // Do not assign a merged or missing line to the wrong rectangle. Independent
+    // requests are a fallback only; successful results are cached by source text.
+    eprintln!("LUNCHBOX_TRANSLATION_BATCH_FALLBACK: model changed the number of text lines");
     Ok(sources
         .iter()
         .map(
@@ -2162,32 +2186,13 @@ fn translate_texts_at(
         .collect())
 }
 
-fn parse_translation_array(raw: &str, count: usize) -> Option<Vec<String>> {
-    let body = raw.trim();
-    let body = body
-        .strip_prefix("```json")
-        .or_else(|| body.strip_prefix("```"))
-        .unwrap_or(body)
-        .trim();
-    let body = body.strip_suffix("```").unwrap_or(body).trim();
-    let parsed = serde_json::from_str::<Vec<String>>(body).ok().or_else(|| {
-        // Some local models wrap a correct array in a sentence despite
-        // the prompt. Recover it before paying for serial fallback calls.
-        let start = body.find('[')?;
-        let end = body.rfind(']')?;
-        serde_json::from_str::<Vec<String>>(&body[start..=end]).ok()
-    })?;
-    if parsed.len() != count {
-        return None;
-    }
-    let translated = parsed
-        .iter()
-        .map(|text| english_only_translation(text))
+fn parse_translation_lines(raw: &str, count: usize) -> Option<Vec<String>> {
+    let lines = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
-    translated
-        .iter()
-        .all(|text| !text.is_empty())
-        .then_some(translated)
+    (lines.len() == count).then(|| lines.into_iter().map(english_only_translation).collect())
 }
 
 fn english_only_translation(raw: &str) -> String {
@@ -2582,6 +2587,7 @@ mod tests {
     fn numeric_english_hud_labels_are_not_translated() {
         assert!(is_numeric_hud_label("MP:6"));
         assert!(is_numeric_hud_label("HP 100/100"));
+        assert!(!is_numeric_hud_label("たたかう"));
         assert!(!is_numeric_hud_label("魔法使い6"));
         assert!(!is_numeric_hud_label("Kukuku, you made a mess"));
     }
@@ -2761,64 +2767,64 @@ mod tests {
     }
 
     #[test]
-    fn dense_character_picker_leaves_only_header_labels() {
-        let mut boxes = vec![
-            TextRect {
-                x1: 16,
-                y1: 20,
-                x2: 88,
-                y2: 50,
-            },
-            TextRect {
-                x1: 300,
-                y1: 37,
-                x2: 386,
-                y2: 66,
-            },
-            TextRect {
-                x1: 300,
-                y1: 80,
-                x2: 466,
-                y2: 105,
-            },
-            TextRect {
-                x1: 41,
-                y1: 160,
-                x2: 491,
-                y2: 185,
-            },
-        ];
-        for row in 0..6 {
-            for column in 0..4 {
-                let x = 40 + column * 115;
-                let y = 200 + row * 40;
-                boxes.push(TextRect {
-                    x1: x,
-                    y1: y,
-                    x2: x + 90,
-                    y2: y + 26,
-                });
+    fn battle_hud_is_not_a_character_picker_and_keeps_each_menu_choice() {
+        let commands = ["たたかう", "にげる", "まほう", "もちもの"];
+        let mut lines = Vec::new();
+        for (row, command) in commands.iter().enumerate() {
+            let y = 170 + row as u32 * 16;
+            for (x, text) in [(16, "ああああ"), (80, "80/80"), (150, "5"), (200, command)] {
+                lines.push((
+                    TextRect {
+                        x1: x,
+                        y1: y,
+                        x2: x + 32,
+                        y2: y + 9,
+                    },
+                    text.to_string(),
+                ));
             }
         }
-        assert_eq!(
-            group_text_boxes(boxes, 512, 478),
-            vec![
-                TextRect {
-                    x1: 16,
-                    y1: 20,
-                    x2: 88,
-                    y2: 50
-                },
-                TextRect {
-                    x1: 300,
-                    y1: 37,
-                    x2: 466,
-                    y2: 105
-                },
-            ]
+        let groups = group_recognized_lines(lines, 256, 240);
+        for command in commands {
+            let matching = groups
+                .iter()
+                .filter(|(_, text)| text == command)
+                .collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1, "missing or merged {command}: {groups:?}");
+            assert_eq!(matching[0].0.rect.x1, 200);
+            assert_eq!(matching[0].0.line_height, 9);
+        }
+        assert!(!groups.iter().any(|(_, text)| text.contains("80/80")));
+    }
+
+    #[test]
+    fn dense_columns_do_not_become_one_large_translation_panel() {
+        let boxes = (0..6)
+            .flat_map(|row| {
+                (0..4).map(move |column| TextRect {
+                    x1: 40 + column * 115,
+                    x2: 130 + column * 115,
+                    y1: 200 + row * 40,
+                    y2: 226 + row * 40,
+                })
+            })
+            .collect::<Vec<_>>();
+        let groups = group_text_regions(boxes, 512, 478);
+        assert!(!groups.is_empty());
+        assert!(
+            groups
+                .iter()
+                .all(|group| group.rect.height() == 26 && group.rect.width() == 90)
         );
     }
 
+    #[test]
+    fn already_translated_labels_do_not_need_an_overlay() {
+        assert!(unchanged_translation("HP", "HP (Hit Points)"));
+        assert!(unchanged_translation("Attack", "Attack"));
+        assert!(!unchanged_translation("たたかう", "Attack"));
+        assert!(!unchanged_translation("IR", "Go"));
+    }
     #[test]
     fn overlay_maps_core_text_into_centered_ultrawide_game_opening() {
         let viewport = OverlayViewport {
@@ -2969,16 +2975,36 @@ mod tests {
     }
 
     #[test]
-    fn batched_translation_accepts_fenced_json_without_losing_box_order() {
+    fn batched_translation_preserves_text_line_order_and_rejects_missing_lines() {
         assert_eq!(
-            parse_translation_array("```json\n[\"Normal\", \"Wide\"]\n```", 2),
+            parse_translation_lines("Normal\nWide", 2),
             Some(vec!["Normal".to_owned(), "Wide".to_owned()])
         );
         assert_eq!(
-            parse_translation_array("Translations: [\"Normal\", \"Wide\"]", 2),
+            parse_translation_lines("\nNormal\n\nWide\n", 2),
             Some(vec!["Normal".to_owned(), "Wide".to_owned()])
         );
-        assert_eq!(parse_translation_array("[\"Normal\"]", 2), None);
+        assert_eq!(parse_translation_lines("Normal", 2), None);
+        assert_eq!(parse_translation_lines("Extra\nNormal\nWide", 2), None);
+    }
+
+    #[test]
+    fn translation_uses_model_prompt_without_json_or_command_dictionary() {
+        let settings = TranslationSettings::default();
+        let prompt = translation_prompt(&settings, "たたかう\nにげる\nまほう\nもちもの");
+        assert!(
+            prompt.starts_with("You are a professional Japanese (ja) to English (en) translator.")
+        );
+        assert!(prompt.ends_with("English:\n\n\nたたかう\nにげる\nまほう\nもちもの"));
+        assert!(!prompt.contains("JSON"));
+        let explicit = TranslationSettings {
+            source_language: "fr".to_owned(),
+            ..settings
+        };
+        assert!(
+            translation_prompt(&explicit, "Bonjour")
+                .starts_with("You are a professional French (fr)")
+        );
     }
 
     #[test]
@@ -3283,7 +3309,6 @@ mod tests {
         let (width, height) = png_dimensions(&source).unwrap();
         let image = BASE64.encode(source);
         download_ocr_models(&AtomicBool::new(false)).unwrap();
-        let mut ocr = load_ocr().unwrap();
         let viewport =
             std::env::var_os("LUNCHBOX_TRANSLATION_ULTRAWIDE_PROBE").map(|_| OverlayViewport {
                 output: (6656, 2808),
@@ -3295,20 +3320,32 @@ mod tests {
                 },
                 content_zoom_percent: 120,
             });
-        let (regions, overlay) = render_translation(
-            &TranslationSettings::default(),
-            &image,
-            width,
-            height,
-            &mut ocr,
-            viewport,
-            None,
-            &mut TranslationMemory::default(),
-        )
+        let (regions, overlay) = with_warm_ocr(|ocr| {
+            render_translation(
+                &TranslationSettings::default(),
+                &image,
+                width,
+                height,
+                ocr,
+                viewport,
+                None,
+                &mut TranslationMemory::default(),
+            )
+        })
         .unwrap();
         assert!(!regions.is_empty());
         let png = BASE64.decode(overlay).unwrap();
         std::fs::write(overlay_path, png).unwrap();
+        if let Ok(expected) = std::env::var("LUNCHBOX_TRANSLATION_EXPECTED_TEXTS") {
+            for text in serde_json::from_str::<Vec<String>>(&expected).unwrap() {
+                assert!(
+                    regions
+                        .iter()
+                        .any(|region| region.english.eq_ignore_ascii_case(&text)),
+                    "missing translation {text}: {regions:?}"
+                );
+            }
+        }
         for region in regions {
             eprintln!(
                 "LUNCHBOX_TRANSLATION_REGION: {:?} {:?} => {:?}",

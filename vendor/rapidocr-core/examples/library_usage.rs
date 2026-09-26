@@ -57,6 +57,9 @@ fn main() -> anyhow::Result<()> {
     eprintln!("RAPIDOCR_RUN_MS={}", running.elapsed().as_millis());
 
     for line in output.lines {
+        if env::var_os("RAPIDOCR_DEBUG_BOXES").is_some() {
+            eprintln!("{:.5} {:?} {}", line.score, line.bbox.points, line.text);
+        }
         println!("{:.5}\t{}", line.score, line.text);
     }
 

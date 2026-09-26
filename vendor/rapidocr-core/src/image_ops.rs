@@ -278,6 +278,18 @@ pub(crate) fn crop_axis_aligned(img: &RgbImage, bbox: &Quad) -> Result<RgbImage>
 
 pub(crate) fn crop_perspective(img: &RgbImage, bbox: &Quad) -> Result<RgbImage> {
     let mut bbox = bbox.clone().ordered();
+    // Rectifying an already horizontal, tiny line with bicubic interpolation
+    // can erase or invent one-pixel strokes before the recognizer sees them.
+    // Preserve native pixels; only genuinely rotated text needs a warp here.
+    if bbox.crop_height() <= 24
+        && (bbox.points[0][1] - bbox.points[1][1]).abs() <= 1.0
+        && (bbox.points[2][1] - bbox.points[3][1]).abs() <= 1.0
+        && (bbox.points[0][0] - bbox.points[3][0]).abs() <= 1.0
+        && (bbox.points[1][0] - bbox.points[2][0]).abs() <= 1.0
+        && bbox.crop_width() > bbox.crop_height()
+    {
+        return Ok(trim_uniform_border(&crop_axis_aligned(img, &bbox)?));
+    }
     const REPLICATE_PAD: u32 = 2;
     // OpenCV perspective warps near image edges sample replicated border pixels.
     // Add a small replicated border to match that behavior for tiny edge text.
@@ -291,6 +303,42 @@ pub(crate) fn crop_perspective(img: &RgbImage, bbox: &Quad) -> Result<RgbImage> 
     }
 
     crop_perspective_ordered(img, &bbox)
+}
+
+fn trim_uniform_border(img: &RgbImage) -> RgbImage {
+    let (width, height) = img.dimensions();
+    let background = *img.get_pixel(0, 0);
+    if [
+        img.get_pixel(width - 1, 0),
+        img.get_pixel(0, height - 1),
+        img.get_pixel(width - 1, height - 1),
+    ]
+    .iter()
+    .any(|pixel| **pixel != background)
+    {
+        return img.clone();
+    }
+    // Detector polygons include generous background margins. For tiny glyphs,
+    // those margins make the recognition model see less than half its intended
+    // text height. Remove only exactly uniform padding; never recolor, binarize,
+    // or erase any non-background pixel, and leave a one-pixel safety border.
+    let mut bounds = (width, height, 0, 0);
+    for (x, y, pixel) in img.enumerate_pixels() {
+        if *pixel != background {
+            bounds.0 = bounds.0.min(x);
+            bounds.1 = bounds.1.min(y);
+            bounds.2 = bounds.2.max(x + 1);
+            bounds.3 = bounds.3.max(y + 1);
+        }
+    }
+    if bounds.0 >= bounds.2 || bounds.1 >= bounds.3 {
+        return img.clone();
+    }
+    let left = bounds.0.saturating_sub(1);
+    let top = bounds.1.saturating_sub(1);
+    let right = (bounds.2 + 1).min(width);
+    let bottom = (bounds.3 + 1).min(height);
+    imageops::crop_imm(img, left, top, right - left, bottom - top).to_image()
 }
 
 fn crop_perspective_ordered(img: &RgbImage, bbox: &Quad) -> Result<RgbImage> {
@@ -370,6 +418,37 @@ mod tests {
     use image::{Rgba, RgbaImage};
 
     use super::*;
+
+    #[test]
+    fn tiny_horizontal_text_retains_original_pixels_and_one_pixel_padding() {
+        let mut img = RgbImage::from_pixel(40, 20, Rgb([0, 0, 0]));
+        for y in 7..14 {
+            for x in 8..30 {
+                if (x + y) % 3 != 0 {
+                    img.put_pixel(x, y, Rgb([255, 255, 255]));
+                }
+            }
+        }
+        let bbox = Quad {
+            points: [[4.3, 4.1], [34.2, 4.3], [34.1, 17.2], [4.1, 17.0]],
+        };
+        let crop = crop_perspective(&img, &bbox).unwrap();
+        let expected = imageops::crop_imm(&img, 7, 6, 24, 9).to_image();
+        assert_eq!(crop, expected);
+        assert!(crop
+            .pixels()
+            .all(|pixel| *pixel == Rgb([0, 0, 0]) || *pixel == Rgb([255, 255, 255])));
+    }
+
+    #[test]
+    fn uniform_padding_trim_keeps_blank_and_nonuniform_backgrounds_intact() {
+        let blank = RgbImage::from_pixel(20, 12, Rgb([25, 30, 45]));
+        assert_eq!(trim_uniform_border(&blank), blank);
+        let mut uneven = blank.clone();
+        uneven.put_pixel(19, 11, Rgb([30, 40, 50]));
+        uneven.put_pixel(10, 5, Rgb([255, 255, 255]));
+        assert_eq!(trim_uniform_border(&uneven), uneven);
+    }
 
     #[test]
     fn alpha_images_are_composited_onto_contrast_background() {
