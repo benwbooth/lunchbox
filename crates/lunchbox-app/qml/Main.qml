@@ -10834,6 +10834,7 @@ ApplicationWindow {
                                       : "Play " + tile.gameTitle
                     }
                     LbRoundButton {
+                        id: cardPreviewMuteButton
                         z: previewPresentation.overlayLayer
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
@@ -10841,13 +10842,27 @@ ApplicationWindow {
                         width: 32 * card.expansion
                         height: 32 * card.expansion
                         visible: tile.previewActive
-                        text: root.hoverPreviewAudioMuted ? "M" : "♫"
                         flat: true
                         highlighted: !root.hoverPreviewAudioMuted
+                        Accessible.name: root.hoverPreviewAudioMuted
+                                         ? "Unmute preview for " + tile.gameTitle
+                                         : "Mute preview for " + tile.gameTitle
+                        ToolTip.visible: hovered
+                        ToolTip.text: Accessible.name
                         // A pointer click must not turn on GridView's controller
                         // focus, which suppresses hover previews on other cards.
                         focusPolicy: Qt.TabFocus
-                        font.pixelSize: 16 * card.expansion
+                        contentItem: Item {
+                            implicitWidth: 20 * card.expansion
+                            implicitHeight: 20 * card.expansion
+                            SemanticIcon {
+                                anchors.centerIn: parent
+                                width: 20 * card.expansion
+                                height: 20 * card.expansion
+                                name: root.hoverPreviewAudioMuted ? "mute" : "volume"
+                                color: cardPreviewMuteButton.highlighted ? "#ffcb84" : "#f4f7fb"
+                            }
+                        }
                         onClicked: root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
                     }
                 }
@@ -12919,6 +12934,8 @@ ApplicationWindow {
                         preferenceScope: gameDetails.emulator_preference_scope
                         emulatorOptionCount: gameDetails.emulator_option_count
                         selectedEmulatorOption: gameDetails.selected_emulator_option
+                        translationOptedIn: gameDetails.translation_opted_in
+                        translationFeatureEnabled: appSettings.translation_enabled
                         firmwareMissingCount: gameDetails.firmware_missing_count
                         firmwareSetupLabel: gameDetails.firmware_setup_label
                         emulatorLabelAt: function(index) {
@@ -12972,6 +12989,9 @@ ApplicationWindow {
                         }
                         displaySettingSaved: function(field, value) {
                             gameDetails.set_display_setting(field, value === undefined ? "" : value)
+                        }
+                        translationOptInSelected: function(enabled) {
+                            gameDetails.save_translation_opt_in(enabled)
                         }
                         onPlayRequested: root.requestGameLaunch()
                         onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name, gameDetails.game_id)
@@ -22441,9 +22461,16 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                             Switch {
-                                text: "Enable for RetroArch games"
+                                text: "Make translation available for RetroArch games"
                                 checked: appSettings.translation_enabled
                                 onToggled: appSettings.translation_enabled = checked
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Turn on ‘Translate this game’ in a game’s details to opt in. Your choice is remembered for that game; other games launch without the translation bridge."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
                             }
                             RowLayout {
                                 Layout.fillWidth: true

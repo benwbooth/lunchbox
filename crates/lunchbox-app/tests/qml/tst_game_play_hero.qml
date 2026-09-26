@@ -7,6 +7,7 @@ TestCase {
     name: "GamePlayHero"
     when: windowShown
     visible: true
+    property bool requestedTranslationEnabled: false
 
     Component {
         id: heroComponent
@@ -28,6 +29,8 @@ TestCase {
             preferenceScope: ""
             emulatorOptionCount: 2
             selectedEmulatorOption: 0
+            translationOptedIn: false
+            translationFeatureEnabled: true
             firmwareMissingCount: 0
             firmwareSetupLabel: "Set up emulator"
             emulatorLabelAt: function(index) {
@@ -69,6 +72,9 @@ TestCase {
             }
             displayScopeSelected: function(scope) {}
             displaySettingSaved: function(field, value) {}
+            translationOptInSelected: function(enabled) {
+                testCase.requestedTranslationEnabled = enabled
+            }
             ink: "#f4f7fb"
             muted: "#94a0b3"
             line: "#2b384b"
@@ -88,6 +94,21 @@ TestCase {
         verify(action)
         verify(action.positive)
         compare(action.background.color, "#237a4d")
+    }
+
+    function test_translation_requires_per_game_opt_in() {
+        requestedTranslationEnabled = false
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const optIn = findChild(hero, "translationOptInButton")
+        verify(optIn)
+        compare(optIn.text, "Translate this game: Off")
+        optIn.clicked()
+        compare(requestedTranslationEnabled, true)
+        hero.translationOptedIn = true
+        compare(optIn.text, "Translate this game: On")
+        hero.selectedEmulatorOption = 1
+        compare(optIn.visible, false)
     }
 
     function test_emulator_picker_splits_standalone_and_core_sections() {

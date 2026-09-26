@@ -23,6 +23,8 @@ Rectangle {
     required property string preferenceScope
     required property int emulatorOptionCount
     required property int selectedEmulatorOption
+    required property bool translationOptedIn
+    required property bool translationFeatureEnabled
     required property int firmwareMissingCount
     required property string firmwareSetupLabel
     required property var emulatorLabelAt
@@ -72,6 +74,7 @@ Rectangle {
     required property var displayBezelChoiceLabelAt
     required property var displayScopeSelected
     required property var displaySettingSaved
+    required property var translationOptInSelected
 
     signal playRequested()
     signal controllerMappingRequested()
@@ -180,6 +183,22 @@ Rectangle {
             wrapMode: Text.WordWrap
             maximumLineCount: 6
             elide: Text.ElideRight
+        }
+
+        LbButton {
+            objectName: "translationOptInButton"
+            width: parent.width
+            visible: hero.selectedEmulatorOption >= 0
+                     && hero.emulatorOptionKindAt(hero.selectedEmulatorOption) === "retroarch"
+            text: !hero.translationFeatureEnabled
+                  ? "Enable game translation in Settings"
+                  : hero.translationOptedIn
+                  ? "Translate this game: On"
+                  : "Translate this game: Off"
+            enabled: hero.translationFeatureEnabled && !hero.launchBusy && !hero.gameRunning
+            highlighted: hero.translationOptedIn
+            onClicked: hero.translationOptInSelected(!hero.translationOptedIn)
+            Accessible.description: "Remembered for this game. Other games launch without translation."
         }
 
         Column {

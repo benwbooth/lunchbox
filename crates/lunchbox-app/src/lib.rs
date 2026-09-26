@@ -796,6 +796,10 @@ pub fn run() -> i32 {
         }
     };
 
+    if !headless_ui_probe {
+        translation::prewarm_saved_settings_background();
+    }
+
     let controls_style = startup_controls_style();
     let environment_style = std::env::var("QT_QUICK_CONTROLS_STYLE").ok();
     let command_line_style = arguments

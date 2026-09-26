@@ -192,6 +192,7 @@ pub mod qobject {
         #[qproperty(i32, installation_revision)]
         #[qproperty(i32, emulator_option_count)]
         #[qproperty(i32, selected_emulator_option)]
+        #[qproperty(bool, translation_opted_in)]
         #[qproperty(i32, detail_revision)]
         #[qproperty(QString, display_scope)]
         #[qproperty(QString, display_fullscreen)]
@@ -464,6 +465,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_display_setting(self: Pin<&mut GameDetailsModel>, field: QString, value: QString);
+
+        #[qinvokable]
+        fn save_translation_opt_in(self: Pin<&mut GameDetailsModel>, enabled: bool);
 
         #[qinvokable]
         fn display_shader_preset_count(self: &GameDetailsModel) -> i32;
@@ -841,6 +845,7 @@ pub struct GameDetailsModelRust {
     installation_revision: i32,
     emulator_option_count: i32,
     selected_emulator_option: i32,
+    translation_opted_in: bool,
     detail_revision: i32,
     canonical_title: String,
     canonical_metadata: GameMetadata,
@@ -1098,6 +1103,7 @@ impl Default for GameDetailsModelRust {
             installation_revision: 0,
             emulator_option_count: 0,
             selected_emulator_option: -1,
+            translation_opted_in: false,
             detail_revision: 0,
             canonical_title: String::new(),
             canonical_metadata: GameMetadata::default(),
@@ -1841,6 +1847,13 @@ impl qobject::GameDetailsModel {
         }
         self.as_mut().set_torrent_loading(false);
         self.as_mut().set_game_id(game_id);
+        let translation_opted_in = SettingsStore::open_default()
+            .and_then(|store| store.game_translation_opted_in(&game_id_string))
+            .unwrap_or_else(|error| {
+                eprintln!("LUNCHBOX_TRANSLATION_PREFERENCE_READ_FAILED: {error:#}");
+                false
+            });
+        self.as_mut().set_translation_opted_in(translation_opted_in);
         // Present the game's final emulator layout immediately on re-select;
         // the async discovery below only runs when nothing is cached yet.
         self.as_mut()
@@ -5247,6 +5260,26 @@ impl qobject::GameDetailsModel {
         self.as_mut().refresh_display_controls();
     }
 
+    pub fn save_translation_opt_in(mut self: Pin<&mut Self>, enabled: bool) {
+        let game_id = self.as_ref().game_id().to_string();
+        match SettingsStore::open_default()
+            .and_then(|store| store.set_game_translation_opted_in(&game_id, enabled))
+        {
+            Ok(()) => {
+                self.as_mut().set_translation_opted_in(enabled);
+                if enabled {
+                    crate::translation::prewarm_saved_settings_background();
+                }
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_TRANSLATION_PREFERENCE_WRITE_FAILED: {error:#}");
+                self.as_mut().set_launch_status(qstring(format!(
+                    "Could not save game translation preference: {error:#}"
+                )));
+            }
+        }
+    }
+
     /// Persist one display field at the active
     /// scope by load-modify-saving that scope's launch profile. An "inherit"
     /// (empty) value with an otherwise empty profile removes the row.
@@ -6433,18 +6466,10 @@ impl qobject::GameDetailsModel {
                         && option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
                         && let Ok(settings) = &controller_settings
                         && settings.translation.enabled
+                        && SettingsStore::open_default()
+                            .and_then(|store| store.game_translation_opted_in(&game_id))
+                            .unwrap_or(false)
                     {
-                        let warming_game_id = game_id.clone();
-                        let _ = started_thread.queue(move |mut model| {
-                            if generation == model.as_ref().rust().launch_generation
-                                && model.as_ref().game_id().to_string() == warming_game_id
-                                && *model.as_ref().launch_busy()
-                            {
-                                model.as_mut().set_launch_status(qstring(
-                                    "Warming GPU OCR and translation model…",
-                                ));
-                            }
-                        });
                         let snapshot = plan.clone();
                         match crate::translation::TranslationSession::attach(
                             &mut plan,

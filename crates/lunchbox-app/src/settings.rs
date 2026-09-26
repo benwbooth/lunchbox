@@ -4256,6 +4256,48 @@ impl SettingsStore {
             .map_err(Into::into)
     }
 
+    pub fn game_translation_opted_in(&self, game_uid: &str) -> Result<bool> {
+        if game_uid.trim().is_empty() {
+            return Ok(false);
+        }
+        Ok(self
+            .connection()?
+            .query_row(
+                "SELECT 1 FROM game_translation_opt_ins WHERE game_uid=?1",
+                [game_uid],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false))
+    }
+
+    pub fn set_game_translation_opted_in(&self, game_uid: &str, enabled: bool) -> Result<()> {
+        ensure!(!game_uid.trim().is_empty(), "game identity is required");
+        let connection = self.connection()?;
+        if enabled {
+            connection.execute(
+                "INSERT INTO game_translation_opt_ins (game_uid, updated_at)
+                 VALUES (?1, ?2)
+                 ON CONFLICT(game_uid) DO UPDATE SET updated_at=excluded.updated_at",
+                params![game_uid, unix_timestamp()],
+            )?;
+        } else {
+            connection.execute(
+                "DELETE FROM game_translation_opt_ins WHERE game_uid=?1",
+                [game_uid],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn has_game_translation_opt_ins(&self) -> Result<bool> {
+        Ok(self.connection()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM game_translation_opt_ins LIMIT 1)",
+            [],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn platform_emulator_preference(
         &self,
         platform: &str,
@@ -7267,6 +7309,10 @@ fn migrate(connection: &Connection) -> Result<()> {
              core_name TEXT NOT NULL DEFAULT '',
              updated_at INTEGER NOT NULL
          );
+         CREATE TABLE IF NOT EXISTS game_translation_opt_ins (
+             game_uid TEXT PRIMARY KEY,
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+         );
          CREATE TABLE IF NOT EXISTS game_rom_preferences (
              game_uid TEXT PRIMARY KEY,
              path_display TEXT NOT NULL CHECK (
@@ -9243,6 +9289,22 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
         (directory, store)
+    }
+
+    #[test]
+    fn translation_opt_in_is_remembered_per_game() {
+        let (_directory, store) = store();
+        assert!(!store.has_game_translation_opt_ins().unwrap());
+        assert!(!store.game_translation_opted_in("game-a").unwrap());
+        store.set_game_translation_opted_in("game-a", true).unwrap();
+        assert!(store.has_game_translation_opt_ins().unwrap());
+        assert!(store.game_translation_opted_in("game-a").unwrap());
+        assert!(!store.game_translation_opted_in("game-b").unwrap());
+        store
+            .set_game_translation_opted_in("game-a", false)
+            .unwrap();
+        assert!(!store.game_translation_opted_in("game-a").unwrap());
+        assert!(!store.has_game_translation_opt_ins().unwrap());
     }
 
     #[test]

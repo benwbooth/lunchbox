@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, mpsc};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -49,6 +49,7 @@ const MAX_TRANSLATION_MEMORY: usize = 256;
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
 const REGION_BACKGROUND_ALPHA: u8 = 224;
+static WARM_OCR: OnceLock<Mutex<Option<RapidOcr>>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -217,6 +218,51 @@ fn load_ocr() -> Result<RapidOcr> {
     Ok(ocr)
 }
 
+fn with_warm_ocr<T>(action: impl FnOnce(&mut RapidOcr) -> Result<T>) -> Result<T> {
+    let mut cached = WARM_OCR
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .map_err(|_| anyhow::anyhow!("GPU OCR cache is unavailable"))?;
+    if cached.is_none() {
+        let mut ocr = load_ocr()?;
+        ocr.warm_up_gpu(&OcrCancellationToken::new())
+            .context("warming up local GPU OCR")?;
+        *cached = Some(ocr);
+    }
+    action(cached.as_mut().expect("GPU OCR was initialized"))
+}
+
+/// Warm GPU inference while the library loads, before a game is selected.
+/// The work is optional and never delays the visible Lunchbox window.
+pub fn prewarm_saved_settings_background() {
+    let _ = thread::Builder::new()
+        .name("lunchbox-translation-prewarm".into())
+        .spawn(|| {
+            let started = Instant::now();
+            let result = (|| -> Result<bool> {
+                let store = crate::settings::SettingsStore::open_default()?;
+                let settings = store.load()?.translation;
+                if !settings.enabled
+                    || !store.has_game_translation_opt_ins()?
+                    || !model_available(&settings.model)?
+                {
+                    return Ok(false);
+                }
+                with_warm_ocr(|_| Ok(()))?;
+                verify_model_gpu(&settings.model)?;
+                Ok(true)
+            })();
+            match result {
+                Ok(true) => eprintln!(
+                    "LUNCHBOX_TRANSLATION_PREWARM_MS={}",
+                    started.elapsed().as_millis()
+                ),
+                Ok(false) => {}
+                Err(error) => eprintln!("LUNCHBOX_TRANSLATION_PREWARM_FAILED: {error:#}"),
+            }
+        });
+}
+
 fn loaded_model_gpu_fraction(body: &Value, model: &str) -> Result<Option<u64>> {
     let entry = body["models"]
         .as_array()
@@ -248,6 +294,12 @@ fn active_model_gpu_percent(model: &str) -> Result<Option<u64>> {
 }
 
 fn verify_model_gpu(model: &str) -> Result<()> {
+    if let Some(percent) = active_model_gpu_percent(model)?
+        && percent >= 95
+    {
+        eprintln!("LUNCHBOX_TRANSLATION_MODEL_GPU_PERCENT={percent}");
+        return Ok(());
+    }
     // An empty prompt loads the model without generating text. Check its actual
     // VRAM allocation: seeing a device node alone does not prove GPU inference.
     let mut load = http_agent(Duration::from_secs(120))
@@ -377,17 +429,10 @@ impl TranslationSession {
             return Ok(None);
         }
         settings.validate()?;
-        ensure!(
-            model_available(&settings.model)?,
-            "{}, and the local OCR models are required; download them in Settings",
-            settings.model
-        );
-        let mut ocr = load_ocr()?;
-        // Pay the one-time GPU graph initialization before emulation starts,
-        // not on the first dialogue frame while the game is playing.
-        ocr.warm_up_gpu(&OcrCancellationToken::new())
-            .context("warming up local GPU OCR before launch")?;
-        verify_model_gpu(&settings.model)?;
+        // Model loading and GPU graph compilation are expensive, but neither
+        // is needed to launch the emulator. The bridge starts immediately and
+        // returns transparent frames until its worker is ready.
+        preflight_gpu_ocr()?;
         let viewport = overlay_viewport(plan, executable, output_dimensions)?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
             .context("opening local translation bridge")?;
@@ -402,7 +447,7 @@ impl TranslationSession {
         let settings = settings.clone();
         thread::Builder::new()
             .name("lunchbox-translation-bridge".into())
-            .spawn(move || serve(listener, &secret, settings, ocr, viewport, &worker_stop))
+            .spawn(move || serve(listener, &secret, settings, viewport, &worker_stop))
             .context("starting local translation bridge")?;
         Ok(Some(Self { stop }))
     }
@@ -452,14 +497,7 @@ impl TranslationSession {
                 Err(error) => return Err(error).context("restoring local translation bridge"),
             };
             settings.validate()?;
-            ensure!(
-                model_available(&settings.model)?,
-                "translation model is unavailable"
-            );
-            let mut ocr = load_ocr()?;
-            ocr.warm_up_gpu(&OcrCancellationToken::new())
-                .context("warming recovered GPU OCR")?;
-            verify_model_gpu(&settings.model)?;
+            preflight_gpu_ocr()?;
             let viewport = overlay_viewport_from_arguments(arguments, output)?;
             listener.set_nonblocking(true)?;
             let stop = Arc::new(AtomicBool::new(false));
@@ -467,7 +505,7 @@ impl TranslationSession {
             let settings = settings.clone();
             thread::Builder::new()
                 .name("lunchbox-translation-bridge".into())
-                .spawn(move || serve(listener, &secret, settings, ocr, viewport, &worker_stop))
+                .spawn(move || serve(listener, &secret, settings, viewport, &worker_stop))
                 .context("restoring local translation bridge")?;
             eprintln!("LUNCHBOX_TRANSLATION_RECOVERED port={port}");
             return Ok(Some(Self { stop }));
@@ -655,7 +693,6 @@ fn serve(
     listener: TcpListener,
     secret: &str,
     settings: TranslationSettings,
-    ocr: RapidOcr,
     viewport: Option<OverlayViewport>,
     stop: &AtomicBool,
 ) {
@@ -667,10 +704,20 @@ fn serve(
         .spawn(move || {
             let mut cached: Option<CachedTranslation> = None;
             let mut memory = TranslationMemory::default();
-            let mut ocr = ocr;
-            // Empty-prompt loading primes the weights but not first-token
-            // generation. Warm inference alongside RetroArch startup rather
-            // than blocking the game launch or the first F10 capture.
+            let initialization = (|| -> Result<()> {
+                ensure!(
+                    model_available(&worker_settings.model)?,
+                    "local translation or OCR models are unavailable; complete setup in Settings"
+                );
+                with_warm_ocr(|_| Ok(()))?;
+                verify_model_gpu(&worker_settings.model)?;
+                Ok(())
+            })();
+            if let Err(error) = initialization {
+                eprintln!("LUNCHBOX_TRANSLATION_WORKER_FAILED: {error:#}");
+                return;
+            }
+            // Prime first-token inference after the emulator has launched.
             if let Err(error) = ollama_chat(
                 &worker_settings.model,
                 "Translate Japanese to English. Return only English: ありがとう",
@@ -679,16 +726,18 @@ fn serve(
                 eprintln!("LUNCHBOX_TRANSLATION_WARMUP_FAILED: {error:#}");
             }
             for job in pending_jobs {
-                let result = render_translation(
-                    &worker_settings,
-                    &job.image,
-                    job.dimensions.0,
-                    job.dimensions.1,
-                    &mut ocr,
-                    viewport,
-                    cached.as_ref(),
-                    &mut memory,
-                )
+                let result = with_warm_ocr(|ocr| {
+                    render_translation(
+                        &worker_settings,
+                        &job.image,
+                        job.dimensions.0,
+                        job.dimensions.1,
+                        ocr,
+                        viewport,
+                        cached.as_ref(),
+                        &mut memory,
+                    )
+                })
                 .and_then(|(regions, overlay)| {
                     let screenshot =
                         image::load_from_memory(&BASE64.decode(&job.image)?)?.into_rgb8();
