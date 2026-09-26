@@ -182,6 +182,12 @@ TestCase {
         verify(combo.popup.parent !== combo)
         verify(combo.popup.z > explorer.z)
         compare(combo.popup.contentItem.count, 4)
+        const fieldBottom = combo.mapToItem(null, 0, combo.height)
+        const popupTop = combo.popup.contentItem.parent.mapToItem(null, 0, 0)
+        verify(Math.abs(popupTop.x - fieldBottom.x) < 12,
+               "Controller choices should align with the Player 1 field")
+        verify(Math.abs(popupTop.y - fieldBottom.y) < 20,
+               "Controller choices should open beneath the Player 1 field")
         compare(combo.textAt(1), "Steam Controller 2")
         compare(combo.textAt(2), "Brawler64")
         tryVerify(function() { return combo.popup.contentItem.itemAtIndex(1) !== null })

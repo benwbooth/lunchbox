@@ -73,8 +73,16 @@ T.ComboBox {
         // the dialog surface in the live window, even while popup.visible is true.
         parent: C.Overlay.overlay
         z: 100
-        x: parent ? control.mapToItem(parent, 0, 0).x : 0
-        y: parent ? control.mapToItem(parent, 0, control.height + 2).y : 0
+        x: 0
+        y: 0
+        // mapToItem() does not bind to movement of every ancestor of the
+        // ComboBox. Calculate the overlay position when the menu opens, after
+        // its containing dialog has settled but before the menu is painted.
+        onAboutToShow: {
+            const origin = control.mapToItem(parent, 0, control.height + 2)
+            x = origin.x
+            y = origin.y
+        }
         width: control.width
         implicitHeight: Math.min(360, contentItem.implicitHeight + topPadding + bottomPadding)
         padding: 4
