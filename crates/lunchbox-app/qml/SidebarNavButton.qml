@@ -17,8 +17,8 @@ Rectangle {
     Keys.onSpacePressed: clicked()
 
     width: ListView.view ? (ListView.view.verticalContentWidth || ListView.view.width) : parent ? parent.width : 228
-    // Long platform names grow vertically instead of being truncated;
-    // single-line rows keep 43px.
+    // Keep one font size for every platform. Long names wrap and grow the
+    // row vertically; single-line rows keep 43px.
     height: Math.max(43, labelText.implicitHeight + 21)
     radius: 9
     color: active ? "#272c34" : hover.hovered ? "#1b2330" : "transparent"
@@ -85,8 +85,7 @@ Rectangle {
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideNone
-        fontSizeMode: Text.HorizontalFit
-        minimumPixelSize: 9
+        fontSizeMode: Text.FixedSize
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: nav.active ? "#f4f7fb" : "#c0c8d4"
         font.family: Qt.application.font.family

@@ -41,6 +41,8 @@ TestCase {
         const label = findChild(button, "sidebarNavLabel")
         verify(label !== null)
         compare(label.elide, Text.ElideNone)
+        compare(label.fontSizeMode, Text.FixedSize)
+        compare(label.font.pixelSize, 13)
         verify(!label.truncated)
         verify(label.contentWidth <= label.width + 1)
         verify(label.y >= 0)
@@ -51,5 +53,27 @@ TestCase {
         verifyFullLabel(narrowPlatform)
         verifyFullLabel(normalPlatform)
         verify(narrowPlatform.height > 43)
+    }
+
+    function test_short_and_long_names_keep_same_font_when_resized() {
+        const originalLabel = normalPlatform.label
+        const originalWidth = normalHost.width
+        try {
+            const names = ["NES", "Nintendo Game Boy Advance", "Super Nintendo Entertainment System"]
+            for (const width of [154, 228, 360]) {
+                normalHost.width = width
+                for (const name of names) {
+                    normalPlatform.label = name
+                    wait(0)
+                    verifyFullLabel(normalPlatform)
+                }
+            }
+        } finally {
+            normalPlatform.label = originalLabel
+            normalHost.width = originalWidth
+        }
+        wait(0)
+        grabImage(narrowHost).save("/tmp/lunchbox-platform-labels-narrow.png")
+        grabImage(normalHost).save("/tmp/lunchbox-platform-labels-normal.png")
     }
 }
