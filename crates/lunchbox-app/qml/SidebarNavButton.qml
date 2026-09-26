@@ -89,8 +89,9 @@ Rectangle {
         minimumPixelSize: 9
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: nav.active ? "#f4f7fb" : "#c0c8d4"
-        font.pixelSize: 12
-        font.weight: nav.active ? Font.DemiBold : Font.Medium
+        font.family: Qt.application.font.family
+        font.pixelSize: 13
+        font.weight: Font.Medium
     }
     ToolTip.visible: hover.hovered
     ToolTip.text: nav.label

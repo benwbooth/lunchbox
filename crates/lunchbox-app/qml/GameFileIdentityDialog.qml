@@ -492,8 +492,9 @@ LbDialog {
                 anchors.rightMargin: 12
                 text: parent.text
                 color: "#f4f7fb"
-                font.pixelSize: 14
-                font.weight: Font.Bold
+                font.family: Qt.application.font.family
+                font.pixelSize: 13
+                font.weight: Font.Medium
                 horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignVCenter
                 fontSizeMode: Text.HorizontalFit

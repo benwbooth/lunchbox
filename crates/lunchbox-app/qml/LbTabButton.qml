@@ -10,7 +10,8 @@ T.TabButton {
     bottomPadding: 6
     implicitWidth: Math.max(80, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(34, implicitContentHeight + topPadding + bottomPadding)
-    font.pixelSize: 14
+    font.family: Qt.application.font.family
+    font.pixelSize: 13
     clip: true
 
     background: LbControlBackground {
@@ -29,10 +30,10 @@ T.TabButton {
         anchors.bottomMargin: anchors.topMargin
         text: control.text
         font.family: control.font.family
-        font.weight: control.font.weight
+        font.weight: Font.Medium
         font.italic: control.font.italic
-        font.letterSpacing: control.font.letterSpacing
-        font.pixelSize: Math.max(14, control.font.pixelSize)
+        font.letterSpacing: 0
+        font.pixelSize: 13
         color: !control.enabled ? "#8d99aa"
                : control.checked ? "#ffcb84" : "#f4f7fb"
         horizontalAlignment: Text.AlignHCenter

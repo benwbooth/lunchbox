@@ -13,7 +13,8 @@ T.Button {
     implicitWidth: Math.max(52, Math.min(maximumImplicitWidth,
                                          implicitContentWidth + leftPadding + rightPadding))
     implicitHeight: Math.max(32, implicitContentHeight + topPadding + bottomPadding)
-    font.pixelSize: 12
+    font.family: Qt.application.font.family
+    font.pixelSize: 13
     clip: true
 
     background: LbControlBackground {
@@ -34,10 +35,12 @@ T.Button {
         anchors.bottomMargin: anchors.topMargin
         text: control.text
         font.family: control.font.family
-        font.weight: control.font.weight
+        // Text actions share one label style, even when an older caller sets
+        // a tiny control font. HorizontalFit still shrinks long labels to fit.
+        font.weight: Font.Medium
         font.italic: control.font.italic
-        font.letterSpacing: control.font.letterSpacing
-        font.pixelSize: control.font.pixelSize
+        font.letterSpacing: 0
+        font.pixelSize: 13
         color: !control.enabled ? "#8d99aa"
                : control.positive && (control.highlighted || control.checked) ? "#f4fff7"
                : control.highlighted || control.checked ? "#ffcb84" : "#f4f7fb"

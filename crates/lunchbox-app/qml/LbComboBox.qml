@@ -11,7 +11,8 @@ T.ComboBox {
     bottomPadding: 6
     implicitWidth: Math.max(82, implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(34, implicitContentHeight + topPadding + bottomPadding)
-    font.pixelSize: 14
+    font.family: Qt.application.font.family
+    font.pixelSize: 13
 
     background: LbControlBackground {
         pressed: control.down
@@ -29,10 +30,10 @@ T.ComboBox {
         anchors.bottomMargin: control.bottomPadding
         text: control.displayText
         font.family: control.font.family
-        font.weight: control.font.weight
+        font.weight: Font.Medium
         font.italic: control.font.italic
-        font.letterSpacing: control.font.letterSpacing
-        font.pixelSize: Math.max(14, control.font.pixelSize)
+        font.letterSpacing: 0
+        font.pixelSize: 13
         color: control.enabled ? "#f4f7fb" : "#8d99aa"
         verticalAlignment: Text.AlignVCenter
         fontSizeMode: Text.HorizontalFit

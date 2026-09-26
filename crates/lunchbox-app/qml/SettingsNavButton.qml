@@ -15,8 +15,8 @@ LbButton {
     rightPadding: 12
     flat: true
     highlighted: active
-    font.pixelSize: 14
-    font.weight: active ? Font.DemiBold : Font.Normal
+    font.pixelSize: 13
+    font.weight: Font.Medium
 
     contentItem: Text {
         anchors.fill: parent
@@ -29,8 +29,8 @@ LbButton {
         font.family: control.font.family
         font.weight: control.font.weight
         font.italic: control.font.italic
-        font.letterSpacing: control.font.letterSpacing
-        font.pixelSize: Math.max(14, control.font.pixelSize)
+        font.letterSpacing: 0
+        font.pixelSize: 13
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignLeft
         fontSizeMode: Text.HorizontalFit
