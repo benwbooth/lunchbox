@@ -272,13 +272,13 @@ fn install_generated_preset(root: &Path, choice: &ShaderPresetChoice) -> Option<
     Some(preset_path)
 }
 
-/// Keep RetroTube's CRT color and pixel treatment without simulated motion or
-/// curved-edge crop. Koko otherwise shakes the image after resolution changes
-/// and alternates scanline fields on high-resolution frames. Some SNES games
-/// switch video modes during play, so both effects must be disabled for a
-/// stable picture. The small inset preserves edge text, especially when the
-/// game is fitted into a separate artwork overlay. Koko's own bezel is
-/// disabled only when that external overlay is active.
+/// Keep RetroTube's CRT treatment and aperture curvature without simulated
+/// motion or automatic cropping. The viewport already fits the artwork's
+/// opening in native output pixels: an additional inset leaves a gap, while
+/// enlarging it to hide that gap crops the game. Koko's curvature maps the
+/// picture into a curved aperture at unit zoom, including its edges.
+/// Resolution-change shake and alternating interlace fields remain disabled.
+/// Koko's own bezel is disabled only when an external overlay is active.
 fn install_retrotube_variant(
     root: &Path,
     base: &Path,
@@ -317,7 +317,7 @@ fn install_retrotube_variant(
     fs::write(
         &path,
         format!(
-            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"0.0\"\nAUTOCROP_MAX = \"0.0\"\nDO_GAME_GEOM_OVERRIDE = \"0.0\"\nRESSWITCH_SYNC_SPEED = \"1.0\"\nMIN_LINES_INTERLACED = \"0.0\"\nPIXELGRID_INTR_FLICK_MODE = \"0.0\"\nGLOBAL_ZOOM = \"0.96\"\n{bezel}{ambient}"
+            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"1.0\"\nAUTOCROP_MAX = \"0.0\"\nDO_GAME_GEOM_OVERRIDE = \"0.0\"\nRESSWITCH_SYNC_SPEED = \"1.0\"\nMIN_LINES_INTERLACED = \"0.0\"\nPIXELGRID_INTR_FLICK_MODE = \"0.0\"\nGLOBAL_ZOOM = \"1.0\"\n{bezel}{ambient}"
         ),
     )
     .with_context(|| format!("writing {}", path.display()))?;
@@ -1032,11 +1032,11 @@ mod tests {
             let contents = fs::read_to_string(&variant).unwrap();
             assert!(contents.contains("DO_BEZEL = \"0.0\""));
             assert!(contents.contains("DO_DYNZOOM = \"0.0\""));
-            assert!(contents.contains("DO_CURVATURE = \"0.0\""));
+            assert!(contents.contains("DO_CURVATURE = \"1.0\""));
             assert!(contents.contains("RESSWITCH_SYNC_SPEED = \"1.0\""));
             assert!(contents.contains("MIN_LINES_INTERLACED = \"0.0\""));
             assert!(contents.contains("PIXELGRID_INTR_FLICK_MODE = \"0.0\""));
-            assert!(contents.contains("GLOBAL_ZOOM = \"0.96\""));
+            assert!(contents.contains("GLOBAL_ZOOM = \"1.0\""));
             assert!(contents.contains("AUTOCROP_MAX = \"0.0\""));
             assert!(contents.contains("DO_GAME_GEOM_OVERRIDE = \"0.0\""));
             assert!(!contents.contains("DO_AMBILIGHT"));
@@ -1049,6 +1049,12 @@ mod tests {
             let standalone_contents = fs::read_to_string(standalone_variant).unwrap();
             assert!(!standalone_contents.contains("DO_BEZEL = \"0.0\""));
             assert!(standalone_contents.contains("DO_DYNZOOM = \"0.0\""));
+            for preset in [&contents, &pillarbox_contents, &standalone_contents] {
+                // All variants keep the full-size curved aperture.
+                assert!(preset.contains("DO_CURVATURE = \"1.0\""));
+                assert!(preset.contains("GLOBAL_ZOOM = \"1.0\""));
+                assert!(preset.contains("AUTOCROP_MAX = \"0.0\""));
+            }
             let reference = contents
                 .lines()
                 .next()
