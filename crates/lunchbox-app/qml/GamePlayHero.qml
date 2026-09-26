@@ -103,6 +103,10 @@ Rectangle {
                                                          || displaySaveStatesSupported)
     property bool settingsExpanded: false
     property bool displayExpanded: false
+    property var modsBackend: null
+    property var pickPatchFile: function() { return "" }
+    property var pickCheatFile: function() { return "" }
+    property var pickCheatExport: function() { return "" }
     onGameIdChanged: {
         settingsExpanded = false
         displayExpanded = false
@@ -254,6 +258,18 @@ Rectangle {
             highlighted: hero.translationOptedIn
             onClicked: hero.translationOptInSelected(!hero.translationOptedIn)
             Accessible.description: "Remembered for this game. Other games launch without translation."
+        }
+
+        GameModsPane {
+            width: parent.width
+            visible: hero.settingsExpanded && hero.modsBackend !== null
+            backend: hero.modsBackend
+            gameId: hero.gameId
+            locked: hero.launchBusy || hero.gameRunning
+            retroarch: hero.selectedEmulatorOption >= 0 && hero.emulatorOptionKindAt(hero.selectedEmulatorOption) === "retroarch"
+            pickPatchFile: hero.pickPatchFile
+            pickCheatFile: hero.pickCheatFile
+            pickCheatExport: hero.pickCheatExport
         }
 
         Column {

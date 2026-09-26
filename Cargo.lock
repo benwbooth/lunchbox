@@ -2691,6 +2691,7 @@ dependencies = [
  "libc",
  "libchdman-rs",
  "lunchbox-controller-probe",
+ "lunchbox-patching",
  "md-5 0.10.6",
  "opendal",
  "png",
@@ -2760,6 +2761,15 @@ dependencies = [
  "ureq",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "lunchbox-patching"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "tempfile",
 ]
 
 [[package]]

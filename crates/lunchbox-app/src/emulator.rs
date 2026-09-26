@@ -1126,6 +1126,18 @@ pub fn build_rom_launch_plan_with_customization_and_cancellation(
     customization: &crate::settings::ResolvedLaunchCustomization,
     cancelled: &Arc<AtomicBool>,
 ) -> Result<LaunchPlan> {
+    build_rom_launch_plan_with_mods(rom_path, platform, option, customization, cancelled, &crate::game_mods::Profile::default(), "")
+}
+
+pub(crate) fn build_rom_launch_plan_with_mods(
+    rom_path: &Path,
+    platform: &str,
+    option: &RomEmulatorOption,
+    customization: &crate::settings::ResolvedLaunchCustomization,
+    cancelled: &Arc<AtomicBool>,
+    mods: &crate::game_mods::Profile,
+    game_id: &str,
+) -> Result<LaunchPlan> {
     if !rom_path.is_file() {
         bail!("local game file is missing: {}", rom_path.display());
     }
@@ -1134,13 +1146,16 @@ pub fn build_rom_launch_plan_with_customization_and_cancellation(
         is_arcade_family_platform(platform),
         cancelled,
     )?;
-    let outcome = build_prepared_rom_launch_plan(
-        &prepared.path,
-        platform,
-        option,
-        customization,
-        &prepared.access_roots,
-    );
+    let outcome = (|| {
+        let content = crate::game_mods::prepare(&prepared.path, mods, game_id, cancelled)?;
+        let mut access_roots = prepared.access_roots.clone();
+        if content != prepared.path {
+            access_roots.extend(content.parent().map(Path::to_path_buf));
+        }
+        let mut plan = build_prepared_rom_launch_plan(&content, platform, option, customization, &access_roots)?;
+        crate::game_mods::attach_cheats(mods, option, &mut plan)?;
+        Ok::<_, anyhow::Error>(plan)
+    })();
     match outcome {
         Ok(mut plan) => {
             plan.cleanup_paths.extend(prepared.cleanup_paths);

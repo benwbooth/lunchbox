@@ -6206,6 +6206,7 @@ impl qobject::GameDetailsModel {
             .spawn(move || {
                 let launch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<(String, bool)>)> {
                     let preparation_started = Instant::now();
+                    let mods = crate::game_mods::Profile::load(&crate::settings::SettingsStore::open_default()?, &game_id)?;
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
@@ -6215,6 +6216,8 @@ impl qobject::GameDetailsModel {
                             catalog_database,
                             emulator_id,
                         } => {
+                            anyhow::ensure!(!mods.patches.iter().any(|p| p.enabled) && !(mods.cheats_enabled && mods.cheats.iter().any(|c| c.enabled)),
+                                "Patches and automatic cheats require a ROM/disc launch, not this prepared application. Disable them before launching.");
                             let customization = crate::settings::SettingsStore::open_default()?
                                 .resolve_launch_customization(
                                     &game_id,
@@ -6243,12 +6246,14 @@ impl qobject::GameDetailsModel {
                                     option.runtime_kind.key(),
                                     &option.core_name,
                                 )?;
-                            crate::emulator::build_rom_launch_plan_with_customization_and_cancellation(
+                            crate::emulator::build_rom_launch_plan_with_mods(
                                 path,
                                 platform,
                                 option,
                                 &customization,
                                 &launch_cancel,
+                                &mods,
+                                &game_id,
                             )?
                         }
                     };

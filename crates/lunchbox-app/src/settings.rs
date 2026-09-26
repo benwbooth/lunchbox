@@ -6975,6 +6975,10 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS local_rom_hash_cache_root
              ON local_rom_hash_cache(root_id);
+         CREATE TABLE IF NOT EXISTS game_mod_profiles (
+             game_uid TEXT PRIMARY KEY,
+             profile_json TEXT NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS game_metadata_overrides (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0 CHECK (launchbox_db_id >= 0),

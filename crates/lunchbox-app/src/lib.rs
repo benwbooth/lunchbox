@@ -236,6 +236,8 @@ mod firmware_audit;
 pub mod firmware_audit_model;
 mod game_details;
 pub mod game_details_model;
+mod game_mods;
+pub mod game_mods_model;
 pub mod gamepad_input;
 mod hover_preview;
 mod igdb;
@@ -389,6 +391,9 @@ fn needs_widget_application(
 }
 
 pub fn run() -> i32 {
+    if std::env::args().nth(1).as_deref() == Some("--cheat-core-identity") {
+        return game_mods::core_identity_helper();
+    }
     #[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
     if let Err(error) = translation::configure_gpu_cache() {
         eprintln!("LUNCHBOX_TRANSLATION_OCR_GPU_CACHE_UNAVAILABLE: {error:#}");

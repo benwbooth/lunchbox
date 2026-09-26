@@ -63,6 +63,7 @@ zip.workspace = true
 libchdman-rs.workspace = true
 tempfile = "3.14"
 lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
+lunchbox-patching = { path = "../lunchbox-patching" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

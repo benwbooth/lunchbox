@@ -363,6 +363,50 @@ require the separate Mega Bezel shader stack. The game viewport is fitted to
 the artwork's 4:3 opening in fullscreen. If fullscreen is explicitly disabled,
 the launch continues without the ultrawide overlay and reports why.
 
+### Translation/mod patches and cheats
+
+Open **Game details → Settings & mappings → Patches & cheats**. Import a patch,
+enable it, and arrange enabled patches in the author's required order. Lunchbox
+applies them before launching, never writes to the original ROM/disc, and caches
+the result. Patches run in the launch worker and can be cancelled. Unchanged
+cached images do not need another multi-gigabyte hash or patch pass.
+
+Supported formats: **IPS, IPS32, BPS, UPS, PPF 1/2/3, xdelta/VCDIFF**. IPS/BPS/UPS
+are built in for inputs/outputs up to 512 MiB. PPF streams raw disc images;
+xdelta uses the cross-platform `xdelta3` executable (included in the Nix package
+and dev shell). For other packages install xdelta3 on PATH or set
+`LUNCHBOX_XDELTA3` to its executable. Disc output is limited to 128 GiB.
+Extract downloaded patch ZIP/7z archives first. Game archives are prepared by
+the existing launch extractor; compressed disc containers and cue/playlists
+are not patch inputs. Use the author's exact raw ISO/BIN or ROM and readme.
+Lunchbox does not guess which track to modify or silently strip ROM headers.
+
+BPS/UPS verify patch, source and result CRC32. PPF verifies its size/block/undo
+data when present. IPS and some PPF/xdelta patches do **not** identify the whole
+base image; the optional SHA256 field pins the base file before the patch stack.
+A mismatch blocks launch, rather than launching an unpatched game. Patched
+content gets a stable `[mod-…]` filename so it has separate emulator saves/states;
+do not transfer old states into incompatible hacks. Removing a patch from the
+profile does not delete its original download, derived cache, or saved games.
+
+Get patch-only releases from [Romhack Plaza](https://romhackplaza.org/),
+[Romhacking.net's archive](https://www.romhacking.net/), or the author's project
+site/GitHub releases. Match the required region, revision, headers and checksum;
+a similarly named game is not necessarily the correct base. Lunchbox does not
+download or redistribute pre-patched ROMs.
+
+Cheats can be entered by hand or imported/exported as RetroArch `.cht` files,
+including RetroArch-handled memory cheats. Imports are disabled initially.
+Enable the game's master cheat switch and individual codes, then relaunch.
+Lunchbox uses a private per-launch cheat directory and the selected core's
+actual library name; it does not modify the global RetroArch configuration.
+Game Genie/Action Replay formats depend on the core, region and game revision.
+The [Libretro cheat database](https://github.com/libretro/libretro-database/tree/master/cht)
+is linked in the panel. Cheats can alter saves and achievement eligibility.
+Automatic loading currently requires RetroArch; standalone emulators have
+different cheat formats and must use their own cheat interface. Enabled cheats
+on an unsupported runtime produce an explicit error, not an ignored setting.
+
 Local game translation is opt-in under Settings → Game translation. The setup
 wizard guides the user through choosing a GPU backend, installing the selected
 TranslateGemma 4B, 12B, or 27B and Japanese-capable PP-OCRv6 small OCR models,

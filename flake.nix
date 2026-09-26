@@ -159,6 +159,7 @@
               "$out/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml"
           '';
           preFixup = ''
+            qtWrapperArgs+=(--prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.xdelta ]}")
             qtWrapperArgs+=(--set LUNCHBOX_DATABASE "$out/share/lunchbox/lunchbox.db")
             qtWrapperArgs+=(--set ORT_DYLIB_PATH "${onnxruntimeForHost}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libonnxruntime.dylib" else "libonnxruntime.so"}")
           '' + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -233,6 +234,7 @@
             rustfmt
             sqlite
             watchexec
+            xdelta
           ]) ++ qtModules ++ [ onnxruntimeForHost ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             dwarfs

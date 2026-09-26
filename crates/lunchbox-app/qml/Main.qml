@@ -2187,6 +2187,8 @@ ApplicationWindow {
         id: nativeFileDialog
     }
 
+    GameModsModel { id: gameMods }
+
     LibraryModel {
         id: library
     }
@@ -12966,6 +12968,16 @@ ApplicationWindow {
                         selectedEmulatorOption: gameDetails.selected_emulator_option
                         translationOptedIn: gameDetails.translation_opted_in
                         translationFeatureEnabled: appSettings.translation_enabled
+                        modsBackend: gameMods
+                        pickPatchFile: function() {
+                            return nativeFileDialog.pick_open_file("Import a translation or mod patch", "ROM/disc patches", "ips,ips32,bps,ups,ppf,xdelta,xdelta3,vcdiff")
+                        }
+                        pickCheatFile: function() {
+                            return nativeFileDialog.pick_open_file("Import RetroArch cheats", "Cheat files", "cht")
+                        }
+                        pickCheatExport: function() {
+                            return nativeFileDialog.pick_save_file("Export cheats", "Cheat files", "cht", "Game cheats.cht")
+                        }
                         firmwareMissingCount: gameDetails.firmware_missing_count
                         firmwareSetupLabel: gameDetails.firmware_setup_label
                         emulatorLabelAt: function(index) {

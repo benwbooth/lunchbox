@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lunchbox-app", "crates/lunchbox-db", "crates/lunchbox-controller-probe", "vendor/rapidocr-core"]
+members = ["crates/lunchbox-app", "crates/lunchbox-db", "crates/lunchbox-controller-probe", "crates/lunchbox-patching", "vendor/rapidocr-core"]
 
 [workspace.package]
 version = "0.1.1"
