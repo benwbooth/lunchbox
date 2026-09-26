@@ -317,7 +317,7 @@ fn install_retrotube_variant(
     fs::write(
         &path,
         format!(
-            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"0.0\"\nRESSWITCH_SYNC_SPEED = \"1.0\"\nMIN_LINES_INTERLACED = \"0.0\"\nPIXELGRID_INTR_FLICK_MODE = \"0.0\"\nGLOBAL_ZOOM = \"0.96\"\n{bezel}{ambient}"
+            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"0.0\"\nAUTOCROP_MAX = \"0.0\"\nDO_GAME_GEOM_OVERRIDE = \"0.0\"\nRESSWITCH_SYNC_SPEED = \"1.0\"\nMIN_LINES_INTERLACED = \"0.0\"\nPIXELGRID_INTR_FLICK_MODE = \"0.0\"\nGLOBAL_ZOOM = \"0.96\"\n{bezel}{ambient}"
         ),
     )
     .with_context(|| format!("writing {}", path.display()))?;
@@ -433,7 +433,13 @@ pub fn attach_launch_display_configuration(
         return None;
     }
     let mut warnings = Vec::new();
-    let mut lines = String::new();
+    // User/global RetroArch settings may enable front-end overscan or smart
+    // integer overscaling, both of which discard source pixels before a
+    // shader or bezel can make them visible. Every Lunchbox content launch
+    // keeps the complete core frame, regardless of the selected display
+    // preset. This override is session-only.
+    let mut lines =
+        String::from("video_crop_overscan = \"false\"\nvideo_scale_integer = \"false\"\n");
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
     let mut black_sidebars = false;
@@ -526,7 +532,6 @@ pub fn attach_launch_display_configuration(
                         lines.push_str("video_fullscreen = \"true\"\n");
                     }
                     lines.push_str("aspect_ratio_index = \"23\"\n");
-                    lines.push_str("video_scale_integer = \"false\"\n");
                     lines.push_str(&format!("custom_viewport_x = \"{x}\"\n"));
                     lines.push_str(&format!("custom_viewport_y = \"{y}\"\n"));
                     lines.push_str(&format!("custom_viewport_width = \"{width}\"\n"));
@@ -551,7 +556,6 @@ pub fn attach_launch_display_configuration(
         match resolve_shader_preset(executable, &customization.display_shader) {
             Some(mut preset_path) => {
                 if customization.display_shader == "retrotube-tv" {
-                    lines.push_str("video_crop_overscan = \"false\"\n");
                     if let Some(root) = shader_root(executable) {
                         match install_retrotube_variant(
                             &root,
@@ -593,13 +597,6 @@ pub fn attach_launch_display_configuration(
         }
         _ => {}
     }
-    if lines.is_empty() {
-        return if warnings.is_empty() {
-            None
-        } else {
-            Some(warnings.join("; "))
-        };
-    }
     // These are launch-only overrides. RetroArch must not save the temporary
     // custom viewport (or input/display settings) back into retroarch.cfg.
     lines.push_str("config_save_on_exit = \"false\"\n");
@@ -631,13 +628,13 @@ pub fn attach_launch_display_configuration(
     }
 }
 
-/// SDL3 reads the native mode and content scale without creating a window.
-/// RetroArch's Wayland context currently applies that scale once more to its
-/// GL backing surface, so custom viewport pixels must use the same units.
-/// Other contexts use the native mode directly. No host-specific DPI is baked
-/// into the launch profile or the artwork.
+/// SDL3 reads the physical output mode without creating a window. Viewport
+/// dimensions are RetroArch framebuffer pixels, not desktop logical pixels:
+/// multiplying by the display density makes the opening larger than the
+/// actual framebuffer on fractional-scale desktops and clips game edges.
+/// The same native-pixel calculation is used on every host platform.
 pub(crate) fn probe_retroarch_output_dimensions(
-    executable: &EmulatorExecutable,
+    _executable: &EmulatorExecutable,
     qt_dimensions: Option<(u32, u32)>,
 ) -> Result<(u32, u32)> {
     let output = Command::new(std::env::current_exe()?)
@@ -653,9 +650,8 @@ pub(crate) fn probe_retroarch_output_dimensions(
         "SDL3 display query failed: {}",
         String::from_utf8_lossy(&output.stderr).trim()
     );
-    let metrics = parse_sdl3_display_metrics(&String::from_utf8(output.stdout)?)
+    let dimensions = parse_sdl3_display_dimensions(&String::from_utf8(output.stdout)?)
         .context("SDL3 did not report its display mode")?;
-    let dimensions = (metrics.width, metrics.height);
     if let Some((width, height)) = qt_dimensions {
         let qt_aspect = f64::from(width) / f64::from(height);
         let sdl_aspect = f64::from(dimensions.0) / f64::from(dimensions.1);
@@ -664,60 +660,22 @@ pub(crate) fn probe_retroarch_output_dimensions(
             "The primary display differs from Lunchbox's current screen; 21:9 artwork was skipped"
         );
     }
-    let context = retroarch_config_value(executable, "video_context_driver");
-    let scale = retroarch_render_scale(
-        &metrics.video_driver,
-        context.as_deref(),
-        metrics.pixel_density,
-    );
-    scaled_display_dimensions(dimensions, scale)
-        .context("RetroArch's render size could not be determined")
+    Ok(dimensions)
 }
 
-struct Sdl3DisplayMetrics {
-    width: u32,
-    height: u32,
-    pixel_density: f32,
-    video_driver: String,
-}
-
-fn parse_sdl3_display_metrics(report: &str) -> Option<Sdl3DisplayMetrics> {
+fn parse_sdl3_display_dimensions(report: &str) -> Option<(u32, u32)> {
     let (dimensions, remainder) = report.trim().split_once('@')?;
     let (density, video_driver) = remainder.split_once('@')?;
     let (width, height) = dimensions.split_once('x')?;
     let width: u32 = width.parse().ok()?;
     let height: u32 = height.parse().ok()?;
     let pixel_density: f32 = density.parse().ok()?;
-    (width > 0 && height > 0 && pixel_density.is_finite() && pixel_density > 0.0).then(|| {
-        Sdl3DisplayMetrics {
-            width,
-            height,
-            pixel_density,
-            video_driver: video_driver.to_owned(),
-        }
-    })
-}
-
-fn scaled_display_dimensions(dimensions: (u32, u32), scale: f32) -> Option<(u32, u32)> {
-    let width = (f64::from(dimensions.0) * f64::from(scale)).round();
-    let height = (f64::from(dimensions.1) * f64::from(scale)).round();
-    (width.is_finite()
-        && height.is_finite()
-        && width > 0.0
-        && height > 0.0
-        && width <= f64::from(u32::MAX)
-        && height <= f64::from(u32::MAX))
-    .then_some((width as u32, height as u32))
-}
-
-fn retroarch_render_scale(video_driver: &str, context: Option<&str>, density: f32) -> f32 {
-    if video_driver == "wayland"
-        && context.is_none_or(|value| value.is_empty() || value == "wayland")
-    {
-        density
-    } else {
-        1.0
-    }
+    (width > 0
+        && height > 0
+        && pixel_density.is_finite()
+        && pixel_density > 0.0
+        && !video_driver.is_empty())
+    .then_some((width, height))
 }
 
 /// Place fixed-aspect artwork inside a wider (or taller) output without
@@ -876,6 +834,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_retroarch_launch_preserves_the_complete_core_frame() {
+        let temporary = tempfile::tempdir().unwrap();
+        let content = temporary.path().join("game.nes");
+        let executable = EmulatorExecutable::Native(PathBuf::from("retroarch"));
+        let mut plan = LaunchPlan {
+            emulator_name: "RetroArch".into(),
+            program: PathBuf::from("retroarch"),
+            arguments: vec![content.as_os_str().to_owned()],
+            current_directory: temporary.path().to_path_buf(),
+            environment: Vec::new(),
+            cleanup_paths: Vec::new(),
+            retroarch_content: Some(crate::emulator::PreparedRetroarchContent {
+                core: PathBuf::from("fceumm_libretro.so"),
+                content,
+            }),
+        };
+
+        assert!(
+            attach_launch_display_configuration(
+                &mut plan,
+                &executable,
+                "Nintendo Entertainment System",
+                "game",
+                &ResolvedLaunchCustomization {
+                    display_bezel: "off".to_owned(),
+                    ..Default::default()
+                },
+                None,
+            )
+            .is_none()
+        );
+        let config = fs::read_to_string(PathBuf::from(&plan.arguments[1])).unwrap();
+        assert!(config.contains("video_crop_overscan = \"false\""));
+        assert!(config.contains("video_scale_integer = \"false\""));
+        assert!(config.contains("config_save_on_exit = \"false\""));
+    }
+
+    #[test]
     fn retroarch_content_launch_disables_only_the_optional_desktop_menu() {
         let temporary = tempfile::tempdir().unwrap();
         let content = temporary.path().join("game.sfc");
@@ -908,24 +904,18 @@ mod tests {
 
     #[test]
     fn windowless_display_query_uses_native_pixels() {
-        let metrics = parse_sdl3_display_metrics("5120x2160@1.3@wayland\n").unwrap();
-        assert_eq!((metrics.width, metrics.height), (5120, 2160));
-        assert_eq!(metrics.video_driver, "wayland");
-        assert_eq!(
-            scaled_display_dimensions((5120, 2160), metrics.pixel_density),
-            Some((6656, 2808))
-        );
+        let dimensions = parse_sdl3_display_dimensions("5120x2160@1.3@wayland\n").unwrap();
+        assert_eq!(dimensions, (5120, 2160));
         assert_eq!(ultrawide_viewport(5120, 2160), Some((0, 0, 2372, 1776)));
-        assert_eq!(ultrawide_viewport(6656, 2808), Some((0, 0, 3084, 2309)));
         assert_eq!(
-            scaled_display_dimensions((1920, 1080), 1.0),
-            Some((1920, 1080))
+            ultrawide_viewport(dimensions.0, dimensions.1),
+            Some((0, 0, 2372, 1776))
         );
-        assert_eq!(retroarch_render_scale("wayland", Some(""), 1.3), 1.3);
-        assert_eq!(retroarch_render_scale("wayland", Some("x"), 1.3), 1.0);
-        assert_eq!(retroarch_render_scale("x11", Some(""), 1.3), 1.0);
-        assert_eq!(retroarch_render_scale("windows", None, 1.5), 1.0);
-        assert!(parse_sdl3_display_metrics("no video output").is_none());
+        assert_eq!(
+            parse_sdl3_display_dimensions("5120x2160@2.0@x11"),
+            Some(dimensions)
+        );
+        assert!(parse_sdl3_display_dimensions("no video output").is_none());
     }
 
     #[test]
@@ -1047,6 +1037,8 @@ mod tests {
             assert!(contents.contains("MIN_LINES_INTERLACED = \"0.0\""));
             assert!(contents.contains("PIXELGRID_INTR_FLICK_MODE = \"0.0\""));
             assert!(contents.contains("GLOBAL_ZOOM = \"0.96\""));
+            assert!(contents.contains("AUTOCROP_MAX = \"0.0\""));
+            assert!(contents.contains("DO_GAME_GEOM_OVERRIDE = \"0.0\""));
             assert!(!contents.contains("DO_AMBILIGHT"));
             assert!(!contents.contains("DO_PIXELGRID = \"0.0\""));
             let pillarbox_variant = install_retrotube_variant(root, &base, true, true).unwrap();
