@@ -23,6 +23,8 @@ TestCase {
                 property bool download_busy: false
                 property string platform: "Nintendo Switch"
                 property string game_id: "game-one"
+                property string lookupStatus: "No matching download was found in the checked sources."
+                function download_sources_status() { return lookupStatus }
                 property int sourceCount: 1
                 property int candidatesPerSource: 1
                 property string candidateName: "Super Mario Odyssey.xci/Super Mario Odyssey.xci"
@@ -84,6 +86,18 @@ TestCase {
         get.click()
         compare(host.reviewSpy.count, 1)
         compare(host.reviewSpy.signalArguments[0][0], 17)
+    }
+
+    function test_source_failure_is_not_reported_as_an_unindexed_game() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.details.registered_torrent_source_count = 0
+        host.details.sourceCount = 0
+        host.details.lookupStatus = "1 download source could not be checked. Connection timed out."
+        host.details.detail_revision += 1
+        const summary = findChild(host.sources, "torrentSourceSummary")
+        compare(summary.text, host.details.lookupStatus)
+        verify(summary.text.indexOf("indexed") < 0)
     }
 
     function test_installed_game_hides_candidates_until_alternatives_are_expanded() {

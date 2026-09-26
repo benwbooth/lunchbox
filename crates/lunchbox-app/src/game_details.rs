@@ -1533,8 +1533,9 @@ fn resolve_torrent_catalog_bundles(
         });
     }
     bundles.sort_by(|left, right| {
-        bundle_source_priority(left)
-            .cmp(&bundle_source_priority(right))
+        is_non_merged_arcade_bundle(right)
+            .cmp(&is_non_merged_arcade_bundle(left))
+            .then_with(|| bundle_source_priority(left).cmp(&bundle_source_priority(right)))
             .then_with(|| left.match_kind.cmp(&right.match_kind))
             .then_with(|| right.rom_count.cmp(&left.rom_count))
             .then_with(|| left.collection.cmp(&right.collection))
@@ -1577,6 +1578,15 @@ fn resolve_registered_torrent_bundles_for_game(
 fn bundle_source_priority(bundle: &MinervaBundle) -> u8 {
     let collection = bundle.collection.trim().to_ascii_lowercase();
     let platform = bundle.provider_platform.trim().to_ascii_lowercase();
+
+    if collection == "mame" {
+        return match catalog::normalize_platform_key(&platform).as_str() {
+            "roms-non-merged" => 0,
+            "roms-merged" => 40,
+            "roms-split" => 45,
+            _ => 50,
+        };
+    }
 
     if collection == "no-intro" {
         if platform.contains("source code") {
@@ -1627,6 +1637,16 @@ pub fn load_torrent_files(
     game_title: &str,
     alternate_titles: &[AlternateTitle],
     preferences: &ReleasePreferences,
+) -> Result<Vec<TorrentFileCandidate>> {
+    load_torrent_files_for_game(bundle, game_title, alternate_titles, preferences, None)
+}
+
+pub fn load_torrent_files_for_game(
+    bundle: &MinervaBundle,
+    game_title: &str,
+    alternate_titles: &[AlternateTitle],
+    preferences: &ReleasePreferences,
+    launchbox_db_id: Option<i64>,
 ) -> Result<Vec<TorrentFileCandidate>> {
     let plan_files = if bundle.source_kind == "manual_torrent" {
         registered_torrent_plan_files(
@@ -1689,6 +1709,22 @@ pub fn load_torrent_files(
         return Ok(candidates);
     }
 
+    if is_arcade_rom_bundle(bundle) {
+        let use_parent = bundle.collection.eq_ignore_ascii_case("MAME")
+            && catalog::normalize_platform_key(&bundle.provider_platform) == "roms-merged";
+        let lookup =
+            crate::arcade::resolve_download_lookup_name(game_title, launchbox_db_id, use_parent);
+        let mut names = BTreeSet::new();
+        if lookup.as_ref() != game_title {
+            names.insert(lookup.to_ascii_lowercase());
+        } else {
+            for title in lookup_titles(game_title, alternate_titles) {
+                names.extend(mame_romset_names(title)?);
+            }
+        }
+        return Ok(exact_arcade_candidates(files, &names, game_title, bundle));
+    }
+
     rank_file_candidates_for_platform(
         files,
         game_title,
@@ -1696,6 +1732,60 @@ pub fn load_torrent_files(
         preferences,
         Some(&bundle.provider_platform),
     )
+}
+
+fn is_arcade_rom_bundle(bundle: &MinervaBundle) -> bool {
+    let platform = catalog::normalize_platform_key(&bundle.provider_platform);
+    (bundle.collection.eq_ignore_ascii_case("MAME")
+        && matches!(
+            platform.as_str(),
+            "roms-non-merged" | "roms-merged" | "roms-split"
+        ))
+        || (bundle.collection.eq_ignore_ascii_case("FinalBurn Neo") && platform == "arcade")
+}
+
+pub(crate) fn is_non_merged_arcade_bundle(bundle: &MinervaBundle) -> bool {
+    bundle.collection.eq_ignore_ascii_case("MAME")
+        && catalog::normalize_platform_key(&bundle.provider_platform) == "roms-non-merged"
+}
+
+fn exact_arcade_candidates(
+    files: Vec<TorrentFileCandidate>,
+    romsets: &BTreeSet<String>,
+    title: &str,
+    bundle: &MinervaBundle,
+) -> Vec<TorrentFileCandidate> {
+    let mut candidates: Vec<_> = files
+        .into_iter()
+        .filter_map(|mut file| {
+            let path = Path::new(&file.filename);
+            let extension = path.extension()?.to_str()?;
+            if !matches!(extension.to_ascii_lowercase().as_str(), "zip" | "7z") {
+                return None;
+            }
+            // FBNeo's torrent also holds console games and samples. An exact
+            // short name alone must not select one of those other platforms.
+            if bundle.collection.eq_ignore_ascii_case("FinalBurn Neo")
+                && !path.components().any(|part| {
+                    part.as_os_str()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case("arcade")
+                })
+            {
+                return None;
+            }
+            let stem = path.file_stem()?.to_str()?.to_ascii_lowercase();
+            if !romsets.contains(&stem) {
+                return None;
+            }
+            file.match_score = 1.0;
+            file.matched_title = title.to_owned();
+            Some(file)
+        })
+        .collect();
+    candidates.sort_by(|a, b| a.filename.cmp(&b.filename));
+    candidates.truncate(MAX_FILE_CANDIDATES);
+    candidates
 }
 
 fn registered_torrent_plan_files(
@@ -2886,6 +2976,127 @@ mod tests {
             region: String::new(),
             version: String::new(),
             download_plan: None,
+        }
+    }
+
+    fn arcade_bundle(platform: &str) -> MinervaBundle {
+        MinervaBundle {
+            torrent_id: 1,
+            torrent_url: String::new(),
+            source_kind: "minerva".into(),
+            torrent_sha256: String::new(),
+            collection: "MAME".into(),
+            provider_platform: platform.into(),
+            rom_count: 0,
+            total_size: 0,
+            match_kind: BundleMatchKind::ExplicitFallback,
+        }
+    }
+
+    #[test]
+    fn arcade_romset_matching_is_exact_and_preserves_torrent_indices() {
+        let files = vec![
+            candidate(42, "MAME/ROMs (non-merged)/gforce2sd.zip"),
+            candidate(81, "MAME/ROMs (non-merged)/sf2ce.zip"),
+            candidate(82, "MAME/ROMs (non-merged)/sf2ceua.zip"),
+            candidate(92, "MAME/ROMs (non-merged)/pacman.7z"),
+            candidate(99, "MAME/ROMs (non-merged)/sf2ce.txt"),
+        ];
+        for (romset, expected) in [
+            ("gforce2sd", 42),
+            ("sf2ce", 81),
+            ("sf2ceua", 82),
+            ("pacman", 92),
+        ] {
+            let matches = exact_arcade_candidates(
+                files.clone(),
+                &BTreeSet::from([romset.into()]),
+                "Catalog display title",
+                &arcade_bundle("ROMs (non-merged)"),
+            );
+            assert_eq!(matches.len(), 1);
+            assert_eq!(matches[0].index, expected);
+            assert_eq!(matches[0].match_score, 1.0);
+            assert_eq!(matches[0].matched_title, "Catalog display title");
+        }
+        assert!(
+            exact_arcade_candidates(
+                files,
+                &BTreeSet::from(["sf2".into()]),
+                "Another game",
+                &arcade_bundle("ROMs (non-merged)")
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn arcade_fbneo_matching_does_not_cross_console_or_sample_folders() {
+        let mut bundle = arcade_bundle("arcade");
+        bundle.collection = "FinalBurn Neo".into();
+        let matches = exact_arcade_candidates(
+            vec![
+                candidate(1, "FinalBurn Neo/nes/pacman.zip"),
+                candidate(2, "FinalBurn Neo/arcade/pacman.zip"),
+                candidate(3, "FinalBurn Neo/samples/pacman.zip"),
+            ],
+            &BTreeSet::from(["pacman".into()]),
+            "Pac-Man",
+            &bundle,
+        );
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].index, 2);
+    }
+
+    #[test]
+    fn arcade_non_merged_source_has_priority_over_dependent_sets() {
+        let non_merged = arcade_bundle("ROMs (non-merged)");
+        assert!(is_non_merged_arcade_bundle(&non_merged));
+        for kind in ["ROMs (merged)", "ROMs (split)"] {
+            let other = arcade_bundle(kind);
+            assert!(!is_non_merged_arcade_bundle(&other));
+            assert!(bundle_source_priority(&non_merged) < bundle_source_priority(&other));
+        }
+    }
+
+    #[test]
+    #[ignore = "reads local Minerva metadata; never downloads ROM payloads"]
+    fn arcade_live_non_merged_candidates_use_catalog_identity() {
+        let bundles = resolve_minerva_bundles(&GameDetails {
+            platform: "Arcade".into(),
+            ..GameDetails::default()
+        })
+        .unwrap();
+        let bundle = &bundles[0];
+        assert!(is_non_merged_arcade_bundle(bundle));
+        for (title, database_id, romset) in [
+            ("Metal Slug: Super Vehicle-001", 442210, "mslug"),
+            ("Galaxy Force II", 36801, "gforce2sd"),
+        ] {
+            let start = std::time::Instant::now();
+            let files = load_torrent_files_for_game(
+                bundle,
+                title,
+                &[],
+                &preferences("USA", "latest"),
+                Some(database_id),
+            )
+            .unwrap();
+            assert_eq!(files.len(), 1, "{title}: {files:?}");
+            assert_eq!(
+                Path::new(&files[0].filename)
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                romset
+            );
+            println!(
+                "ARCADE_LOOKUP title={title:?} elapsed_ms={} index={} file={:?}",
+                start.elapsed().as_millis(),
+                files[0].index,
+                files[0].filename
+            );
         }
     }
 

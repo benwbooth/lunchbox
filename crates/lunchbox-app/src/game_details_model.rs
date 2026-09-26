@@ -315,6 +315,8 @@ pub mod qobject {
 
         #[qinvokable]
         fn download_source_count(self: &GameDetailsModel) -> i32;
+        #[qinvokable]
+        fn download_sources_status(self: &GameDetailsModel) -> QString;
 
         #[qinvokable]
         fn download_source_bundle_at(self: &GameDetailsModel, index: i32) -> i32;
@@ -666,6 +668,7 @@ struct BundleCandidateGroup {
     loaded: bool,
     files: Vec<TorrentFileCandidate>,
     error: String,
+    prefer_self_contained: bool,
 }
 
 pub struct GameDetailsModelRust {
@@ -3667,6 +3670,7 @@ impl qobject::GameDetailsModel {
         let generation = self.as_ref().rust().torrent_generation;
         let title = self.as_ref().rust().canonical_title.clone();
         let alternate_titles = self.as_ref().rust().alternate_titles.clone();
+        let database_id = self.as_ref().rust().database_id;
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_bundle(index);
@@ -3681,7 +3685,7 @@ impl qobject::GameDetailsModel {
             .spawn(move || {
                 let loaded = (|| {
                     let settings = crate::settings::SettingsStore::open_default()?.load()?;
-                    game_details::load_torrent_files(
+                    game_details::load_torrent_files_for_game(
                         &bundle,
                         &title,
                         &alternate_titles,
@@ -3689,6 +3693,7 @@ impl qobject::GameDetailsModel {
                             region_priority: settings.region_priority,
                             version_preference: settings.version_preference,
                         },
+                        Some(database_id).filter(|id| *id > 0),
                     )
                 })()
                 .map_err(|error: anyhow::Error| error.to_string());
@@ -3719,6 +3724,12 @@ impl qobject::GameDetailsModel {
         match loaded {
             Ok(files) => {
                 let count = files.len();
+                let prefer_self_contained = self
+                    .as_ref()
+                    .rust()
+                    .bundles
+                    .get(bundle_index)
+                    .is_some_and(game_details::is_non_merged_arcade_bundle);
                 if let Some(group) = self
                     .as_mut()
                     .rust_mut()
@@ -3728,6 +3739,7 @@ impl qobject::GameDetailsModel {
                     group.loaded = true;
                     group.files = files.clone();
                     group.error.clear();
+                    group.prefer_self_contained = prefer_self_contained;
                 }
                 self.as_mut().rust_mut().files = files;
                 self.as_mut().set_file_count(count_i32(count));
@@ -3768,6 +3780,7 @@ impl qobject::GameDetailsModel {
         let bundles = self.as_ref().rust().bundles.clone();
         let title = self.as_ref().rust().canonical_title.clone();
         let alternate_titles = self.as_ref().rust().alternate_titles.clone();
+        let database_id = self.as_ref().rust().database_id;
         self.as_mut().set_torrent_loading(true);
         self.as_mut().set_message(qstring(format!(
             "Finding the best download across {} torrent source{}…",
@@ -3811,11 +3824,12 @@ impl qobject::GameDetailsModel {
                                     break;
                                 };
                                 let loaded = match preferences.as_ref() {
-                                    Ok(preferences) => game_details::load_torrent_files(
+                                    Ok(preferences) => game_details::load_torrent_files_for_game(
                                         bundle,
                                         &title,
                                         &alternate_titles,
                                         preferences,
+                                        Some(database_id).filter(|id| *id > 0),
                                     )
                                     .map_err(|error| error.to_string()),
                                     Err(error) => Err(error.clone()),
@@ -3866,11 +3880,18 @@ impl qobject::GameDetailsModel {
                 loaded: true,
                 files,
                 error: String::new(),
+                prefer_self_contained: self
+                    .as_ref()
+                    .rust()
+                    .bundles
+                    .get(bundle_index)
+                    .is_some_and(game_details::is_non_merged_arcade_bundle),
             },
             Err(error) => BundleCandidateGroup {
                 loaded: true,
                 files: Vec::new(),
                 error,
+                prefer_self_contained: false,
             },
         };
         if let Some(target) = self
@@ -7444,6 +7465,33 @@ impl qobject::GameDetailsModel {
         )
     }
 
+    pub fn download_sources_status(&self) -> QString {
+        let groups = &self.rust().bundle_candidates;
+        let pending = groups.iter().filter(|group| !group.loaded).count();
+        let errors = groups
+            .iter()
+            .filter(|group| !group.error.is_empty())
+            .count();
+        if pending > 0 && *self.torrent_loading() {
+            return qstring(format!(
+                "Checking {pending} download source{}…",
+                if pending == 1 { "" } else { "s" }
+            ));
+        }
+        if errors > 0 {
+            let reason = groups
+                .iter()
+                .find(|group| !group.error.is_empty())
+                .map(|group| group.error.as_str())
+                .unwrap_or_default();
+            return qstring(format!(
+                "{errors} download source{} could not be checked. {reason}",
+                if errors == 1 { "" } else { "s" }
+            ));
+        }
+        qstring("No matching download was found in the checked sources.")
+    }
+
     pub fn download_source_bundle_at(&self, index: i32) -> i32 {
         download_source_location(&self.rust().bundle_candidates, index)
             .and_then(|index| i32::try_from(index).ok())
@@ -7931,6 +7979,11 @@ fn ranked_source_indices(groups: &[BundleCandidateGroup]) -> Vec<usize> {
             .match_score
             .total_cmp(&groups[left].files[0].match_score)
             .then_with(|| {
+                groups[right]
+                    .prefer_self_contained
+                    .cmp(&groups[left].prefer_self_contained)
+            })
+            .then_with(|| {
                 groups[right].files[0]
                     .byte_size
                     .cmp(&groups[left].files[0].byte_size)
@@ -8174,6 +8227,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             error: String::new(),
+            prefer_self_contained: false,
         }
     }
 
@@ -8272,6 +8326,16 @@ mod tests {
         let groups = vec![small, large, weak];
         assert_eq!(ranked_source_indices(&groups), [1, 0, 2]);
         assert_eq!(download_candidate_location(&groups, 0), Some((1, 0)));
+    }
+
+    #[test]
+    fn arcade_non_merged_match_stays_first_even_when_an_alternative_is_larger() {
+        let mut standalone = candidate_group(true, true);
+        standalone.prefer_self_contained = true;
+        let mut dependent = candidate_group(true, true);
+        dependent.files[0].byte_size = 500;
+        let groups = vec![dependent, standalone];
+        assert_eq!(ranked_source_indices(&groups), [1, 0]);
     }
 
     #[test]

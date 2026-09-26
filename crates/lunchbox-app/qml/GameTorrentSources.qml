@@ -36,6 +36,13 @@ Column {
     readonly property int registeredSourceCount:
         detailsModel ? detailsModel.registered_torrent_source_count : 0
     readonly property bool ranking: detailsModel ? detailsModel.torrent_loading : false
+    readonly property string lookupStatus: {
+        revision
+        ranking
+        return detailsModel && typeof detailsModel.download_sources_status === "function"
+            ? detailsModel.download_sources_status()
+            : ranking ? "Checking download sources…" : "No matching download was found in the checked sources."
+    }
     readonly property bool shouldShowSources:
         (!installed || alternativesExpanded)
         && (showAddSource || ranking || matchingSourceCount > 0
@@ -106,9 +113,7 @@ Column {
                 + ". Exact candidates from those sources and Minerva appear below."
               : root.matchingSourceCount > 0
                 ? "Exact candidates from Minerva appear below."
-                : root.ranking
-                  ? "Ranking exact game payloads…"
-                  : "No exact game payload is indexed yet."
+                : root.lookupStatus
         color: root.muted
         font.pixelSize: 10
         lineHeight: 1.25
