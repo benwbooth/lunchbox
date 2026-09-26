@@ -6113,16 +6113,28 @@ impl qobject::GameDetailsModel {
             // A distinct remote namespace is insufficient unless the selected
             // runtime also has a matching, non-overlapping physical route.
             // Validate that route before advertising the target to QML.
-            crate::platform_locations::save_route_roots_for_platform(
+            let roots = crate::platform_locations::save_route_roots_for_platform(
                 &records,
                 &emulator_slug,
                 runtime_platform,
                 &crate::platform_locations::LocationBases::detect(),
             )?;
+            let state_locations: Vec<_> = roots
+                .iter()
+                .filter(|root| root.route.purpose == crate::save_sync::SavePurpose::States)
+                .map(|root| {
+                    serde_json::json!({
+                        "path": root.path.to_string_lossy(),
+                        "url": local_file_url(&root.path).to_string(),
+                        "exists": root.path.is_dir(),
+                    })
+                })
+                .collect();
             Ok(serde_json::json!({
                 "available": true,
                 "emulator_slug": emulator_slug,
                 "runtime_platform": runtime_platform,
+                "state_locations": state_locations,
             }))
         })();
         qstring(match target {

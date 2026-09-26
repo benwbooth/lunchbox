@@ -14890,6 +14890,35 @@ ApplicationWindow {
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
                     }
 
+                    GameSaveLocationsCard {
+                        width: parent.width
+                        ink: root.ink
+                        muted: root.muted
+                        panel: root.panelRaised
+                        line: root.line
+                        target: {
+                            // Invokables do not track their own property reads.
+                            // Refresh on selection, install, and session changes,
+                            // never by polling the disk or credential store.
+                            const changes = [gameDetails.game_id, gameDetails.detail_revision,
+                                gameDetails.selected_emulator_option, gameDetails.emulator_option_count,
+                                gameDetails.local_file_revision, gameDetails.prepared,
+                                gameDetails.game_running, saveSync.revision]
+                            if (gameDetails.loading)
+                                return {}
+                            try { return JSON.parse(gameDetails.save_sync_target_json()) }
+                            catch (_) { return {} }
+                        }
+                        backup: {
+                            const changes = [saveSync.revision, saveSync.automatic_enabled]
+                            try {
+                                return JSON.parse(saveSync.backup_location_json(
+                                    target.emulator_slug || "", target.runtime_platform || ""))
+                            } catch (_) { return {} }
+                        }
+                        onOpenFolderRequested: folder => Qt.openUrlExternally(folder)
+                    }
+
                     Item {
                         width: 1
                         height: romDownloadStatus.visible

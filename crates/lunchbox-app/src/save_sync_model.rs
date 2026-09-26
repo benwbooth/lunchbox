@@ -73,6 +73,13 @@ pub mod qobject {
         fn remote_device_json(self: &SaveSyncModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn backup_location_json(
+            self: &SaveSyncModel,
+            emulator_slug: QString,
+            runtime_platform: QString,
+        ) -> QString;
+
+        #[qinvokable]
         fn choose_remote_device(self: Pin<&mut SaveSyncModel>, index: i32);
 
         #[qinvokable]
@@ -115,6 +122,9 @@ pub struct SaveSyncModelRust {
     pending_sync: Option<PendingSync>,
     remote_devices: Vec<DeviceHead>,
     recheck_remote_frontier: bool,
+    // Only persisted, non-secret destination metadata. The editable folder field
+    // can contain an unverified draft and must not be advertised as the backup.
+    saved_destination: Option<(CloudProvider, String)>,
 }
 
 impl Default for SaveSyncModelRust {
@@ -141,6 +151,7 @@ impl Default for SaveSyncModelRust {
             pending_sync: None,
             remote_devices: Vec::new(),
             recheck_remote_frontier: false,
+            saved_destination: None,
         }
     }
 }
@@ -194,6 +205,41 @@ fn connected_store(profile: &CloudProfile) -> Result<CloudStore> {
 }
 
 impl qobject::SaveSyncModel {
+    pub fn backup_location_json(
+        &self,
+        emulator_slug: QString,
+        runtime_platform: QString,
+    ) -> QString {
+        let value = match self.rust().saved_destination.as_ref() {
+            Some((provider, root)) => {
+                match SyncScope::new(emulator_slug.to_string(), runtime_platform.to_string()) {
+                    Ok(scope) => {
+                        let path = crate::save_cloud::backup_directory(*provider, root, &scope);
+                        let local = *provider == CloudProvider::LocalFolder;
+                        serde_json::json!({
+                            "configured": true,
+                            "provider": provider.display_name(),
+                            "local": local,
+                            "path": path,
+                            "url": if local {
+                                cxx_qt_lib::QUrl::from_local_file(&qstring(&path)).to_string()
+                            } else { String::new() },
+                            "exists": local && std::path::Path::new(&path).is_dir(),
+                            "automatic": *self.automatic_enabled(),
+                        })
+                    }
+                    Err(_) => serde_json::json!({"configured": true, "path": ""}),
+                }
+            }
+            None => serde_json::json!({
+                "configured": false,
+                "loading": !*self.initialized(),
+                "unavailable": *self.initialized() && self.status().to_string() == "error",
+            }),
+        };
+        qstring(value.to_string())
+    }
+
     pub fn initialize(mut self: Pin<&mut Self>) {
         if *self.as_ref().initialized() || *self.as_ref().busy() {
             return;
@@ -227,6 +273,8 @@ impl qobject::SaveSyncModel {
         self.as_mut().set_initialized(true);
         match result {
             Ok(Some(profile)) => {
+                self.as_mut().rust_mut().saved_destination =
+                    Some((profile.provider, profile.root.clone()));
                 self.as_mut().set_credentials_saved(true);
                 self.as_mut().set_automatic_enabled(profile.automatic);
                 self.as_mut().set_provider(qstring(profile.provider.key()));
@@ -249,6 +297,7 @@ impl qobject::SaveSyncModel {
                 )));
             }
             Ok(None) => {
+                self.as_mut().rust_mut().saved_destination = None;
                 self.as_mut().set_credentials_saved(false);
                 self.as_mut().set_automatic_enabled(false);
                 self.as_mut().set_local_folder_root(QString::default());
@@ -354,6 +403,8 @@ impl qobject::SaveSyncModel {
         self.as_mut().set_busy(false);
         match result {
             Ok(profile) => {
+                self.as_mut().rust_mut().saved_destination =
+                    Some((profile.provider, profile.root.clone()));
                 self.as_mut().set_credentials_saved(true);
                 self.as_mut().set_automatic_enabled(true);
                 self.as_mut().set_provider(qstring(profile.provider.key()));
@@ -475,6 +526,7 @@ impl qobject::SaveSyncModel {
                     model.as_mut().set_busy(false);
                     match result {
                         Ok(()) => {
+                            model.as_mut().rust_mut().saved_destination = None;
                             model.as_mut().rust_mut().prepared = None;
                             model.as_mut().rust_mut().choices.clear();
                             model.as_mut().set_credentials_saved(false);

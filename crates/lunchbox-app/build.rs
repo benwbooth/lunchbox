@@ -154,6 +154,7 @@ fn main() {
                 "qml/GameDownloadStatus.qml",
                 "qml/GameDetailsStatusCard.qml",
                 "qml/GameFilesCard.qml",
+                "qml/GameSaveLocationsCard.qml",
                 "qml/GamePlayHero.qml",
                 "qml/GameSoundtrackCard.qml",
                 "qml/GameTorrentSources.qml",

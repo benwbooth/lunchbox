@@ -1110,7 +1110,24 @@ fn named_version_path(scope: &SyncScope, key: &ArtifactKey, version: &FileVersio
 }
 
 fn current_file_path(scope: &SyncScope, key: &ArtifactKey) -> String {
-    format!("{}/current/{}", scope.remote_prefix(), key.as_str())
+    format!("{}/{}", current_directory(scope), key.as_str())
+}
+
+fn current_directory(scope: &SyncScope) -> String {
+    format!("{}/current", scope.remote_prefix())
+}
+
+/// Display the actual backup namespace without connecting, creating folders,
+/// reading credentials, or migrating an existing store.
+pub fn backup_directory(provider: CloudProvider, root: &str, scope: &SyncScope) -> String {
+    if provider == CloudProvider::LocalFolder {
+        local_folder_store_root(Path::new(root))
+            .join(current_directory(scope))
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        format!("{}/{}", root.trim_end_matches('/'), scope.remote_prefix())
+    }
 }
 
 fn blob_path(scope: &SyncScope, digest: &str) -> String {
@@ -1207,8 +1224,12 @@ fn canonical_local_root(root: &Path) -> Result<std::path::PathBuf> {
     Ok(canonical)
 }
 
+fn local_folder_store_root(root: &Path) -> std::path::PathBuf {
+    root.join("lunchbox")
+}
+
 fn prepare_local_folder_store_root(root: &Path) -> Result<std::path::PathBuf> {
-    let managed_root = root.join("lunchbox");
+    let managed_root = local_folder_store_root(root);
     match std::fs::create_dir(&managed_root) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -1304,6 +1325,46 @@ mod tests {
 
     fn scope() -> SyncScope {
         SyncScope::new("duckstation", "linux").unwrap()
+    }
+
+    #[test]
+    fn backup_directory_matches_readable_local_state_files_without_creating_folders() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("Insync Drive");
+        let scope = SyncScope::new("retroarch-core-mame", "linux-flatpak").unwrap();
+        let displayed =
+            backup_directory(CloudProvider::LocalFolder, root.to_str().unwrap(), &scope);
+        let key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::States,
+                root_index: 0,
+            },
+            "mslug.state.auto",
+        )
+        .unwrap();
+        assert_eq!(
+            Path::new(&displayed).join(key.as_str()),
+            local_folder_store_root(&root).join(current_file_path(&scope, &key)),
+        );
+        assert!(displayed.contains("lunchbox"));
+        assert!(
+            !root.exists(),
+            "displaying a destination must not initialize or migrate it"
+        );
+    }
+
+    #[test]
+    fn backup_directory_for_cloud_is_the_provider_namespace_not_local_current_files() {
+        for provider in [
+            CloudProvider::GoogleDrive,
+            CloudProvider::Dropbox,
+            CloudProvider::OneDrive,
+        ] {
+            assert_eq!(
+                backup_directory(provider, DEFAULT_CLOUD_ROOT, &scope()),
+                "/Lunchbox Save Sync/saves/v1/duckstation/linux",
+            );
+        }
     }
 
     fn version(bytes: &[u8], modified: i64) -> FileVersion {
