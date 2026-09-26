@@ -49,6 +49,8 @@ const MAX_TRANSLATION_MEMORY: usize = 256;
 // Keep the game legible beneath a translated region without letting the
 // original glyphs compete with the English foreground.
 const REGION_BACKGROUND_ALPHA: u8 = 224;
+// Slightly translucent lettering, independent of the panel's opacity.
+const REGION_TEXT_ALPHA: u8 = 230;
 static WARM_OCR: OnceLock<Mutex<Option<RapidOcr>>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1966,10 +1968,14 @@ fn draw_region(pixels: &mut [u8], width: u32, height: u32, region: &TranslatedRe
             let pixel = &mut pixels[pixel_index..pixel_index + 4];
             let ink = u32::from(coverage);
             let background = u32::from(REGION_BACKGROUND_ALPHA);
-            let output_alpha = ink * 255 + background * (255 - ink);
+            let text = u32::from(REGION_TEXT_ALPHA);
+            // Interpolate the panel and glyph as one overlay layer. Drawing
+            // translucent ink source-over the panel would make the combined
+            // letter almost opaque again.
+            let output_alpha = ink * text + background * (255 - ink);
             for channel in &mut pixel[..3] {
                 let output_color =
-                    foreground * ink * 255 + u32::from(*channel) * background * (255 - ink);
+                    foreground * ink * text + u32::from(*channel) * background * (255 - ink);
                 *channel = ((output_color + output_alpha / 2) / output_alpha) as u8;
             }
             pixel[3] = ((output_alpha + 127) / 255) as u8;
@@ -2505,7 +2511,12 @@ mod tests {
         assert_eq!(pixels[(239 * 320 * 4) + 3], 0);
         assert_eq!(pixels[((30 * 320 + 22) * 4) + 3], REGION_BACKGROUND_ALPHA);
         assert_eq!(pixels[((170 * 320 + 40) * 4) + 3], 0);
-        assert!(pixels.chunks_exact(4).any(|pixel| pixel[0] == 255));
+        assert!(pixels
+            .chunks_exact(4)
+            .any(|pixel| pixel[0] == 255 && pixel[3] == REGION_TEXT_ALPHA));
+        assert!(pixels
+            .chunks_exact(4)
+            .all(|pixel| pixel[3] <= REGION_TEXT_ALPHA.max(REGION_BACKGROUND_ALPHA)));
     }
 
     #[test]
