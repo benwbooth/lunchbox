@@ -277,6 +277,7 @@ use lunchpail_controller_probe::retroarch_frontend_autoconfig;
 mod desktop_application;
 mod retroarch_saves;
 mod retroarch_shaders;
+mod retrotube_artwork;
 mod rom_launch_preparation;
 mod runtime_adapter;
 pub mod save_cloud;

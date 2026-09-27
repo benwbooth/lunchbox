@@ -459,6 +459,7 @@ pub fn attach_launch_display_configuration(
         String::from("video_crop_overscan = \"false\"\nvideo_scale_integer = \"false\"\n");
     let mut shader_preset_path = None;
     let mut external_bezel_active = false;
+    let mut reflective_artwork = None;
     let mut black_sidebars = false;
     let requested_bezel = effective_bezel_choice(platform, &customization.display_bezel);
     let automatic_arcade = customization.display_bezel.is_empty()
@@ -532,6 +533,7 @@ pub fn attach_launch_display_configuration(
         }) {
             Ok(Some((overlay_path, viewport))) => {
                 external_bezel_active = true;
+                reflective_artwork = Some((overlay_path.clone(), ultrawide));
                 // The actual output can change after launch (window resizing,
                 // fullscreen, another monitor). Leave any unused area black.
                 black_sidebars = true;
@@ -585,6 +587,7 @@ pub fn attach_launch_display_configuration(
             Some(mut preset_path) => {
                 if customization.display_shader == "retrotube-tv" {
                     if let Some(root) = shader_root(executable) {
+                        let base = preset_path.clone();
                         match install_retrotube_variant(
                             &root,
                             &preset_path,
@@ -595,6 +598,34 @@ pub fn attach_launch_display_configuration(
                             Err(error) => warnings.push(format!(
                                 "RetroTube TV could not install its stable viewport preset: {error:#}"
                             )),
+                        }
+                        if let Some((overlay, ultrawide)) = &reflective_artwork {
+                            let install = || -> Result<PathBuf> {
+                                let overlay = fs::read_to_string(overlay)?;
+                                let image = config_value_from_text(&overlay, "overlay0_overlay")
+                                    .context("Missing reflective bezel artwork")?;
+                                let candidate =
+                                    root.join("lunchpail/retrotube-tv-reflective-artwork.slangp");
+                                fs::copy(&preset_path, &candidate)?;
+                                crate::retrotube_artwork::install(
+                                    &base,
+                                    &candidate,
+                                    Path::new(&image),
+                                    *ultrawide,
+                                )?;
+                                Ok(candidate)
+                            };
+                            match install() {
+                                Ok(path) => {
+                                    preset_path = path;
+                                    // Koko now draws the same fitted artwork and game opening.
+                                    // A post-shader overlay would cover its reflected light.
+                                    lines = reflective_artwork_configuration(&lines);
+                                }
+                                Err(error) => warnings.push(format!(
+                                    "Bezel lighting is unavailable; keeping the normal bezel: {error:#}"
+                                )),
+                            }
                         }
                     }
                 }
@@ -654,6 +685,21 @@ pub fn attach_launch_display_configuration(
     } else {
         Some(warnings.join("; "))
     }
+}
+
+fn reflective_artwork_configuration(lines: &str) -> String {
+    let mut output: String = lines
+        .lines()
+        .filter(|line| {
+            !matches!(
+                line.split_once('=').map(|(key, _)| key.trim()),
+                Some("input_overlay_enable" | "aspect_ratio_index")
+            )
+        })
+        .map(|line| format!("{line}\n"))
+        .collect();
+    output.push_str("input_overlay_enable = \"false\"\naspect_ratio_index = \"24\"\n");
+    output
 }
 
 /// SDL3 reads the physical output mode without creating a window. Viewport
@@ -865,6 +911,20 @@ fn prune_stale_launch_display_configs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reflective_bezel_replaces_overlay_and_aspect_without_duplicate_keys() {
+        let config = reflective_artwork_configuration(
+            "input_overlay_enable = \"true\"\naspect_ratio_index = \"23\"\ncustom_viewport_width = \"1200\"\nvideo_crop_overscan = \"false\"\n",
+        );
+        assert_eq!(config.matches("input_overlay_enable =").count(), 1);
+        assert_eq!(config.matches("aspect_ratio_index =").count(), 1);
+        assert!(config.contains("input_overlay_enable = \"false\""));
+        assert!(config.contains("aspect_ratio_index = \"24\""));
+        // Retain the logical game opening for translation capture alignment.
+        assert!(config.contains("custom_viewport_width = \"1200\""));
+        assert!(config.contains("video_crop_overscan = \"false\""));
+    }
 
     #[test]
     fn every_retroarch_launch_preserves_the_complete_core_frame() {
