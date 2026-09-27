@@ -522,7 +522,8 @@ impl Drop for Core {
 pub fn gba_diagnostic_rom() -> Vec<u8> {
     let mut rom = vec![0; 0x1000];
     rom[..4].copy_from_slice(&0xea00002eu32.to_le_bytes()); // b 0x080000c0
-    rom[0xa0..0xac].copy_from_slice(b"LUNCHPAILTEST");
+    const TITLE: &[u8; 12] = b"LUNCHPAILTST";
+    rom[0xa0..0xac].copy_from_slice(TITLE);
     rom[0xb2] = 0x96; // format marker, not logo data
     rom[0xbd] = rom[0xa0..0xbd]
         .iter()
@@ -716,7 +717,8 @@ pub fn snes_diagnostic_rom() -> Vec<u8> {
     assert!(program.len() < 0x7fc0);
     let mut rom = vec![0u8; 32 * 1024];
     rom[..program.len()].copy_from_slice(&program);
-    rom[0x7fc0..0x7fd5].copy_from_slice(b"LUNCHPAIL SNES INPUT  ");
+    const TITLE: &[u8; 21] = b"LUNCHPAIL SNES INPUT ";
+    rom[0x7fc0..0x7fd5].copy_from_slice(TITLE);
     rom[0x7fd5..0x7fdc].copy_from_slice(&[0x20, 0x00, 0x08, 0x00, 0x01, 0x33, 0x00]);
     for vector in (0x7fe4..0x8000).step_by(2) {
         rom[vector..vector + 2].copy_from_slice(&0x8000u16.to_le_bytes());
@@ -770,7 +772,8 @@ pub fn gameboy_diagnostic_rom() -> Vec<u8> {
     let mut rom = vec![0; 0x8000];
     rom[0x100..0x104].copy_from_slice(&[0x00, 0xc3, 0x50, 0x01]); // nop; jp 0150
     rom[0x104..0x134].copy_from_slice(&CARTRIDGE_LOGO);
-    rom[0x134..0x141].copy_from_slice(b"LUNCHPAILINPUT");
+    const TITLE: &[u8; 14] = b"LUNCHPAILINPUT";
+    rom[0x134..0x134 + TITLE.len()].copy_from_slice(TITLE);
     let program = [
         0xf3, // di
         0x21, 0x04, 0xc0, // ld hl, c004 (execution marker)
@@ -903,7 +906,8 @@ pub fn psx_diagnostic_exe() -> Vec<u8> {
     exe[0x18..0x1c].copy_from_slice(&BASE.to_le_bytes());
     exe[0x1c..0x20].copy_from_slice(&0x800u32.to_le_bytes());
     exe[0x30..0x34].copy_from_slice(&0x801f_ff00u32.to_le_bytes());
-    exe[0x4c..0x63].copy_from_slice(b"LUNCHPAIL PSX INPUT TEST");
+    const TITLE: &[u8; 24] = b"LUNCHPAIL PSX INPUT TEST";
+    exe[0x4c..0x4c + TITLE.len()].copy_from_slice(TITLE);
     for (index, word) in words.into_iter().enumerate() {
         exe[0x800 + index * 4..0x804 + index * 4].copy_from_slice(&word.to_le_bytes());
     }
@@ -4079,7 +4083,7 @@ mod tests {
         let rom = snes_diagnostic_rom();
         assert_eq!(rom, snes_diagnostic_rom());
         assert_eq!(rom.len(), 32 * 1024);
-        assert_eq!(&rom[0x7fc0..0x7fd5], b"LUNCHPAIL SNES INPUT  ");
+        assert_eq!(&rom[0x7fc0..0x7fd5], b"LUNCHPAIL SNES INPUT ");
         assert_eq!(
             &rom[0x7fd5..0x7fdc],
             &[0x20, 0x00, 0x08, 0x00, 0x01, 0x33, 0x00]

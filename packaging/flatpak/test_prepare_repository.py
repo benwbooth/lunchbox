@@ -101,6 +101,13 @@ class RepositoryPublicationTests(unittest.TestCase):
                 self.assertIn("GPGKey=public-key", descriptor)
                 self.assertIn("Url=https://benwbooth.github.io/lunchpail/flatpak/", descriptor)
 
+    def test_download_command_follows_the_published_app_id(self):
+        for app in (publisher.APP, "io.github.benwbooth.Lunchbox"):
+            page = publisher.download_page(app)
+            self.assertIn("flatpak run " + app, page)
+            self.assertNotIn("@APP_ID@", page)
+            self.assertEqual("predates the rename" in page, app != publisher.APP)
+
 
 if __name__ == "__main__":
     unittest.main()

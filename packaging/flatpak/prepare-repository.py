@@ -93,6 +93,14 @@ def write_descriptors(output, key, app=APP):
         encoding="utf-8")
 
 
+def download_page(app):
+    template = Path(__file__).with_name("download.html").read_text()
+    legacy_note = ("<p>The current stable release predates the rename and retains its original app ID. "
+                   "The installer follows the published release; future packages use Lunchpail.</p>")
+    return template.replace("@APP_ID@", app).replace(
+        "@LEGACY_RELEASE_NOTE@", legacy_note if app != APP else "")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -138,7 +146,7 @@ def main():
     write_descriptors(args.output, base64.b64encode(key).decode("ascii"), identity["app_id"])
     identity["source_commit"] = api(f"commits/{identity['tag']}")["sha"]
     (args.output / "release.json").write_text(json.dumps(identity, indent=2) + "\n")
-    (args.output / "index.html").write_text((source / "download.html").read_text())
+    (args.output / "index.html").write_text(download_page(identity["app_id"]))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write("publish=true\n")

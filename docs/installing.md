@@ -51,8 +51,22 @@ in your software manager, or use:
 
 ~~~sh
 flatpak install --user https://benwbooth.github.io/lunchpail/lunchpail.flatpakref
-flatpak run io.github.benwbooth.Lunchpail
+flatpak run io.github.benwbooth.Lunchbox
 ~~~
+
+That launch command matches the published v0.1.2 package, which predates the
+rename. The [download page](https://benwbooth.github.io/lunchpail/) always shows
+the command for the current stable package.
+
+If you previously added the `lunchbox` Flatpak remote, point it to the renamed
+repository so updates keep working:
+
+~~~sh
+flatpak remote-modify --user --url=https://benwbooth.github.io/lunchpail/flatpak/ lunchbox
+~~~
+
+This changes the update URL without removing the app or its data. For a
+system-wide remote, use `--system` instead of `--user`.
 
 This adds Lunchpail's signed update repository and offers the Flathub runtime
 source. Update through your software manager or `flatpak update --user`.

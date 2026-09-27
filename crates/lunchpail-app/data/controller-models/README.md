@@ -5,7 +5,8 @@
 The runtime catalog labels the imported, ambiguously named Steam Controller
 records as legacy profiles (not Steam Controller 2), preserving their original
 IDs, reported names and mappings. The separate entry
-`lunchpail:steam-controller-2026:sdl3` uses the native SDL3 Triton driver, not a
+`lunchbox:steam-controller-2026:sdl3` (a stable ID retained for saved calibrations)
+uses the native SDL3 Triton driver, not a
 fabricated mapping-database row. Detection comes from the live SDL3 runtime.
 The controller card offers "Use SDL3 mapping" for standard controls, grip
 buttons and pad clicks. See [native input integration](https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_SDL3_NATIVE.md)

@@ -95,6 +95,8 @@ flatpak run io.github.benwbooth.Lunchbox
 This adds the signed Lunchpail repository and offers to add Flathub for the KDE
 runtime. Future updates appear in your software manager, or run `flatpak update --user`.
 Lunchpail is hosted in its own repository, not on Flathub.
+Already using the old Lunchbox Flatpak repository? See the
+[update URL instructions](docs/installing.md#linux) to keep receiving updates.
 
 To add the repository separately:
 

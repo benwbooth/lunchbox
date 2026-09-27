@@ -850,6 +850,10 @@ pub fn run() -> i32 {
     application_ref
         .as_mut()
         .set_organization_domain(&QString::from("github.com/benwbooth"));
+    if !headless_ui_probe && !desktop_application::migrate_ui_settings() {
+        eprintln!("LUNCHPAIL_UI_SETTINGS_UPGRADE_FAILED: original preferences remain unchanged");
+        return 1;
+    }
     let mut engine = QQmlApplicationEngine::new();
     let engine = engine
         .as_mut()

@@ -112,7 +112,8 @@ mod tests {
         iso[pvd] = 1;
         iso[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
         iso[pvd + 6] = 1;
-        iso[pvd + 40..pvd + 40 + 8].copy_from_slice(b"LUNCHPAIL");
+        const VOLUME: &[u8; 9] = b"LUNCHPAIL";
+        iso[pvd + 40..pvd + 40 + VOLUME.len()].copy_from_slice(VOLUME);
         iso[pvd + 80..pvd + 84].copy_from_slice(&(SECTORS as u32).to_le_bytes());
         let iso_path = directory.path().join("disc.iso");
         std::fs::write(&iso_path, &iso).unwrap();

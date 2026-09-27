@@ -2256,7 +2256,8 @@ pub fn gameboy_persistence_rom() -> Vec<u8> {
     let mut rom = vec![0u8; 32 * 1024];
     rom[0x100..0x104].copy_from_slice(&[0x00, 0xc3, 0x50, 0x01]); // nop; jp $0150
     rom[0x104..0x134].copy_from_slice(&CARTRIDGE_LOGO);
-    rom[0x134..0x140].copy_from_slice(b"LUNCHPAILSAVE");
+    const TITLE: &[u8; 13] = b"LUNCHPAILSAVE";
+    rom[0x134..0x134 + TITLE.len()].copy_from_slice(TITLE);
     rom[0x147] = 0x03; // MBC1 + RAM + battery
     rom[0x148] = 0x00; // 32 KiB ROM
     rom[0x149] = 0x03; // 32 KiB external RAM
@@ -2468,7 +2469,8 @@ pub fn snes_persistence_rom() -> Vec<u8> {
 
     let mut rom = vec![0u8; 32 * 1024];
     rom[..program.len()].copy_from_slice(&program);
-    rom[0x7fc0..0x7fd5].copy_from_slice(b"LUNCHPAIL PERSISTENCE ");
+    const TITLE: &[u8; 21] = b"LUNCHPAIL PERSISTENCE";
+    rom[0x7fc0..0x7fd5].copy_from_slice(TITLE);
     rom[0x7fd5..0x7fdc].copy_from_slice(&[
         0x20, // LoROM, slow ROM
         0x02, // ROM + RAM + battery
@@ -2555,7 +2557,7 @@ mod tests {
         assert_eq!(rom, gameboy_persistence_rom());
         assert_eq!(rom.len(), 32 * 1024);
         assert_eq!(&rom[0x100..0x104], &[0x00, 0xc3, 0x50, 0x01]);
-        assert_eq!(&rom[0x134..0x140], b"LUNCHPAILSAVE");
+        assert_eq!(&rom[0x134..0x141], b"LUNCHPAILSAVE");
         assert_eq!(&rom[0x147..0x14a], &[0x03, 0x00, 0x03]);
         assert_eq!(
             rom[0x14d],
@@ -2594,7 +2596,7 @@ mod tests {
         let rom = snes_persistence_rom();
         assert_eq!(rom, snes_persistence_rom());
         assert_eq!(rom.len(), 32 * 1024);
-        assert_eq!(&rom[0x7fc0..0x7fd5], b"LUNCHPAIL PERSISTENCE ");
+        assert_eq!(&rom[0x7fc0..0x7fd5], b"LUNCHPAIL PERSISTENCE");
         assert_eq!(
             &rom[0x7fd5..0x7fdc],
             &[0x20, 0x02, 0x05, 0x03, 0x01, 0x33, 0x00]

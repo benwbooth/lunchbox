@@ -144,6 +144,10 @@
               -o "$TMPDIR/button-label-tests"
             QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=1.3 "$TMPDIR/button-label-tests" \
               -input crates/lunchpail-app/tests/qml/tst_button_labels.qml
+            $CXX -std=c++17 -fPIC crates/lunchpail-app/tests/ui_settings_migration.cpp \
+              -Icrates/lunchpail-app/include $(pkg-config --cflags --libs Qt6Core) \
+              -o "$TMPDIR/ui-settings-migration-tests"
+            "$TMPDIR/ui-settings-migration-tests"
             cargo test --package lunchpail-app --lib --release \
               ${pkgs.lib.optionalString (system == "x86_64-linux") "--features rocm-ocr"} \
               --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget}

@@ -4,6 +4,7 @@
 #include <QGuiApplication>
 
 #include "cxx-qt-lib/qcoreapplication.h"
+#include "ui_settings_migration.h"
 
 namespace lunchpail {
 inline std::unique_ptr<QGuiApplication>

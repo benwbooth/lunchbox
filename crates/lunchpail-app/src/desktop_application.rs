@@ -14,7 +14,14 @@ mod ffi {
         #[namespace = "lunchpail"]
         #[rust_name = "new_desktop_application"]
         fn newDesktopApplication(args: &QVector_QByteArray) -> UniquePtr<QGuiApplication>;
+        #[namespace = "lunchpail"]
+        #[rust_name = "migrate_ui_settings"]
+        fn migrateUiSettings() -> bool;
     }
+}
+
+pub fn migrate_ui_settings() -> bool {
+    ffi::migrate_ui_settings()
 }
 
 pub fn new() -> cxx::UniquePtr<QGuiApplication> {

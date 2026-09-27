@@ -23,9 +23,8 @@
 It adds the signed Lunchpail update source and the required runtime source.</p>
 <p>Or, with <a href="https://flatpak.org/setup/">Flatpak installed</a>, run:</p>
 <pre><code>flatpak install --user https://benwbooth.github.io/lunchpail/lunchpail.flatpakref
-flatpak run io.github.benwbooth.Lunchbox</code></pre>
-<p>The current stable release predates the rename and retains its original app ID.
-The installer follows the published release; future packages use Lunchpail.</p>
+flatpak run @APP_ID@</code></pre>
+@LEGACY_RELEASE_NOTE@
 <p>Updates appear in your software manager. From the terminal, use <code>flatpak update --user</code>.</p>
 <p>For an existing Flatpak setup, you can also <a href="lunchpail.flatpakrepo">add the repository</a> separately.</p>
 <h2>macOS · Homebrew</h2>
