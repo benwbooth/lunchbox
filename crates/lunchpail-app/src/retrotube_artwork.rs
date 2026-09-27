@@ -54,30 +54,7 @@ pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool)
         content,
         &format!("vec4 lunchpailPictureBounds = texelFetch(lunchpail_picture_bounds, ivec2(2), 0);\n{content}"),
     );
-    adapted = adapted.replace(
-        light,
-        "// Keep the printed outer artwork unlit. Reflect into the transparent\n\
-         // inner lip, including native blank margins, never over game pixels.\n\
-         vec3 light = vec3(0.0);\n\
-         float lunchpailArtBounds = step(0.0, image_coords.x) * step(image_coords.x, 1.0)\n\
-         * step(0.0, image_coords.y) * step(image_coords.y, 1.0);\n\
-         vec2 lunchpailEdge = clamp(co_content, lunchpailPictureBounds.xy, lunchpailPictureBounds.zw);\n\
-         vec2 lunchpailOutside = abs(co_content - lunchpailEdge);\n\
-         lunchpailOutside.x *= vIn_aspect;\n\
-         float lunchpailDistance = length(lunchpailOutside);\n\
-         float lunchpailLip = step(0.00001, lunchpailDistance)\n\
-         * (1.0 - smoothstep(0.0, 0.10, lunchpailDistance))\n\
-         * (1.0 - pixel_fg_image.a) * lunchpailArtBounds;\n\
-         if (lunchpailLip > 0.0) {\n\
-             vec2 lunchpailMirror = 2.0 * lunchpailEdge - co_content;\n\
-             vec2 lunchpailBlur = 1.5 / vec2(textureSize(in_glow_pass, 0));\n\
-             vec3 lunchpailReflection = texture(in_glow_pass, lunchpailMirror).rgb * 0.5\n\
-                 + texture(in_glow_pass, lunchpailMirror + lunchpailBlur).rgb * 0.25\n\
-                 + texture(in_glow_pass, lunchpailMirror - lunchpailBlur).rgb * 0.25;\n\
-             lunchpailReflection = pow(max(lunchpailReflection, vec3(0.0)), vec3(GAMMA_OUT));\n\
-             pixel_out += lunchpailReflection * lunchpailLip * 0.55;\n\
-         }",
-    );
+    adapted = adapted.replace(light, include_str!("retrotube_inner_reflection.slang"));
     for include in ["config.inc", "includes/functions.include.slang"] {
         let directive = format!("#include \"{include}\"");
         ensure!(
@@ -296,11 +273,38 @@ mod tests {
         assert!(adapted.contains("#include \"/shaders/koko/config.inc\""));
         assert!(adapted.contains("vec3 light = vec3(0.0)"));
         assert!(adapted.contains("* (1.0 - pixel_fg_image.a) * lunchpailArtBounds"));
-        assert!(adapted.contains("texture(in_glow_pass, lunchpailMirror)"));
+        assert!(adapted.contains("texture(in_glow_pass, lunchpailSample)"));
         assert!(adapted.contains("lunchpailReflection * lunchpailLip"));
         assert!(adapted.contains("texelFetch(lunchpail_picture_bounds, ivec2(2), 0)"));
         assert!(adapted.contains("is_first_inside_rect(co_content, vec4(0.08, 0.08, 0.92, 0.92))"));
         assert!(!adapted.contains("lunchpailArtMask"));
+    }
+
+    #[test]
+    fn inner_lip_uses_koko_material_controls_without_changing_screen_geometry() {
+        let material = include_str!("retrotube_inner_reflection.slang");
+        for control in [
+            "BEZEL_REFL_STRENGTH",
+            "BEZEL_RFL_BLR_SHD",
+            "BEZEL_RFL_ZOOM",
+            "BEZEL_ROUGHNESS",
+            "BEZEL_CORNER_DARK",
+        ] {
+            assert!(
+                material.contains(control),
+                "Missing material control {control}"
+            );
+        }
+        assert!(material.contains("2.0 * lunchpailEdge - co_content"));
+        assert!(material.contains("corners_shade(lunchpailSurface, 1.125)"));
+        assert!(material.contains("direction < 8"));
+        assert!(material.contains("random_fast(vTexCoord)"));
+        assert!(
+            !material.contains("FrameCount"),
+            "Surface grain must not shimmer"
+        );
+        assert!(!material.contains("co_content ="));
+        assert!(!material.contains("* 0.55"));
     }
 
     #[test]

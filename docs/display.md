@@ -20,6 +20,10 @@ external artwork as well as Koko's built-in TV frame. The artwork
 keeps its shape, unused sidebars stay black, and the game retains its curved
 screen opening. The effect applies on the next game launch.
 
+The inner surface uses a subdued, softly blurred reflection with darker corners
+and fine surface roughness, following Koko's TV treatment. RetroArch's shader
+parameters let you adjust reflection strength, sharpness, and roughness.
+
 If a shader pack is missing, use the shader controls in Settings to install
 or refresh it. Installing a shader collection does not select it for every game.
 
