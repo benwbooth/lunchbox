@@ -239,6 +239,7 @@ mod firmware_audit;
 pub mod firmware_audit_model;
 mod game_details;
 pub mod game_details_model;
+mod gamebuddy;
 mod game_mods;
 pub mod game_mods_model;
 pub mod gamepad_input;

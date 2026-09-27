@@ -28,6 +28,8 @@ pub mod qobject {
         #[qproperty(bool, launch_busy)]
         #[qproperty(bool, can_launch)]
         #[qproperty(bool, game_running)]
+        #[qproperty(bool, gamebuddy_enabled)]
+        #[qproperty(QString, gamebuddy_executable)]
         #[qproperty(QString, session_title)]
         #[qproperty(bool, session_stopping)]
         #[qproperty(QString, game_id)]
@@ -368,6 +370,9 @@ pub mod qobject {
         fn launch_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn configure_gamebuddy(self: Pin<&mut GameDetailsModel>, enabled: bool, executable: QString);
+
+        #[qinvokable]
         fn save_sync_target_json(self: &GameDetailsModel) -> QString;
 
         #[qinvokable]
@@ -696,6 +701,8 @@ pub struct GameDetailsModelRust {
     launch_busy: bool,
     can_launch: bool,
     game_running: bool,
+    gamebuddy_enabled: bool,
+    gamebuddy_executable: QString,
     session_title: QString,
     session_stopping: bool,
     game_id: QString,
@@ -938,6 +945,7 @@ impl Default for GameDetailsModelRust {
             .inspect_err(|error| eprintln!("LUNCHPAIL_EMULATOR_SESSION_RECOVERY_FAILED: {error:#}"))
             .ok()
             .flatten();
+        let gamebuddy_config = crate::gamebuddy::load().unwrap_or_default();
         Self {
             panel_open: false,
             loading: false,
@@ -957,6 +965,8 @@ impl Default for GameDetailsModelRust {
             launch_busy: session.as_ref().is_some_and(|session| session.preparing()),
             can_launch: false,
             game_running: session.as_ref().is_some_and(|session| !session.preparing()),
+            gamebuddy_enabled: gamebuddy_config.enabled,
+            gamebuddy_executable: qstring(gamebuddy_config.executable),
             session_title: qstring(session.as_ref().map_or("", |session| &session.title)),
             session_stopping: false,
             game_id: QString::default(),
@@ -6284,6 +6294,17 @@ impl qobject::GameDetailsModel {
         })
     }
 
+    pub fn configure_gamebuddy(mut self: Pin<&mut Self>, enabled: bool, executable: QString) {
+        let config = crate::gamebuddy::Config { enabled, executable: executable.to_string().trim().to_owned() };
+        match config.save() {
+            Ok(()) => {
+                self.as_mut().set_gamebuddy_enabled(config.enabled);
+                self.as_mut().set_gamebuddy_executable(qstring(config.executable));
+            }
+            Err(error) => self.as_mut().set_launch_status(qstring(format!("Could not save GameBuddy preferences: {error:#}"))),
+        }
+    }
+
     pub fn launch_game(mut self: Pin<&mut Self>) {
         self.as_mut().refresh_emulator_session();
         if *self.as_ref().launch_busy()
@@ -6355,6 +6376,10 @@ impl qobject::GameDetailsModel {
 
         let game_id = self.as_ref().game_id().to_string();
         let activity_title = self.as_ref().rust().canonical_title.clone();
+        let gamebuddy_config = crate::gamebuddy::Config {
+            enabled: *self.as_ref().gamebuddy_enabled(),
+            executable: self.as_ref().gamebuddy_executable().to_string(),
+        };
         let sync_target = serde_json::from_str::<serde_json::Value>(
             &self.as_ref().launch_sync_target_json().to_string(),
         )
@@ -6912,8 +6937,15 @@ impl qobject::GameDetailsModel {
                         .as_ref()
                         .err()
                         .map(|error| format!("Play activity could not be recorded: {error}"));
+                    let gamebuddy_warning = match gamebuddy_config.launch(
+                        &activity_title, &game_id, &activity_platform, process_id, &worker_session_token,
+                    ) {
+                        Ok(Some(pid)) => { eprintln!("LUNCHPAIL_GAMEBUDDY_STARTED pid={pid} game_pid={process_id}"); None }
+                        Ok(None) => None,
+                        Err(error) => Some(format!("GameBuddy: {error:#}")),
+                    };
                     let tracking_warning =
-                        [controller_warning, calibration_warning, activity_warning, display_warning]
+                        [controller_warning, calibration_warning, activity_warning, display_warning, gamebuddy_warning]
                         .into_iter()
                         .flatten()
                         .collect::<Vec<_>>();

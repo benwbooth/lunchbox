@@ -15408,6 +15408,24 @@ ApplicationWindow {
                                         gameDetails.prepare_game()
                                 }
                             }
+                            CheckBox {
+                                width: parent.width
+                                text: "Launch with GameBuddy"
+                                checked: gameDetails.gamebuddy_enabled
+                                enabled: !gameDetails.launch_busy && !gameDetails.game_running
+                                onClicked: gameDetails.configure_gamebuddy(checked, gameDetails.gamebuddy_executable)
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Start the separate GameBuddy assistant after the game launches."
+                            }
+                            TextField {
+                                width: parent.width
+                                visible: gameDetails.gamebuddy_enabled
+                                text: gameDetails.gamebuddy_executable
+                                placeholderText: "GameBuddy executable (or PATH)"
+                                enabled: !gameDetails.launch_busy && !gameDetails.game_running
+                                selectByMouse: true
+                                onEditingFinished: gameDetails.configure_gamebuddy(gameDetails.gamebuddy_enabled, text)
+                            }
                         }
                     }
 
@@ -25168,7 +25186,7 @@ ApplicationWindow {
                                 return launchProfileManager.display_shader_preset_supported()
                             }
                             Text {
-                                text: "CRT SHADER"
+                                text: "Display shader"
                                 color: root.muted
                                 font.pixelSize: 8
                                 font.weight: Font.Bold
