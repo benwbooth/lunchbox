@@ -608,7 +608,8 @@ fn load_related_games_from_connection(
                 .unwrap_or_default()
                 .apply(&candidate.canonical);
             if hide_non_retail
-                && catalog::is_non_retail_game(&effective.title, Some(&effective.release_type))
+                && catalog::is_non_retail_game_on_platform(&effective.title, &candidate.platform,
+                    Some(&effective.release_type), Some(&effective.version))
             {
                 return None;
             }

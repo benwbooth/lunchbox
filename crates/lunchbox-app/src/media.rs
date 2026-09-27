@@ -108,8 +108,8 @@ static PROVIDER_FAILURES: std::sync::OnceLock<Mutex<HashMap<String, Instant>>> =
     std::sync::OnceLock::new();
 
 // These aliases are exact mappings between names in the Lunchbox discovery
-// catalog and current libretro-thumbnails playlist directories. They are media
-// routing hints only; they never create or accept a game identity link.
+// catalog and current Libretro platform names. Shared by media routing and
+// release classification; they never create or accept a game identity link.
 const LIBRETRO_PLATFORM_ALIASES: &[(&str, &str)] = &[
     ("3DO Interactive Multiplayer", "The 3DO Company - 3DO"),
     ("Amstrad CPC", "Amstrad - CPC"),
@@ -2464,7 +2464,7 @@ fn write_negative_cache(root: &Path, request: &MediaFetchRequest, reason: &str) 
     .with_context(|| format!("writing negative artwork cache {}", path.display()))
 }
 
-fn libretro_platform_name(platform: &str) -> Option<&'static str> {
+pub(crate) fn libretro_platform_name(platform: &str) -> Option<&'static str> {
     let platform = platform.trim();
     LIBRETRO_PLATFORM_ALIASES
         .iter()

@@ -50,6 +50,13 @@ such as Installed, Minerva, or hidden non-retail releases.
 Grid view emphasizes artwork. List view lets you choose columns, sort records,
 and filter exact values.
 
+**Homebrew / pirate releases** also covers ROM hacks, bootlegs, and unlicensed
+releases. Choose **Exclude** to hide them or **Only** to find them. Lunchbox
+combines the recorded release type with ROM metadata, including homebrew tags
+and individually identified HBMAME releases. An official game stays visible
+when only one of its versions is a hack. Prototypes and demos are not treated
+as homebrew just because they were never sold.
+
 The **Releases** section in Game details lets you switch between regional and
 versioned entries. Each release keeps its own identity; selecting a Japanese
 release does not rename or replace an installed US release.

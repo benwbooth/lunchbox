@@ -238,6 +238,9 @@ pub fn load(path: &Path) -> Result<Catalog> {
     if let Err(error) = crate::arcade_content::initialize(&connection) {
         eprintln!("LUNCHBOX_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
     }
+    if let Err(error) = crate::release_content::initialize(&connection) {
+        eprintln!("LUNCHBOX_NON_RETAIL_METADATA_UNAVAILABLE {error:#}");
+    }
 
     if let Some(discovery_path) = requested_discovery_database_path() {
         return load_discovery_catalog(
@@ -260,6 +263,9 @@ pub fn load_preview(path: &Path, focus: &CatalogPreviewFocus) -> Result<Option<C
     validate_canonical_schema(&canonical)?;
     if let Err(error) = crate::arcade_content::initialize(&canonical) {
         eprintln!("LUNCHBOX_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
+    }
+    if let Err(error) = crate::release_content::initialize(&canonical) {
+        eprintln!("LUNCHBOX_NON_RETAIL_METADATA_UNAVAILABLE {error:#}");
     }
     let Some(discovery_path) = requested_discovery_database_path() else {
         return Ok(None);
@@ -299,9 +305,13 @@ fn load_preview_from_sources(
     } else {
         "g.title"
     };
+    let release_type = optional_game_column(&discovery, "release_type")?;
+    let version = optional_game_column(&discovery, "version")?;
+    let esrb = optional_game_column(&discovery, "esrb")?;
+    let genre = optional_game_column(&discovery, "genre")?;
     let query = format!(
         "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
-                coalesce(g.launchbox_db_id, 0)
+                coalesce(g.launchbox_db_id, 0), {release_type}, {version}, {esrb}, {genre}
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
          WHERE (?1 = '' OR p.name = ?1)
@@ -316,15 +326,19 @@ fn load_preview_from_sources(
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
             row.get::<_, i64>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
         ))
     })?;
     let mut games = Vec::with_capacity(240 + installed.local_only_games.len());
     let mut list_metadata = ListMetadataBuilder::with_capacity(games.capacity());
     for row in rows {
-        let (id, title, platform, status, database_id) = row?;
+        let (id, title, platform, status, database_id, release_type, version, esrb, genre) = row?;
         let local = installed.is_local(&id, &title, &platform, database_id);
-        let non_retail = is_non_retail_game(&title, None);
-        let adult = is_adult_game_on_platform(&title, &platform, None, None);
+        let non_retail = is_non_retail_game_on_platform(&title, &platform, release_type.as_deref(), version.as_deref());
+        let adult = is_adult_game_on_platform(&title, &platform, esrb.as_deref(), genre.as_deref());
         let release_regions = release_region_membership(&title, None);
         let media_id = stable_media_id(database_id, &id);
         games.push(Game {
@@ -449,7 +463,8 @@ fn validate_canonical_schema(connection: &Connection) -> Result<()> {
 }
 
 fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
-    let mut statement = connection.prepare(
+    let game_type = if column_exists(connection, "games", "game_type")? { "games.game_type" } else { "NULL" };
+    let query = format!(
         "WITH local_games AS (\n\
              SELECT DISTINCT releases.game_id\n\
              FROM local_files\n\
@@ -465,7 +480,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
          )\n\
          SELECT games.id, games.canonical_title,\n\
                 coalesce(platforms.canonical_name, ''), games.status,\n\
-                local_games.game_id IS NOT NULL, offer_games.game_id IS NOT NULL\n\
+                local_games.game_id IS NOT NULL, offer_games.game_id IS NOT NULL, {game_type}\n\
          FROM games\n\
          LEFT JOIN releases ON releases.id = (\n\
              SELECT candidate.id FROM releases AS candidate\n\
@@ -479,12 +494,14 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
          WHERE games.status NOT IN ('deprecated', 'merged')\n\
          ORDER BY coalesce(nullif(games.sort_title, ''), games.canonical_title) COLLATE NOCASE,\n\
                   games.id",
-    )?;
+    );
+    let mut statement = connection.prepare(&query)?;
     let game_rows = statement.query_map([], |row| {
         let id: String = row.get(0)?;
         let title: String = row.get(1)?;
         let platform: String = row.get(2)?;
-        let non_retail = is_non_retail_game(&title, None);
+        let game_type: Option<String> = row.get(6)?;
+        let non_retail = is_non_retail_game_on_platform(&title, &platform, game_type.as_deref(), None);
         let adult = is_adult_game_on_platform(&title, &platform, None, None);
         let release_regions = release_region_membership(&title, None);
         Ok(Game {
@@ -758,7 +775,7 @@ fn load_discovery_catalog_with_native_state(
             });
             (lower.as_str(), *covered)
         };
-        let non_retail = is_non_retail_game(&title, release_type.as_deref());
+        let non_retail = is_non_retail_game_on_platform(&title, &platform, release_type, text_column(row, 19));
         let adult = is_adult_game_on_platform(&title, &platform, esrb.as_deref(), genre.as_deref());
         let release_regions = release_region_membership(&title, region.as_deref());
         let media_id = stable_media_id(database_id, &id);
@@ -1651,7 +1668,7 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
         if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
             installed.game_uids.insert(game_uid);
         } else {
-            let non_retail = is_non_retail_game(&title, None);
+            let non_retail = is_non_retail_game_on_platform(&title, &platform, None, None);
             let adult = is_adult_game_on_platform(&title, &platform, None, None);
             let release_regions = release_region_membership(&title, None);
             let game_uid = format!("local-file:{id}");
@@ -1869,16 +1886,6 @@ fn count(connection: &Connection, table: &str, predicate: &str) -> Result<usize>
     usize::try_from(value).context("database count exceeded addressable memory")
 }
 
-const NON_RETAIL_RELEASE_TYPES: [&str; 3] = ["homebrew", "rom hack", "unlicensed"];
-const NON_RETAIL_TITLE_TAGS: [&str; 6] = [
-    "homebrew",
-    "hack",
-    "pirate",
-    "bootleg",
-    "unl",
-    "aftermarket",
-];
-
 fn release_region_membership(title: &str, metadata_region: Option<&str>) -> u64 {
     let mut mask = 0_u64;
     if let Some(region) = metadata_region.filter(|region| !region.trim().is_empty()) {
@@ -1952,30 +1959,11 @@ fn apply_alternate_release_regions(connection: &Connection, games: &mut [Game]) 
 }
 
 pub(crate) fn is_non_retail_game(title: &str, release_type: Option<&str>) -> bool {
-    if release_type.is_some_and(|value| {
-        NON_RETAIL_RELEASE_TYPES
-            .iter()
-            .any(|expected| value.trim().eq_ignore_ascii_case(expected))
-    }) {
-        return true;
-    }
+    crate::release_content::explicit(title, release_type, None)
+}
 
-    let mut remainder = title;
-    while let Some(open) = remainder.find('(') {
-        remainder = &remainder[open + 1..];
-        let Some(close) = remainder.find(')') else {
-            break;
-        };
-        let tag = remainder[..close].trim();
-        if NON_RETAIL_TITLE_TAGS
-            .iter()
-            .any(|expected| tag.eq_ignore_ascii_case(expected))
-        {
-            return true;
-        }
-        remainder = &remainder[close + 1..];
-    }
-    false
+pub(crate) fn is_non_retail_game_on_platform(title: &str, platform: &str, release_type: Option<&str>, version: Option<&str>) -> bool {
+    crate::release_content::is_non_retail(title, platform, release_type, version)
 }
 
 fn contains_ascii_phrase(text: &str, phrase: &str) -> bool {
@@ -2866,6 +2854,16 @@ mod tests {
         assert_eq!(catalog.local_file_count, 1);
         assert_eq!(catalog.offer_count, 1);
         assert_eq!(catalog.emulator_count, 1);
+
+        // Public canonical catalogs carry classification in game_type rather
+        // than the optional discovery database's release_type column.
+        drop(connection);
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch("ALTER TABLE games ADD COLUMN game_type TEXT;
+            UPDATE games SET canonical_title='Independent Creation', game_type='homebrew';").unwrap();
+        let catalog = load_canonical_catalog(&connection).unwrap();
+        assert!(catalog.games[0].non_retail);
+        assert!(filter_indices(&catalog, &Filter { hide_non_retail: true, ..Filter::default() }).is_empty());
     }
 
     #[test]
@@ -3579,6 +3577,21 @@ mod tests {
                 .iter()
                 .all(|game| game.platform == "Saved System")
         );
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery.execute_batch("ALTER TABLE games ADD COLUMN release_type TEXT;
+            ALTER TABLE games ADD COLUMN version TEXT;
+            UPDATE games SET release_type='Homebrew' WHERE id='saved-299';
+            UPDATE games SET version='ROM Hack' WHERE id='saved-000';").unwrap();
+        let preview = load_preview_from_sources(&canonical, &discovery_path,
+            None, None, None, None, &CatalogPreviewFocus {
+                platform: "Saved System".into(), game_uid: "saved-299".into(),
+            }).unwrap();
+        for id in ["saved-299", "saved-000"] {
+            assert!(preview.catalog.games.iter().find(|game| game.id == id).unwrap().non_retail);
+        }
+        let visible = filter_indices(&preview.catalog, &Filter { hide_non_retail: true, ..Filter::default() });
+        assert!(visible.iter().all(|index| !preview.catalog.games[*index].non_retail));
     }
 
     #[test]
