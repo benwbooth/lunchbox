@@ -449,6 +449,7 @@ impl ArtworkKind {
 pub struct MediaAsset {
     pub path: PathBuf,
     pub source: String,
+    pub cache_version: u128,
     source_rank: usize,
     format_rank: usize,
 }
@@ -458,6 +459,15 @@ pub struct SupplementalMedia {
     pub video: Option<MediaAsset>,
     pub manual: Option<MediaAsset>,
     pub soundtrack: Vec<SoundtrackAsset>,
+}
+
+// Read once when indexing/replacing an asset, never in a QML frame binding.
+fn image_cache_version(path: &Path) -> u128 {
+    path.metadata()
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |age| age.as_nanos())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -669,6 +679,7 @@ impl MediaIndex {
         let inserted = game_media.insert(
             kind,
             MediaAsset {
+                cache_version: image_cache_version(&path),
                 path,
                 source: source.to_owned(),
                 source_rank: provider_rank(source, &self.provider_priority),
@@ -905,6 +916,7 @@ fn scan_supplemental_directory(
             select_supplemental_asset(
                 target,
                 Some(MediaAsset {
+                    cache_version: image_cache_version(&path),
                     path,
                     source: source_name.to_string(),
                     source_rank,
@@ -1043,6 +1055,7 @@ fn scan_game_directory(
             media.insert(
                 kind,
                 MediaAsset {
+                    cache_version: image_cache_version(&path),
                     path,
                     source: source_name.to_string(),
                     source_rank,
@@ -3178,6 +3191,7 @@ mod tests {
             MediaAsset {
                 path: "cover.png".into(),
                 source: "local".into(),
+                cache_version: 0,
                 source_rank: 0,
                 format_rank: 0,
             },

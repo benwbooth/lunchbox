@@ -18,12 +18,20 @@ Item {
     property bool navigationActive: false
     property int currentIndex: 0
     property bool selectionPending: true
+    property string reportedGameId: ""
     readonly property var currentItem: !selectionPending && presentation.item ? presentation.item.currentItem : null
     readonly property int count: presentation.item ? presentation.item.count : 0
     readonly property int columns: viewStyle === "wall" && presentation.item
                                    ? presentation.item.columnCount : 1
     signal currentGameChanged()
     signal cardActivated(int index)
+
+    function reportSelection() {
+        const item = currentItem
+        if (!item || item.index !== currentIndex || item.gameId === reportedGameId) return
+        reportedGameId = item.gameId
+        currentGameChanged()
+    }
 
     function applySelection() {
         const item = presentation.item
@@ -32,8 +40,10 @@ Item {
         if (!item || (count > 0 && !item.currentItem
                       && (viewStyle === "wheel" || viewStyle === "album"))) return
         const requested = Math.max(0, Math.min(currentIndex, count - 1))
-        item.currentIndex = count > 0 ? requested : -1
+        const next = count > 0 ? requested : -1
+        if (item.currentIndex !== next) item.currentIndex = next
         selectionPending = false
+        Qt.callLater(reportSelection)
     }
 
     function positionViewAtIndex(index, mode) {
@@ -49,20 +59,21 @@ Item {
     onCurrentIndexChanged: {
         selectionPending = true
         applySelection()
-        currentGameChanged()
     }
-    onCurrentItemChanged: currentGameChanged()
+    onCurrentItemChanged: Qt.callLater(reportSelection)
 
     Loader {
         id: presentation
         anchors.fill: parent
+        active: browser.visible
         sourceComponent: browser.viewStyle === "wall" ? wall
                          : browser.viewStyle === "shelf" ? shelf : animatedPath
         onLoaded: {
             browser.selectionPending = true
+            browser.reportedGameId = ""
             browser.applySelection()
             browser.positionViewAtIndex(browser.currentIndex, ListView.Center)
-            browser.currentGameChanged()
+            Qt.callLater(browser.reportSelection)
         }
     }
     Connections {
@@ -108,7 +119,7 @@ Item {
             cellWidth: verticalContentWidth / columnCount
             cellHeight: Math.min(300, cellWidth * 1.42)
             clip: true
-            cacheBuffer: height
+            cacheBuffer: height / 2
             boundsBehavior: Flickable.StopAtBounds
             highlightMoveDuration: 180
             ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
@@ -138,11 +149,12 @@ Item {
             readonly property bool wheel: browser.viewStyle === "wheel"
             model: browser.library
             clip: true
-            pathItemCount: wheel ? 9 : 7
+            pathItemCount: 7
+            cacheItemCount: 2
             preferredHighlightBegin: 0.5
             preferredHighlightEnd: 0.5
             highlightRangeMode: PathView.StrictlyEnforceRange
-            highlightMoveDuration: 260
+            highlightMoveDuration: 160
             snapMode: PathView.SnapToItem
             dragMargin: width
             flickDeceleration: 450

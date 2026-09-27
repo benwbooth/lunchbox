@@ -185,6 +185,23 @@ pub fn load(
     local: bool,
     downloadable: bool,
 ) -> Result<GameDetails> {
+    load_internal(id, title, platform, local, downloadable, false)
+}
+
+/// Browsing must not rank torrents, scan installations, resolve releases or
+/// discover emulators. Only an explicit game action needs that work.
+pub(crate) fn load_couch_overview(id: &str, title: &str, platform: &str) -> Result<GameDetails> {
+    load_internal(id, title, platform, false, false, true)
+}
+
+fn load_internal(
+    id: &str,
+    title: &str,
+    platform: &str,
+    local: bool,
+    downloadable: bool,
+    overview_only: bool,
+) -> Result<GameDetails> {
     let mut details = GameDetails {
         id: id.to_owned(),
         title: title.to_owned(),
@@ -197,13 +214,21 @@ pub fn load(
     details.activity = settings_store
         .play_activity(id)
         .context("loading play activity")?;
-    details.sessions = settings_store
-        .play_sessions(id, 200)
-        .context("loading play-session history")?;
+    if !overview_only {
+        details.sessions = settings_store
+            .play_sessions(id, 200)
+            .context("loading play-session history")?;
+    }
 
     if let Some(local_file_id) = id.strip_prefix("local-file:") {
         let state_path = crate::settings::state_database_path()?;
         load_local_only_details(&mut details, local_file_id, &state_path)?;
+        if overview_only {
+            apply_metadata_override(&mut details)?;
+            details.supplemental_media =
+                crate::media::supplemental_media(&details.id, details.database_id)?;
+            return Ok(details);
+        }
         load_prepared_state(&mut details)?;
         load_supplemental_media(&mut details)?;
         apply_metadata_override(&mut details)?;
@@ -291,6 +316,12 @@ pub fn load(
             details.steam_app_id = row.20.max(0);
             details.metadata_source = row.21;
             details.database_id = row.22;
+            if overview_only {
+                apply_metadata_override(&mut details)?;
+                details.supplemental_media =
+                    crate::media::supplemental_media(&details.id, details.database_id)?;
+                return Ok(details);
+            }
             details.alternate_titles = load_alternate_titles_from_connection(
                 &connection,
                 details.database_id,
@@ -309,6 +340,12 @@ pub fn load(
         }
     }
 
+    if overview_only {
+        apply_metadata_override(&mut details)?;
+        details.supplemental_media =
+            crate::media::supplemental_media(&details.id, details.database_id)?;
+        return Ok(details);
+    }
     let platform_key = catalog::normalize_platform_key(&details.platform);
     details.registered_torrent_source_count = settings_store
         .registered_torrent_sources_for_platform(&platform_key)?

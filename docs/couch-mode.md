@@ -30,11 +30,16 @@ Play or download options.
 
 The Game Menu includes favorite, release, view, and attract-mode choices.
 
-## Get to the full tools
+## Game details and tools
 
-**Game details & tools** opens the complete game pane inside the fullscreen
-session. Patches, cheats, saves, controllers, display settings, metadata, and
-media are not reduced to a separate Couch-only version.
+**Game details & tools** opens a TV-sized page with four tabs: Overview,
+Play & setup, Media, and Activity. Play and Favorites stay in the left action
+rail. Use the bumpers to switch tabs, then the D-pad to choose a tool.
+
+Play & setup includes display settings, controller mappings, patches and cheats,
+RetroAchievements, ROM choices, and save locations. **Advanced game tools**
+opens the complete editing workspace for less common options; no game tools
+are removed in Couch Mode.
 
 **Library & settings** opens settings, downloads, notifications, imports,
 collections, firmware, media tools, and bulk editing. The full library
@@ -46,6 +51,16 @@ selected game.
 Some advanced forms still use the shared desktop dialogs. Text entry and
 native file pickers may need a keyboard or mouse; not every workflow is a
 controller-only, TV-sized interface yet.
+
+## Wheel logos
+
+The wheel uses transparent game-title images, usually called **clear logos**
+or **wheel logos**. Lunchpail checks your configured artwork providers for
+the actual logo rather than substituting a box cover. EmuMovies and ScreenScraper
+are useful sources; connect them in Settings. Coverage varies by game and release.
+
+If a logo is missing or incorrect, open **Media → Find better media** to choose
+another image. Until a logo is available, the wheel shows the game's title.
 
 ## Useful controls
 
@@ -68,4 +83,3 @@ Background game music is optional and uses available cached media. You can
 adjust or mute it in the Couch Mode settings.
 
 See [Themes](themes.md) to change colors and background artwork.
-

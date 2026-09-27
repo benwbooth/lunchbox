@@ -39,13 +39,8 @@ Item {
     }
     signal activated(int index)
 
-    function requestArtwork() {
-        library.request_artwork_for_game(gameId, wheel ? "clear-logo" : "box-front")
-    }
-    Component.onCompleted: requestArtwork()
-    onGameIdChanged: requestArtwork()
-    onGameMediaIdChanged: requestArtwork()
-    onWheelChanged: requestArtwork()
+    // The viewport owns fetching. Delegate creation and role changes must not
+    // enqueue the same image repeatedly while the wheel is moving.
 
     Rectangle {
         anchors.fill: frame
@@ -54,7 +49,7 @@ Item {
         color: "transparent"
         border.color: card.accent
         border.width: 2
-        opacity: card.selected ? 0.45 : 0
+        opacity: card.selected && !card.wheel ? 0.45 : 0
         Behavior on opacity { NumberAnimation { duration: 220 } }
     }
     Rectangle {
@@ -62,10 +57,10 @@ Item {
         anchors.fill: parent
         anchors.margins: 9
         radius: 12
-        color: card.wheel ? Qt.rgba(0.04, 0.06, 0.1, card.selected ? 0.72 : 0.35) : card.panel
-        border.color: card.selected ? card.accent : Qt.rgba(1, 1, 1, 0.14)
-        border.width: card.selected ? 2 : 1
-        scale: card.selected ? 1 : hover.hovered ? 1.025 : 0.97
+        color: card.wheel ? "transparent" : card.panel
+        border.color: card.wheel ? "transparent" : card.selected ? card.accent : Qt.rgba(1, 1, 1, 0.14)
+        border.width: card.wheel ? 0 : card.selected ? 2 : 1
+        scale: card.wheel || card.selected ? 1 : hover.hovered ? 1.025 : 0.97
         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
         Image {
             id: cover
@@ -73,11 +68,12 @@ Item {
             anchors.margins: card.wheel ? 14 : 5
             anchors.bottomMargin: card.wheel ? 14 : 52
             source: card.artwork
-            sourceSize.width: card.wheel ? 640 : 400
-            sourceSize.height: card.wheel ? 180 : 560
+            sourceSize.width: card.wheel ? 640 : 320
+            sourceSize.height: card.wheel ? 240 : 448
             asynchronous: true
             cache: true
-            mipmap: true
+            mipmap: !card.wheel
+            retainWhileLoading: true
             fillMode: Image.PreserveAspectFit
             opacity: status === Image.Ready ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -119,7 +115,7 @@ Item {
             anchors.top: parent.top
             anchors.margins: 9
             width: 8; height: 8; radius: 4
-            visible: card.gameLocal
+            visible: card.gameLocal && !card.wheel
             color: "#5ee391"
         }
         FavoriteButton {

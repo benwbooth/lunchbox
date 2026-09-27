@@ -52,6 +52,7 @@ pub mod qobject {
         #[qproperty(bool, alphabet_navigation_available)]
         #[qproperty(i32, alphabet_revision)]
         #[qproperty(QString, hover_preview_game_id)]
+        #[qproperty(QString, couch_preview_json)]
         #[qproperty(QUrl, hover_preview_url)]
         #[qproperty(QString, hover_preview_source)]
         #[qproperty(QString, hover_preview_message)]
@@ -458,6 +459,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn local_for_game(self: &LibraryModel, game_uid: QString) -> bool;
+
+        #[qinvokable]
+        fn request_couch_preview(self: Pin<&mut LibraryModel>, game_uid: QString);
 
         #[qinvokable]
         fn downloadable_for_game(self: &LibraryModel, game_uid: QString) -> bool;
@@ -1146,6 +1150,9 @@ pub struct LibraryModelRust {
     load_started: Option<std::time::Instant>,
     filter_started: Option<std::time::Instant>,
     media_generation: u64,
+    couch_preview_json: QString,
+    couch_preview_generation: u64,
+    couch_preview_cache: HashMap<String, (i32, i32, String)>,
     media_started: Option<std::time::Instant>,
     media_fetch_started: Option<std::time::Instant>,
     media_fetch_queue: Option<MediaFetchQueue>,
@@ -1298,6 +1305,9 @@ impl Default for LibraryModelRust {
             couch_shelf: qstring(&couch_preferences.shelf),
             couch_platform: QString::default(),
             couch_view_style: qstring(&couch_preferences.view_style),
+            couch_preview_json: qstring("{}"),
+            couch_preview_generation: 0,
+            couch_preview_cache: HashMap::new(),
             couch_theme_id: qstring(&couch_theme.id),
             couch_theme_name: qstring(&couch_theme.name),
             couch_theme_author: qstring(&couch_theme.author),
@@ -3876,6 +3886,63 @@ impl qobject::LibraryModel {
             .unwrap_or_default()
     }
 
+    pub fn request_couch_preview(mut self: Pin<&mut Self>, game_uid: QString) {
+        let generation = self.rust().couch_preview_generation.wrapping_add(1);
+        self.as_mut().rust_mut().couch_preview_generation = generation;
+        let Some(game) = game_for_uid(&self, &game_uid.to_string()).cloned() else {
+            self.as_mut().set_couch_preview_json(qstring("{}"));
+            return;
+        };
+        let metadata_revision = *self.metadata_revision();
+        let media_revision = *self.media_revision();
+        let cached = self
+            .rust()
+            .couch_preview_cache
+            .get(&game.id)
+            .filter(|(metadata, media, _)| {
+                *metadata == metadata_revision && *media == media_revision
+            })
+            .map(|(_, _, json)| json.clone());
+        if let Some(json) = cached {
+            self.as_mut().set_couch_preview_json(qstring(json));
+            return;
+        }
+        let qt_thread = self.as_ref().qt_thread();
+        let _ = std::thread::Builder::new().name("lunchpail-couch-preview".into()).spawn(move || {
+            let started = std::time::Instant::now();
+            let result = crate::game_details::load_couch_overview(&game.id, &game.title, &game.platform);
+            let json = match result {
+                Ok(details) => {
+                    let track = details.supplemental_media.soundtrack.first();
+                    serde_json::json!({
+                        "game_id": game.id, "description": details.description,
+                        "release_date": details.release_date, "genre": details.genre,
+                        "players": details.players, "cooperative": details.cooperative,
+                        "rating": details.rating,
+                        "soundtrack_available": track.is_some(),
+                        "soundtrack_url": track.and_then(|track| url::Url::from_file_path(&track.path).ok()).map(|url| url.to_string()).unwrap_or_default(),
+                        "soundtrack_title": track.map(|track| track.title.as_str()).unwrap_or_default()
+                    }).to_string()
+                }
+                Err(error) => {
+                    eprintln!("LUNCHPAIL_COUCH_PREVIEW_FAILED game={} error={error:#}", game.id);
+                    serde_json::json!({"game_id": game.id}).to_string()
+                }
+            };
+            if std::env::args().any(|arg| arg == "--couch-smoothness-ui-probe") {
+                println!("LUNCHPAIL_COUCH_PREVIEW_MS={} game={}", started.elapsed().as_millis(), game.id);
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                if model.rust().couch_preview_generation != generation { return; }
+                if model.rust().couch_preview_cache.len() >= 64 {
+                    model.as_mut().rust_mut().couch_preview_cache.clear();
+                }
+                model.as_mut().rust_mut().couch_preview_cache.insert(game.id, (metadata_revision, media_revision, json.clone()));
+                model.as_mut().set_couch_preview_json(qstring(json));
+            });
+        });
+    }
+
     pub fn exact_artwork_url(&self, media_id: i64, artwork_type: QString) -> QUrl {
         self.media_asset(media_id, &artwork_type.to_string(), true)
             .map(|asset| media_asset_url(asset, *self.media_revision()))
@@ -4627,7 +4694,9 @@ impl qobject::LibraryModel {
             platform,
             requested_kind: kind,
             force,
-            exact_only: false,
+            // A cover is not a wheel logo. Do not stop at a provider's box
+            // fallback before querying the remaining providers for a logo.
+            exact_only: kind == ArtworkKind::ClearLogo,
         };
         let queued = self
             .as_ref()
@@ -7331,12 +7400,12 @@ fn filtered_platform(model: &qobject::LibraryModel, index: i32) -> Option<&catal
     model.rust().catalog.platforms.get(*source_index)
 }
 
-fn media_asset_url(asset: &MediaAsset, revision: i32) -> QUrl {
+fn media_asset_url(asset: &MediaAsset, _revision: i32) -> QUrl {
     let mut url = QUrl::from_local_file(&qstring(asset.path.to_string_lossy()));
     if asset.source == "selected" {
         // Choosing a second image can replace the same file. Give Qt a new
         // cache key without making every automatically downloaded cover reload.
-        url.set_fragment(&qstring(format!("selection-{revision}")));
+        url.set_fragment(&qstring(format!("selection-{}", asset.cache_version)));
     }
     url
 }
@@ -7344,6 +7413,31 @@ fn media_asset_url(asset: &MediaAsset, revision: i32) -> QUrl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selected_artwork_cache_key_tracks_only_that_asset() {
+        let mut index = crate::media::MediaIndex::default();
+        index.insert_asset(
+            140,
+            ArtworkKind::BoxFront,
+            "/tmp/lunchpail-cache-key-test.png".into(),
+            "selected",
+        );
+        let mut asset = index.exact(140, ArtworkKind::BoxFront).unwrap().clone();
+        asset.cache_version = 100;
+        let original = media_asset_url(&asset, 1);
+        assert_eq!(
+            original,
+            media_asset_url(&asset, 99),
+            "An unrelated media download must not reload this image"
+        );
+        asset.cache_version = 101;
+        assert_ne!(
+            original,
+            media_asset_url(&asset, 99),
+            "Replacing this image must invalidate its Qt cache entry"
+        );
+    }
 
     fn game(id: &str, platform: &str, local: bool, downloadable: bool) -> catalog::Game {
         catalog::Game {

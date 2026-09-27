@@ -341,7 +341,8 @@ ApplicationWindow {
     readonly property bool couchViewStyleRestoreUiProbe: Qt.application.arguments.indexOf("--couch-view-style-restored-ui-probe") >= 0
     readonly property bool couchViewStyleUiProbe: couchViewStyleRestoreUiProbe
                                                   || Qt.application.arguments.indexOf("--couch-view-style-ui-probe") >= 0
-    readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
+    readonly property bool couchSmoothnessUiProbe: Qt.application.arguments.indexOf("--couch-smoothness-ui-probe") >= 0
+    readonly property bool couchModeUiProbe: couchSmoothnessUiProbe || couchGamepadUiProbe || couchPlatformUiProbe
                                              || couchCollectionUiProbe
                                              || couchVariantUiProbe
                                              || couchAttractUiProbe
@@ -1137,7 +1138,7 @@ ApplicationWindow {
 
     function couchTool(action) {
         couchToolsDialog.close()
-        if (action === "details") openCouchWorkspace("game")
+        if (action === "details") couchModeView.requestDetails()
         else if (action === "library") openCouchWorkspace("library")
         else if (action === "settings") openSettingsFor("")
         else if (action === "controllers") openSettingsFor("controllers")
@@ -1152,6 +1153,36 @@ ApplicationWindow {
         else if (action === "audit") { libraryAuditDialog.open(); libraryAudit.start_audit() }
         else if (action === "bulk") bulkLibraryEditor.openForScope()
         else if (action === "attract") couchModeView.startAttractMode("manual")
+    }
+
+    function closeCouchGameTool() { couchGameToolDialog.close() }
+
+    function openCouchGameTool(section) {
+        if (gameDetails.loading) return
+        if (section === "controllers") {
+            gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform,
+                                              gameDetails.emulator_name, gameDetails.game_id)
+        } else if (section === "artwork") {
+            refreshSelectedArtwork()
+            openFullscreenMedia()
+        } else if (section === "find-media") openFindArtwork("clear-logo")
+        else if (section === "video" && gameDetails.video_available) {
+            mediaFullscreen.open()
+            gameVideoPlayer.play()
+        } else if (section === "activity") {
+            activityHistoryDialog.outcomeFilter = "all"
+            activityHistoryDialog.open()
+        } else if (["display", "mods", "achievements", "files"].includes(section)) {
+            couchGameToolDialog.section = section
+            couchGameToolDialog.open()
+        } else {
+            // Less common editing tools remain available through an explicit
+            // advanced workspace, never as the default couch details page.
+            openCouchWorkspace("game")
+            if (section === "media") Qt.callLater(function() {
+                detailScroll.contentItem.contentY = Math.max(0, mediaCard.mapToItem(detailScroll.contentItem, 0, 0).y - 20)
+            })
+        }
     }
 
     function restoreCouchNavigation() {
@@ -4467,6 +4498,10 @@ ApplicationWindow {
                 else if (root.installManagementUiProbe
                          && root.installManagementProbeStage === 0) {
                     root.installManagementProbeStage = 0
+                    root.selectedPlatform = "Nintendo Entertainment System"
+                    root.availability = ""
+                    searchField.text = "Super Mario Bros."
+                    library.apply_filter(searchField.text, root.selectedPlatform, "")
                     root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
                                   "Super Mario Bros.",
                                   "Nintendo Entertainment System",
@@ -4504,7 +4539,12 @@ ApplicationWindow {
                     root.beginHoverPreviewProbe()
                 }
                 else if (root.couchModeUiProbe) {
-                    if (root.couchDownloadUiProbe) {
+                    if (root.couchSmoothnessUiProbe) {
+                        library.save_couch_view_style("wheel")
+                        root.selectedPlatform = "Nintendo Entertainment System"
+                        searchField.text = "Mario"
+                        library.apply_filter(searchField.text, root.selectedPlatform, "")
+                    } else if (root.couchDownloadUiProbe) {
                         root.beginCouchDownloadProbe()
                     } else if (root.couchViewStyleUiProbe) {
                         root.couchViewStyleProbeStage = root.couchViewStyleRestoreUiProbe
@@ -5424,7 +5464,7 @@ ApplicationWindow {
         interval: 650
         repeat: false
         onTriggered: {
-            if (root.couchLaunchUiProbe || root.couchDownloadUiProbe)
+            if (root.couchLaunchUiProbe || root.couchDownloadUiProbe || root.couchSmoothnessUiProbe)
                 return
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
                     && !root.couchCollectionUiProbe
@@ -6566,7 +6606,7 @@ ApplicationWindow {
 
     Timer {
         interval: 20000
-        running: root.couchModeUiProbe && !root.couchLaunchUiProbe
+        running: root.couchModeUiProbe && !root.couchLaunchUiProbe && !root.couchSmoothnessUiProbe
                  && !root.couchModeProbeCaptured
         repeat: false
         onTriggered: {
@@ -8877,6 +8917,19 @@ ApplicationWindow {
         interval: 300
         repeat: false
         onTriggered: {
+            if (library.loading || library.filtering) { restart(); return }
+            const row = library.row_for_game("9697a5eb-e0b4-4f24-8d43-672701414ee7")
+            if (row < 0) { console.error("LUNCHPAIL_INSTALL_MANAGEMENT_UI_FAILED game disappeared"); Qt.exit(2); return }
+            const gridView = gameViewLoader.item
+            if (!gridView) { restart(); return }
+            gridView.focusIndex(row, GridView.Beginning)
+            const card = gridView.itemAtIndex(row)
+            if (!card) { restart(); return }
+            if (card.gameLocal || card.playBadgeVisible) {
+                console.error("LUNCHPAIL_INSTALL_MANAGEMENT_UI_FAILED stale grid Play badge history=" + card.downloadJobState)
+                Qt.exit(2)
+                return
+            }
             if (gameDetails.install_management_busy
                     || gameDetails.managed_install_present
                     || gameDetails.local_file_count !== 0
@@ -8901,13 +8954,14 @@ ApplicationWindow {
             }
             console.log("LUNCHPAIL_INSTALL_MANAGEMENT_UI_READY message="
                         + gameDetails.install_management_message
+                        + " play_badge=" + card.playBadgeVisible + " history=" + card.downloadJobState
                         + " screenshot=" + root.screenshotOutput)
             Qt.quit()
         }
     }
 
     Timer {
-        interval: 20000
+        interval: 60000
         running: root.installManagementUiProbe
         repeat: false
         onTriggered: {
@@ -10607,6 +10661,7 @@ ApplicationWindow {
                 ? downloadQueue.job_badge_at(downloadJobIndex) : ""
             property var previewVideoOutput: tileVideoOutput
             readonly property real previewCardExpansion: cardGeometry.expansion
+            readonly property bool playBadgeVisible: cardPlayButton.visible
             readonly property real previewCardViewportX: cardGeometry.viewportX
             readonly property real previewCardViewportY: cardGeometry.viewportY
             readonly property real previewCardWidth: cardGeometry.cardWidth
@@ -11021,11 +11076,11 @@ ApplicationWindow {
                                        + 14 * card.expansion
                         implicitHeight: 25 * card.expansion
                         radius: 7 * card.expansion
-                        color: tile.gameLocal || tile.downloadJobState === "IMPORTED"
+                        color: tile.gameLocal
                                ? "#d91d3d35"
                                : tile.downloadJobState === "FAILED" ? "#d92a1a22"
                                : "#d9303540"
-                        border.color: tile.gameLocal || tile.downloadJobState === "IMPORTED"
+                        border.color: tile.gameLocal
                                       ? root.accentCool
                                       : tile.downloadJobState === "FAILED" ? "#ff8b9a"
                                       : root.accent
@@ -11033,7 +11088,7 @@ ApplicationWindow {
                             id: badgeText
                             anchors.centerIn: parent
                             text: tile.availabilityBadge
-                            color: tile.gameLocal || tile.downloadJobState === "IMPORTED"
+                            color: tile.gameLocal
                                    ? root.accentCool
                                    : tile.downloadJobState === "FAILED" ? "#ff8b9a"
                                    : root.accent
@@ -11068,7 +11123,6 @@ ApplicationWindow {
                         height: 40 * card.expansion
                         z: previewPresentation.overlayLayer
                         visible: tile.gameLocal
-                                 || tile.downloadJobState === "IMPORTED"
                         enabled: root.pendingCardLaunchGameId !== tile.gameId
                                  && !gameDetails.launch_busy
                                  && !gameDetails.game_running
@@ -11641,6 +11695,13 @@ ApplicationWindow {
         }
     }
 
+    Loader {
+        active: root.couchSmoothnessUiProbe
+        sourceComponent: CouchPerformanceProbe {
+            app: root; library: library; details: gameDetails; view: couchModeView
+        }
+    }
+
     CouchModeView {
         id: couchModeView
         anchors.centerIn: parent
@@ -11672,20 +11733,29 @@ ApplicationWindow {
         }
         onGameSelected: function(gameId, databaseId, title, platform,
                                  local, downloadable) {
-            root.openGame(gameId, databaseId, title, platform,
-                          local, downloadable)
+            // Selection is cheap: do not rebuild the desktop details pane,
+            // rank ROM sources, resolve emulators or download videos per card.
+            root.selectedGameId = gameId
+            root.selectedDatabaseId = databaseId
+            root.selectedMediaId = library.media_id_for_game(gameId)
         }
         onDetailsRequested: function(gameId, databaseId, title, platform,
                                      local, downloadable) {
-            root.openGame(gameId, databaseId, title, platform,
-                          local, downloadable)
-            root.openCouchWorkspace("game")
+            if (gameDetails.game_id !== gameId)
+                root.openGame(gameId, databaseId, title, platform, local, downloadable)
         }
         onSettingsRequested: function(section) {
             root.openSettingsFor(section)
         }
         onToolsRequested: couchToolsDialog.open()
-        onLaunchRequested: root.requestGameLaunch()
+        onLaunchRequested: {
+            if (gameDetails.game_id !== couchModeView.selectedGameId)
+                root.requestCardLaunch(couchModeView.selectedGameId, couchModeView.selectedDatabaseId,
+                                       couchModeView.selectedTitle, couchModeView.selectedPlatform,
+                                       couchModeView.selectedLocal)
+            else root.requestGameLaunch()
+        }
+        onManageGameRequested: section => root.openCouchGameTool(section)
         onDownloadsRequested: {
             downloadsDrawer.open()
         }
@@ -11728,6 +11798,40 @@ ApplicationWindow {
                  && !fullscreenMedia.opened
                  && desktopNavigation.popupScope === null
         onActivated: root.closeCouchWorkspace()
+    }
+
+    LbDialog {
+        id: couchGameToolDialog
+        parent: Overlay.overlay
+        property string section: "display"
+        title: ({display: "Display & save states", mods: "Translations & mods", achievements: "RetroAchievements", files: "ROMs & save files"})[section]
+        modal: true
+        width: Math.min(root.width - 80, 1000 * Math.min(1.3, root.couchUiScale))
+        height: Math.min(root.height - 80, 850 * Math.min(1.3, root.couchUiScale))
+        anchors.centerIn: parent
+        standardButtons: Dialog.Close
+        contentItem: MomentumFlickable {
+            clip: true; contentWidth: width; contentHeight: couchGameToolsLoader.height
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
+            Loader {
+                id: couchGameToolsLoader
+                width: parent.width - 20
+                active: couchGameToolDialog.visible
+                sourceComponent: CouchGameTools {
+                    section: couchGameToolDialog.section
+                    details: gameDetails; mods: gameMods; patches: patchCatalog
+                    achievements: retroAchievements; saveSync: saveSync
+                    pickPatchFile: function() { return nativeFileDialog.pick_open_file("Import a translation or mod patch", "ROM/disc patches", "ips,ips32,bps,ups,ppf,xdelta,xdelta3,vcdiff") }
+                    pickCheatFile: function() { return nativeFileDialog.pick_open_file("Import RetroArch cheats", "Cheat files", "cht") }
+                    pickCheatExport: function() { return nativeFileDialog.pick_save_file("Export cheats", "Cheat files", "cht", "Game cheats.cht") }
+                    onAchievementsSetupRequested: root.openSettingsFor("achievements")
+                    onRemoveInstallationRequested: installRemovalDialog.open()
+                    onManageIdentityRequested: gameFileIdentityDialog.begin(gameDetails.game_id, gameDetails.title, gameDetails.platform)
+                    onTorrentRequested: root.openPlatformTorrentSourcesForGame(gameDetails.game_id, root.selectedDatabaseId, gameDetails.title, gameDetails.platform)
+                    onReviewCandidateRequested: index => downloadReviewDialog.openFor(index)
+                }
+            }
+        }
     }
 
     LbDialog {

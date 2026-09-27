@@ -39,6 +39,14 @@ Item {
     property string loadedGameId: ""
     property int selectedDatabaseId: 0
     property double selectedMediaId: 0
+    property double heroMediaId: 0
+    readonly property var previewRecord: JSON.parse(library.couch_preview_json || "{}")
+    readonly property var browsing: Object.assign({
+        game_id: "", description: "", release_date: "", genre: "", players: "",
+        cooperative: "", rating: "", soundtrack_available: false,
+        soundtrack_url: "", soundtrack_title: ""
+    }, previewRecord.game_id === selectedGameId ? previewRecord : {},
+       { game_running: details.game_running, title: selectedTitle })
     property string selectedTitle: ""
     property string selectedPlatform: ""
     property bool selectedLocal: false
@@ -91,8 +99,8 @@ Item {
     }
     readonly property url heroUrl: {
         mediaRevision
-        return selectedMediaId > 0
-               ? library.artwork_url(selectedMediaId, "fanart") : ""
+        return active && heroMediaId > 0
+               ? library.artwork_url(heroMediaId, "fanart") : ""
     }
     readonly property url coverUrl: {
         mediaRevision
@@ -122,7 +130,8 @@ Item {
     readonly property string primaryAction: details.game_running
             ? details.session_stopping ? "Stopping…" : "Stop emulator"
             : details.launch_busy ? "Cancel preparation"
-            : !detailsCurrent || details.loading ? "Loading…"
+            : !detailsCurrent ? selectedLocal ? "Play" : selectedDownloadable ? "Download options" : "View details"
+            : details.loading ? "Loading…"
             : details.download_busy ? "Adding download…"
             : details.can_launch ? "Play"
             : selectedLocal ? "Set up play"
@@ -144,6 +153,7 @@ Item {
     signal toolsRequested()
     signal launchRequested()
     signal downloadsRequested()
+    signal manageGameRequested(string section)
     signal torrentImportRequested(string gameId, int databaseId, string title,
                                   string platform)
 
@@ -506,17 +516,14 @@ Item {
             selectionRetry.restart()
             return false
         }
+        // Installation can change without changing the selected catalog row.
+        selectedLocal = item.gameLocal
+        selectedDownloadable = item.gameDownloadable
         selectedGameId = item.gameId
         selectedDatabaseId = item.gameDatabaseId
         selectedMediaId = item.gameMediaId
         selectedTitle = item.gameTitle
         selectedPlatform = item.gamePlatform
-        selectedLocal = item.gameLocal
-        selectedDownloadable = item.gameDownloadable
-        library.request_priority_artwork(selectedMediaId, selectedTitle,
-                                         selectedPlatform, "box-front")
-        library.request_priority_artwork(selectedMediaId, selectedTitle,
-                                         selectedPlatform, "fanart")
         return true
     }
 
@@ -524,6 +531,12 @@ Item {
         if (!captureCurrentGame() || loadedGameId === selectedGameId)
             return
         loadedGameId = selectedGameId
+        heroMediaId = selectedMediaId
+        library.request_couch_preview(selectedGameId)
+        library.request_priority_artwork_for_game(selectedGameId, "fanart")
+        library.request_priority_artwork_for_game(selectedGameId, "box-front")
+        if (cinematicWheel)
+            library.request_priority_artwork_for_game(selectedGameId, "clear-logo")
         gameSelected(selectedGameId, selectedDatabaseId, selectedTitle,
                      selectedPlatform, selectedLocal, selectedDownloadable)
     }
@@ -533,6 +546,7 @@ Item {
             return
         detailsRequested(selectedGameId, selectedDatabaseId, selectedTitle,
                          selectedPlatform, selectedLocal, selectedDownloadable)
+        openOverlay("details")
     }
 
     function openDownloadOverlay() {
@@ -566,7 +580,14 @@ Item {
         if (selectedGameId.length === 0)
             return
         if (index === 0) {
-            if (!detailsCurrent || details.loading)
+            if (!detailsCurrent) {
+                if (selectedLocal) {
+                    launchStatusOverlayOpen = true
+                    launchRequested()
+                } else requestDetails()
+                return
+            }
+            if (details.loading)
                 return
             if (details.can_launch && !details.launch_busy
                     && !details.game_running) {
@@ -587,6 +608,9 @@ Item {
     }
 
     function openOverlay(mode) {
+        if (!detailsCurrent && selectedGameId.length > 0)
+            detailsRequested(selectedGameId, selectedDatabaseId, selectedTitle,
+                             selectedPlatform, selectedLocal, selectedDownloadable)
         attractOpen = false
         platformWheelOpen = false
         collectionWheelOpen = false
@@ -595,6 +619,7 @@ Item {
         overlayOpen = true
         menuActionIndex = 0
         detailsScroller.contentY = 0
+        if (nativeDetails.item) nativeDetails.item.reset()
         forceActiveFocus()
     }
 
@@ -879,6 +904,8 @@ Item {
             return true
         }
         if (overlayOpen) {
+            if (overlayMode === "details" && nativeDetails.item)
+                return nativeDetails.item.handleNavigation(action)
             if (action === "back") {
                 closeOverlay()
             } else if (action === "details" || action === "page_left"
@@ -1022,7 +1049,6 @@ Item {
     }
 
     onSelectedGameIdChanged: {
-        selectionReveal.restart()
         if (selectedGameId.length === 0 || !detailsCurrent) {
             downloadOverlayOpen = false
             launchStatusOverlayOpen = false
@@ -1066,15 +1092,6 @@ Item {
 
     onCurrentFilterKeyChanged: syncCategory()
     onCurrentPlatformNameChanged: syncCategory()
-
-    onMediaRevisionChanged: {
-        if (selectedMediaId > 0) {
-            library.request_priority_artwork(selectedMediaId, selectedTitle,
-                                             selectedPlatform, "box-front")
-            library.request_priority_artwork(selectedMediaId, selectedTitle,
-                                             selectedPlatform, "fanart")
-        }
-    }
 
     Keys.onPressed: event => {
         if (!inputEnabled) return
@@ -1171,7 +1188,7 @@ Item {
     Image {
         id: themeBackgroundImage
         anchors.fill: parent
-        source: view.library.couch_theme_background_image
+        source: view.active ? view.library.couch_theme_background_image : ""
         asynchronous: true
         cache: true
         autoTransform: true
@@ -1188,8 +1205,8 @@ Item {
         cache: true
         autoTransform: true
         fillMode: Image.PreserveAspectCrop
-        sourceSize.width: Math.max(1, Math.round(width * 1.35))
-        sourceSize.height: Math.max(1, Math.round(height * 1.35))
+        sourceSize: Qt.size(1920, 1080)
+        retainWhileLoading: true
         opacity: status === Image.Ready ? 0.78 : 0
         Behavior on opacity { NumberAnimation { duration: 220 } }
     }
@@ -1467,38 +1484,38 @@ Item {
 
         Row {
             spacing: 18
-            visible: !view.wallView && !view.albumView && !view.details.loading && view.selectedGameId.length > 0
+            visible: !view.wallView && !view.albumView && view.selectedGameId.length > 0
             Text {
-                visible: view.details.release_date.length > 0
-                text: view.details.release_date
+                visible: view.browsing.release_date.length > 0
+                text: view.browsing.release_date
                 color: view.muted
                 font.pixelSize: 13
                 font.weight: Font.Medium
             }
             Text {
-                visible: view.details.genre.length > 0
-                text: view.details.genre
+                visible: view.browsing.genre.length > 0
+                text: view.browsing.genre
                 color: view.muted
                 font.pixelSize: 13
                 font.weight: Font.Medium
             }
             Text {
-                visible: view.details.players.length > 0
-                text: view.details.players + " players"
+                visible: view.browsing.players.length > 0
+                text: view.browsing.players + " players"
                 color: view.muted
                 font.pixelSize: 13
                 font.weight: Font.Medium
             }
             Text {
-                visible: view.details.cooperative === "yes"
+                visible: view.browsing.cooperative === "yes"
                 text: "CO-OP"
                 color: view.accentCool
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
             }
             Text {
-                visible: view.details.rating.length > 0
-                text: "★ " + view.details.rating
+                visible: view.browsing.rating.length > 0
+                text: "★ " + view.browsing.rating
                 color: view.accent
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
@@ -1509,10 +1526,7 @@ Item {
             width: parent.width
             height: Math.min(implicitHeight, 112)
             visible: !view.wallView && !view.albumView
-            text: view.details.loading ? "Loading game details…"
-                  : view.details.description.length > 0
-                    ? view.details.description
-                    : "Browse the catalog, play an installed game, or inspect its exact Minerva download options."
+            text: view.browsing.description
             color: view.withAlpha(view.ink, 0.86)
             font.pixelSize: 14
             lineHeight: 1.34
@@ -1576,7 +1590,7 @@ Item {
 
         Text {
             width: parent.width
-            visible: view.selectedLocal && view.details.launch_status.length > 0
+            visible: view.detailsCurrent && view.selectedLocal && view.details.launch_status.length > 0
             text: view.details.launch_status
             color: view.details.can_launch ? view.accentCool : view.muted
             font.pixelSize: 11
@@ -1611,7 +1625,7 @@ Item {
             id: selectedCover
             anchors.fill: parent
             anchors.margins: 2
-            source: view.coverUrl
+            source: view.active && !view.cinematicWheel && !view.wallView && !view.albumView ? view.coverUrl : ""
             asynchronous: true
             cache: true
             mipmap: true
@@ -1775,7 +1789,7 @@ Item {
         width: Math.min(380, Math.max(300, view.width * 0.24))
         height: 68
         library: view.library
-        details: view.details
+        details: view.browsing
         selectedGameId: view.selectedGameId
         active: view.active
         blocked: !view.inputEnabled || view.launchStatusOverlayOpen
@@ -1798,7 +1812,7 @@ Item {
 
         Image {
             anchors.fill: parent
-            source: view.library.couch_theme_background_image
+            source: view.attractOpen ? view.library.couch_theme_background_image : ""
             asynchronous: true
             cache: true
             autoTransform: true
@@ -1808,13 +1822,13 @@ Item {
 
         Image {
             anchors.fill: parent
-            source: view.heroUrl
+            source: view.attractOpen ? view.heroUrl : ""
             asynchronous: true
             cache: true
             autoTransform: true
             fillMode: Image.PreserveAspectCrop
-            sourceSize.width: Math.max(1, Math.round(width * 1.4))
-            sourceSize.height: Math.max(1, Math.round(height * 1.4))
+            sourceSize: Qt.size(1920, 1080)
+            retainWhileLoading: true
             opacity: status === Image.Ready ? 0.88 : 0
             Behavior on opacity { NumberAnimation { duration: 420 } }
         }
@@ -1928,7 +1942,7 @@ Item {
                     id: attractCoverImage
                     anchors.fill: parent
                     anchors.margins: 2
-                    source: view.coverUrl
+                    source: view.attractOpen ? view.coverUrl : ""
                     asynchronous: true
                     cache: true
                     mipmap: true
@@ -1988,8 +2002,8 @@ Item {
             }
             Text {
                 width: Math.min(parent.width, 850)
-                visible: view.details.description.length > 0
-                text: view.details.description
+                visible: view.browsing.description.length > 0
+                text: view.browsing.description
                 color: view.withAlpha(view.ink, 0.84)
                 font.pixelSize: 15
                 lineHeight: 1.28
@@ -2003,23 +2017,19 @@ Item {
                     width: attractStateLabel.implicitWidth + 22
                     height: 30
                     radius: Math.max(8, view.cardRadius - 6)
-                    color: view.details.can_launch ? view.withAlpha(view.playGreen, 0.24)
-                           : view.selectedLocal ? view.withAlpha(view.accentCool, 0.24)
+                    color: view.selectedLocal ? view.withAlpha(view.playGreen, 0.24)
                            : view.selectedDownloadable ? view.withAlpha(view.accent, 0.24)
                                                        : view.withAlpha(view.panelRaised, 0.76)
-                    border.color: view.details.can_launch ? view.playGreen
-                                  : view.selectedLocal ? view.accentCool
+                    border.color: view.selectedLocal ? view.playGreen
                                   : view.selectedDownloadable ? view.accent
                                                               : view.withAlpha(view.muted, 0.58)
                     Text {
                         id: attractStateLabel
                         anchors.centerIn: parent
-                        text: view.details.can_launch ? "READY TO PLAY"
-                              : view.selectedLocal ? "SETUP REQUIRED"
+                        text: view.selectedLocal ? "INSTALLED"
                               : view.selectedDownloadable ? "MINERVA AVAILABLE"
                                 : "CATALOG"
-                        color: view.details.can_launch ? view.playGreen
-                               : view.selectedLocal ? view.accentCool
+                        color: view.selectedLocal ? view.playGreen
                                : view.selectedDownloadable ? view.accent : view.muted
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -3085,8 +3095,32 @@ Item {
         visible: view.overlayOpen
         color: view.withAlpha(view.background, 0.91)
 
+        Loader {
+            id: nativeDetails
+            anchors.fill: parent
+            active: view.overlayOpen && view.overlayMode === "details"
+            visible: active
+            sourceComponent: CouchDetailsPage {
+                details: view.details
+                gameTitle: view.selectedTitle
+                platform: view.selectedPlatform
+                coverUrl: view.coverUrl
+                primaryAction: view.primaryAction
+                favorite: view.favorite
+                ready: view.detailsCurrent && !view.details.loading
+                background: view.background; panel: view.panel
+                ink: view.ink; muted: view.muted; accent: view.accentCool
+                onCloseRequested: view.closeOverlay()
+                onPrimaryRequested: { view.closeOverlay(); view.activateAction(0) }
+                onFavoriteRequested: view.activateAction(2)
+                onVersionsRequested: view.openVariantWheel()
+                onManageRequested: section => view.manageGameRequested(section)
+            }
+        }
+
         Rectangle {
             id: overlayPanel
+            visible: view.overlayMode === "menu"
             anchors.centerIn: parent
             width: Math.min(1180, parent.width - 120)
             height: Math.min(790, parent.height - 110)
@@ -3128,7 +3162,7 @@ Item {
                         id: overlayCoverImage
                         anchors.fill: parent
                         anchors.margins: 2
-                        source: view.coverUrl
+                        source: view.overlayOpen && view.overlayMode === "menu" ? view.coverUrl : ""
                         asynchronous: true
                         cache: true
                         mipmap: true
@@ -3720,7 +3754,7 @@ Item {
 
     Timer {
         id: selectionDelay
-        interval: 120
+        interval: 320
         repeat: false
         onTriggered: {
             if (view.active)
@@ -3768,6 +3802,12 @@ Item {
                                                       shelf.count - 1))
             if (view.active)
                 selectionDelay.restart()
+        }
+        function onMedia_loadingChanged() {
+            if (view.active && !view.library.media_loading) {
+                view.loadedGameId = ""
+                selectionDelay.restart()
+            }
         }
         function onCollection_revisionChanged() {
             if (view.collectionWheelOpen) {

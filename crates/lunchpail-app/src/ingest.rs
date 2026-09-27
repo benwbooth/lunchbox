@@ -50,7 +50,7 @@ pub(crate) fn seed_install_management_ui_probe() -> Result<PathBuf> {
         ..AppSettings::default()
     };
     store.save(&settings)?;
-    let job = DownloadJob::queued(crate::settings::NewDownloadJob {
+    let mut job = DownloadJob::queued(crate::settings::NewDownloadJob {
         game_id: INSTALL_MANAGEMENT_PROBE_GAME_UID.to_owned(),
         launchbox_db_id: 140,
         title: "Super Mario Bros.".to_owned(),
@@ -67,6 +67,10 @@ pub(crate) fn seed_install_management_ui_probe() -> Result<PathBuf> {
     });
     let receipt = installed_file_receipt(&installed, true)?;
     store.record_installed(&job, &installed, &[receipt])?;
+    // Retain completed history after uninstall: it must not create a Play badge.
+    job.state = "imported".to_owned();
+    job.progress = 1.0;
+    store.upsert_job(&job)?;
     Ok(installed)
 }
 
