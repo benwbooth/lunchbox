@@ -1,6 +1,7 @@
 import QtQuick
 
 AcceleratedWheelHandler {
+    objectName: "momentumWheelHandler"
     // Shared profile for ordinary surfaces; the handler scales glide from
     // the actual scrollable length.
     wheelPageFactor: 0.8

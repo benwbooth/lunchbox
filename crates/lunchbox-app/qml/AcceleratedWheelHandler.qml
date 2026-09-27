@@ -31,6 +31,7 @@ WheelHandler {
     property int burstCount: 0
     property int lastDirection: 0
     property bool advancing: false
+    property real lastAppliedContentY: NaN
 
     onEnabledChanged: {
         if (!enabled)
@@ -78,6 +79,7 @@ WheelHandler {
         momentumTimer.stop()
         velocityY = 0
         lastFrameAt = 0
+        lastAppliedContentY = NaN
     }
 
     function addVelocity(impulse) {
@@ -108,7 +110,8 @@ WheelHandler {
         if (!isFinite(distance) || distance === 0)
             return
         advancing = true
-        scroller.contentY = clampContentY(scroller.contentY + distance)
+        lastAppliedContentY = clampContentY(scroller.contentY + distance)
+        scroller.contentY = lastAppliedContentY
         advancing = false
     }
 
@@ -148,6 +151,7 @@ WheelHandler {
         const current = scroller.contentY
         const next = clampContentY(current + distance)
         advancing = true
+        lastAppliedContentY = next
         scroller.contentY = next
         advancing = false
         velocityY *= decay
@@ -180,8 +184,11 @@ WheelHandler {
         function onContentYChanged() {
             // Scrollbar drags and programmatic navigation take ownership from
             // wheel momentum immediately. Changes made by our frame timer are
-            // marked so they do not cancel themselves.
-            if (!handler.advancing && handler.momentumRunning)
+            // marked so they do not cancel themselves. GridView can also
+            // round our position to a pixel on a later layout pass; that is
+            // still our movement, not a scrollbar/navigation takeover.
+            if (!handler.advancing && handler.momentumRunning
+                    && Math.abs(scroller.contentY - handler.lastAppliedContentY) > 1)
                 handler.stopMomentum()
         }
     }

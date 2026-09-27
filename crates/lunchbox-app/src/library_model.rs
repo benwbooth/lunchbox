@@ -1567,10 +1567,9 @@ fn build_alphabet_index(
 }
 
 fn title_sort_supports_alphabet(sort_field: &str, availability: &str) -> bool {
-    sort_field == "title"
-        || (sort_field == "default"
-            && availability != "recent"
-            && !availability.starts_with("collection:"))
+    availability != "recent"
+        && (sort_field == "title"
+            || (sort_field == "default" && !availability.starts_with("collection:")))
 }
 
 fn effective_cooperative<'a>(
@@ -7383,7 +7382,8 @@ mod tests {
 
     #[test]
     fn alphabet_navigation_only_claims_title_ordered_libraries() {
-        assert!(title_sort_supports_alphabet("title", "recent"));
+        assert!(!title_sort_supports_alphabet("title", "recent"));
+        assert!(title_sort_supports_alphabet("title", "favorites"));
         assert!(title_sort_supports_alphabet("default", "downloadable"));
         assert!(!title_sort_supports_alphabet("default", "recent"));
         assert!(!title_sort_supports_alphabet(

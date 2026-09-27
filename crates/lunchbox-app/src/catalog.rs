@@ -2008,6 +2008,13 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         })
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
+    // Recently Played is an automatic chronological collection, not another
+    // view of the saved alphabetical/column sort. Leave that preference intact
+    // for the library and other collections.
+    if filter.availability == "recent" {
+        indices.sort_by(|left, right| compare_games(catalog, filter, *left, *right));
+        return indices;
+    }
     if let Some(column) = ListColumn::parse(&filter.sort_field) {
         let mut keyed = indices
             .into_iter()
@@ -2315,6 +2322,55 @@ mod tests {
             ),
             vec![1, 0]
         );
+    }
+
+    #[test]
+    fn recent_collection_is_always_newest_first_without_changing_other_sorts() {
+        let catalog = fixture_catalog();
+        for field in ["default", "title", "platform", "publisher"] {
+            for descending in [false, true] {
+                let mut filter = Filter {
+                    availability: "recent".into(),
+                    recent_game_order: Arc::new(HashMap::from([
+                        ("metroid".into(), 10),
+                        ("outrun".into(), 20),
+                    ])),
+                    sort_field: field.into(),
+                    sort_descending: descending,
+                    ..Filter::default()
+                };
+                assert_eq!(
+                    filter_indices(&catalog, &filter),
+                    vec![1, 0],
+                    "{field}, {descending}"
+                );
+                // A new session moves that exact game to the front.
+                Arc::make_mut(&mut filter.recent_game_order).insert("metroid".into(), 30);
+                assert_eq!(filter_indices(&catalog, &filter), vec![0, 1]);
+                // Equal timestamps have a stable title/identity tie-break.
+                Arc::make_mut(&mut filter.recent_game_order).insert("outrun".into(), 30);
+                assert_eq!(filter_indices(&catalog, &filter), vec![0, 1]);
+                filter.search = "outrun".into();
+                assert_eq!(filter_indices(&catalog, &filter), vec![1]);
+                filter.search.clear();
+                filter.platform = "Nintendo Entertainment System".into();
+                assert_eq!(filter_indices(&catalog, &filter), vec![0]);
+                filter.platform.clear();
+                filter.recent_game_order = Arc::new(HashMap::new());
+                assert!(filter_indices(&catalog, &filter).is_empty());
+            }
+        }
+        let mut filter = Filter {
+            sort_field: "title".into(),
+            sort_descending: true,
+            ..Filter::default()
+        };
+        assert_eq!(filter_indices(&catalog, &filter), vec![1, 0]);
+        filter.availability = "favorites".into();
+        filter.favorite_game_ids = Arc::new(HashSet::from(["metroid".into()]));
+        assert_eq!(filter_indices(&catalog, &filter), vec![0]);
+        Arc::make_mut(&mut filter.favorite_game_ids).clear();
+        assert!(filter_indices(&catalog, &filter).is_empty());
     }
 
     #[test]

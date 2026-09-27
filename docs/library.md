@@ -56,8 +56,19 @@ release does not rename or replace an installed US release.
 
 ## Favorites and collections
 
-Use the star to mark a favorite. A manual collection contains games you pick;
-a smart collection follows rules such as system, tags, completion, or availability.
+Two automatic collections are always available under **Collections** in the sidebar:
+
+- **Favorites** holds the games you star. Click the star on any grid cover to add
+  or remove a game, or press **F** with a game selected. A filled star means it is
+  a favorite. Your choices are remembered when you reopen Lunchbox.
+- **Recently Played** shows games you have launched, with the most recently played
+  first. It updates as you play, regardless of your sorting in the rest of the library.
+
+Both are also available in Couch Mode. Search and platform filters can narrow
+either collection.
+
+A manual collection contains games you pick; a smart collection follows rules
+such as system, tags, completion, or availability.
 
 Manage collections from the library menu. Collections can be reordered,
 imported, and exported. Exporting a collection shares its membership, not ROMs.
@@ -89,4 +100,3 @@ Libretro and optional connected providers. Coverage varies by system and release
 Artwork and descriptions can be missing or wrong even when a game launches correctly.
 
 For source and license information, see [Data licenses](../DATA_LICENSES.md).
-

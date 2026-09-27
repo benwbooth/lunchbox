@@ -22,6 +22,14 @@ Item {
     property color accent: "#ffb454"
     property color panel: "#182230"
     property int artworkRevision: library.media_revision
+    readonly property bool favorite: {
+        library.favorite_revision
+        return library.is_favorite(gameId)
+    }
+    readonly property bool favoriteBusy: {
+        library.favorite_pending_count
+        return library.favorite_pending(gameId)
+    }
     readonly property url artwork: {
         artworkRevision
         // Generic artwork lookup may substitute a portrait cover when a logo
@@ -113,6 +121,16 @@ Item {
             width: 8; height: 8; radius: 4
             visible: card.gameLocal
             color: "#5ee391"
+        }
+        FavoriteButton {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 9
+            visible: !card.wheel
+            favorite: card.favorite
+            busy: card.favoriteBusy
+            gameTitle: card.gameTitle
+            onToggleRequested: favorite => card.library.set_favorite(card.gameId, favorite)
         }
     }
     HoverHandler { id: hover }

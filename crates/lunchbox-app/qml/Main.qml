@@ -84,6 +84,7 @@ ApplicationWindow {
                                                                   && !library.media_loading
                                                                   && !gameDetails.loading))
     property string availability: ""
+    readonly property bool recentlyPlayed: availability === "recent"
     property string selectedCollectionId: ""
     property string selectedCollectionName: ""
     property string editingCollectionId: ""
@@ -1529,13 +1530,14 @@ ApplicationWindow {
     }
 
     function requestLibrarySort(sortField) {
+        if (root.recentlyPlayed) return
         const descending = library.sort_field === sortField
                            ? !library.sort_descending : false
         library.set_sort_preferences(sortField, descending)
     }
 
     function sortIndicator(sortField) {
-        if (library.sort_field !== sortField)
+        if (root.recentlyPlayed || library.sort_field !== sortField)
             return ""
         return library.sort_descending ? "  ↓" : "  ↑"
     }
@@ -3745,7 +3747,6 @@ ApplicationWindow {
                         x: notificationViewport.width - width
                         y: 0
                         height: notificationViewport.height
-                        width: 10
                         policy: ScrollBar.AlwaysOn
                         visible: notificationList.contentHeight > notificationList.height
                         leftPadding: 2
@@ -9482,6 +9483,7 @@ ApplicationWindow {
             Row {
                 width: parent.width
                 spacing: 8
+                visible: !root.recentlyPlayed
                 LbComboBox {
                     id: sortCombo
                     width: parent.width - sortDirectionButton.width - 8
@@ -9508,8 +9510,9 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
-                text: library.sort_field === "default"
-                      ? "Library order preserves curated collections and newest-first recent play; direction can reverse it."
+                text: root.recentlyPlayed ? "Most recently played first. This collection updates automatically as you play."
+                      : library.sort_field === "default"
+                      ? "Library order preserves curated collection order."
                       : "This order applies to both grid and list views."
                 color: root.muted
                 font.pixelSize: 9
@@ -10417,21 +10420,7 @@ ApplicationWindow {
             active: true
             interactive: true
             hoverEnabled: true
-            width: 15
             z: 1000
-            contentItem: Rectangle {
-                implicitWidth: 11
-                radius: width / 2
-                color: gridScrollBar.pressed ? root.accent
-                       : gridScrollBar.hovered ? root.accentCool : "#748197"
-                opacity: gridScrollBar.size < 1 ? 0.95 : 0.45
-            }
-            background: Rectangle {
-                implicitWidth: 15
-                radius: width / 2
-                color: "#151c27"
-                border.color: root.line
-            }
         }
         AcceleratedWheelHandler { scroller: grid; blocking: true }
 
@@ -10983,7 +10972,7 @@ ApplicationWindow {
                             renderType: Text.NativeRendering
                         }
                     }
-                    LbRoundButton {
+                    FavoriteButton {
                         id: favoriteButton
                         z: previewPresentation.overlayLayer
                         anchors.left: parent.left
@@ -10991,14 +10980,11 @@ ApplicationWindow {
                         anchors.margins: 8 * card.expansion
                         width: 32 * card.expansion
                         height: 32 * card.expansion
-                        visible: tile.favorite || tile.favoriteBusy
-                                 || tile.hoverEmphasis || tile.focusedHighlight
-                        enabled: !tile.favoriteBusy
-                        text: tile.favoriteBusy ? "…" : tile.favorite ? "★" : "☆"
-                        flat: true
-                        highlighted: tile.favorite
+                        favorite: tile.favorite
+                        busy: tile.favoriteBusy
+                        gameTitle: tile.gameTitle
                         font.pixelSize: 17 * card.expansion
-                        onClicked: library.set_favorite(tile.gameId, !tile.favorite)
+                        onToggleRequested: favorite => library.set_favorite(tile.gameId, favorite)
                     }
                     LbRoundButton {
                         id: cardPlayButton
@@ -11193,7 +11179,6 @@ ApplicationWindow {
             active: true
             interactive: true
             hoverEnabled: true
-            width: 15
             z: 1000
         }
         ScrollBar.horizontal: LbScrollBar { policy: ScrollBar.AsNeeded }
@@ -11295,7 +11280,8 @@ ApplicationWindow {
                         text: root.listColumnDefinition(headerColumn.modelData).label.toUpperCase()
                               + root.sortIndicator(headerColumn.modelData)
                         flat: true
-                        highlighted: library.sort_field === headerColumn.modelData
+                        enabled: !root.recentlyPlayed
+                        highlighted: !root.recentlyPlayed && library.sort_field === headerColumn.modelData
                         onClicked: root.requestLibrarySort(headerColumn.modelData)
                         Accessible.name: "Sort games by "
                                          + root.listColumnDefinition(
@@ -11307,7 +11293,7 @@ ApplicationWindow {
                             anchors.topMargin: columnSortButton.topPadding
                             anchors.bottomMargin: columnSortButton.bottomPadding
                             text: parent.text
-                            color: library.sort_field === headerColumn.modelData
+                            color: !root.recentlyPlayed && library.sort_field === headerColumn.modelData
                                    ? root.accent : root.muted
                             font.pixelSize: 14
                             font.weight: Font.Bold
@@ -11350,7 +11336,7 @@ ApplicationWindow {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         height: 2
-                        visible: library.sort_field === headerColumn.modelData
+                        visible: (!root.recentlyPlayed && library.sort_field === headerColumn.modelData)
                                  || headerColumn.columnFiltered
                         color: headerColumn.columnFiltered ? root.accentCool : root.accent
                     }
@@ -12135,11 +12121,41 @@ ApplicationWindow {
             }
         }
 
+        Column {
+            id: automaticCollections
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: collectionsHeader.bottom
+            anchors.leftMargin: 13
+            anchors.rightMargin: 13
+            spacing: 3
+
+            SidebarNavButton {
+                objectName: "favoritesCollection"
+                label: "Favorites"
+                iconName: "favorite"
+                glyph: "★"
+                count: library.favorite_count.toString()
+                active: root.selectedPlatform === "" && root.availability === "favorites"
+                onClicked: root.selectLibrary("favorites")
+            }
+            SidebarNavButton {
+                objectName: "recentlyPlayedCollection"
+                label: "Recently Played"
+                iconName: "recent"
+                glyph: "◷"
+                count: library.recent_count.toString()
+                active: root.selectedPlatform === "" && root.recentlyPlayed
+                onClicked: root.selectLibrary("recent")
+            }
+        }
+
         MomentumListView {
             id: collectionList
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: collectionsHeader.bottom
+            anchors.top: automaticCollections.bottom
+            anchors.topMargin: 3
             anchors.leftMargin: 13
             anchors.rightMargin: 13
             height: Math.min(contentHeight, 142)
@@ -12686,6 +12702,8 @@ ApplicationWindow {
                         text: library.loading ? "Opening your library" :
                               !library.ready ? "Catalog unavailable" :
                               library.game_count === 0 ? "Your library is ready for games" :
+                              root.availability === "favorites" && library.favorite_count === 0 ? "No favorites yet" :
+                              root.recentlyPlayed && library.recent_count === 0 ? "No recently played games yet" :
                               "No games match these filters"
                         color: root.ink
                         font.pixelSize: 21
@@ -12699,6 +12717,10 @@ ApplicationWindow {
                               !library.ready ? library.status_message :
                               library.game_count === 0 ?
                                   "Add a discovery database or import local games. Minerva availability is layered over the catalog without treating provider filenames as canonical identities." :
+                              root.availability === "favorites" && library.favorite_count === 0 ?
+                                  "Click the star on any game cover to add it to Favorites." :
+                              root.recentlyPlayed && library.recent_count === 0 ?
+                                  "Games you launch with Lunchbox appear here, most recently played first." :
                                   "Try a different platform, availability option, or search."
                         color: root.muted
                         font.pixelSize: 13

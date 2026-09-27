@@ -95,11 +95,12 @@ Item {
     }
     Component {
         id: wall
-        GridView {
+        MomentumGridView {
             id: grid
-            readonly property int columnCount: Math.max(3, Math.floor(width / 190))
+            objectName: "couchWallGrid"
+            readonly property int columnCount: Math.max(3, Math.floor(verticalContentWidth / 190))
             model: browser.library
-            cellWidth: width / columnCount
+            cellWidth: verticalContentWidth / columnCount
             cellHeight: Math.min(300, cellWidth * 1.42)
             clip: true
             cacheBuffer: height

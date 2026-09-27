@@ -121,6 +121,7 @@ fn main() {
                 "qml/LbFrame.qml",
                 "qml/LbItemDelegate.qml",
                 "qml/LbRoundButton.qml",
+                "qml/FavoriteButton.qml",
                 "qml/LbScrollBar.qml",
                 "qml/LbSpinBox.qml",
                 "qml/LbTabButton.qml",

@@ -17,6 +17,15 @@ TestCase {
             cardRadius: 12
             library: ListModel {
                 property int media_revision: 0
+                property int favorite_revision: 0
+                property int favorite_pending_count: 0
+                property var favorites: ({})
+                function is_favorite(id) { return favorites[id] === true }
+                function favorite_pending(id) { return false }
+                function set_favorite(id, favorite) {
+                    favorites[id] = favorite
+                    favorite_revision++
+                }
                 function artwork_url(id, kind) { return "" }
                 function exact_artwork_url(id, kind) { return "" }
                 function request_artwork(id, title, platform, kind) {}
@@ -56,6 +65,44 @@ TestCase {
         browser.currentIndex = 35
         browser.positionViewAtEnd()
         tryVerify(function() { return browser.currentItem && browser.currentItem.gameId === "game-35" })
+    }
+    SignalSpy { id: activation; signalName: "cardActivated" }
+    function test_wall_wheel_keeps_gliding_and_reserves_slim_scrollbar() {
+        const browser = createTemporaryObject(browserComponent, this, { viewStyle: "wall" })
+        tryCompare(browser, "count", 36)
+        const grid = findChild(browser, "couchWallGrid")
+        verify(grid)
+        verify(grid.defaultWheelMomentum)
+        const momentum = findChild(grid, "momentumWheelHandler")
+        verify(momentum && momentum.enabled)
+        verify(grid.verticalScrollBarGutter <= 14)
+        verify(grid.cellWidth * grid.columnCount <= grid.width - grid.verticalScrollBarGutter + 0.01)
+        mouseWheel(grid, grid.width / 2, grid.height / 2, 0, -120)
+        const immediate = grid.contentY
+        verify(immediate > 0, "Wheel input should move immediately")
+        verify(momentum.momentumRunning, "Wheel must start momentum; position=" + immediate)
+        wait(120)
+        verify(grid.contentY > immediate + 10, "Cover wall should keep gliding after the wheel stops; immediate=" + immediate + ", now=" + grid.contentY + ", running=" + momentum.momentumRunning)
+    }
+    function test_wall_star_toggles_only_favorite() {
+        const browser = createTemporaryObject(browserComponent, this, { viewStyle: "wall" })
+        tryCompare(browser, "count", 36)
+        browser.currentIndex = 1
+        tryVerify(function() { return browser.currentItem !== null })
+        activation.target = browser
+        activation.clear()
+        const star = findChild(browser.currentItem, "coverFavoriteButton")
+        verify(star)
+        verify(star.visible)
+        compare(star.favorite, false)
+        mouseClick(star)
+        tryCompare(star, "favorite", true)
+        compare(browser.library.is_favorite("game-1"), true)
+        compare(activation.count, 0, "Starring a cover must not open the game")
+        mouseClick(star)
+        tryCompare(star, "favorite", false)
+        compare(activation.count, 0)
+        activation.target = null
     }
     function test_small_model_and_empty_library() {
         const browser = createTemporaryObject(browserComponent, this)

@@ -140,4 +140,15 @@ TestCase {
         compare(scroller.contentY, scroller.contentHeight - scroller.height)
         verify(!handler.momentumRunning)
     }
+
+    function test_pixel_rounding_does_not_cancel_but_navigation_does() {
+        handler.scrollNotches(1)
+        verify(handler.momentumRunning)
+        scroller.contentY = Math.round(scroller.contentY)
+        verify(handler.momentumRunning,
+               "A deferred pixel alignment is not a manual scroll")
+        scroller.contentY += 80
+        verify(!handler.momentumRunning,
+               "A scrollbar or navigation jump should take control")
+    }
 }
