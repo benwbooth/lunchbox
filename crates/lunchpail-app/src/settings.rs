@@ -7471,7 +7471,7 @@ fn migrate(connection: &Connection) -> Result<()> {
                  CHECK (display_fullscreen IN ('', 'true', 'false')),
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
-                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night')),
+                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night', 'arcade-duimon-vertical', 'arcade-duimon-cab-vertical', 'arcade-duimon-horizontal', 'arcade-duimon-cab-horizontal') OR (length(display_bezel)=71 AND substr(display_bezel,1,7)='custom:' AND substr(display_bezel,8) NOT GLOB '*[^0-9a-f]*')),
              save_states TEXT NOT NULL DEFAULT ''
                  CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
@@ -7922,7 +7922,7 @@ fn emulator_launch_profiles_supports_bezel_choices(connection: &Connection) -> R
         [],
         |row| row.get(0),
     )?;
-    Ok(definition.contains("'ultrawide-night'"))
+    Ok(definition.contains("'custom:'"))
 }
 
 // Existing databases carry a CHECK that demands a non-empty argument or
@@ -7960,7 +7960,7 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
                  CHECK (display_fullscreen IN ('', 'true', 'false')),
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
-                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night')),
+                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night', 'arcade-duimon-vertical', 'arcade-duimon-cab-vertical', 'arcade-duimon-horizontal', 'arcade-duimon-cab-horizontal') OR (length(display_bezel)=71 AND substr(display_bezel,1,7)='custom:' AND substr(display_bezel,8) NOT GLOB '*[^0-9a-f]*')),
              save_states TEXT NOT NULL DEFAULT ''
                  CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
@@ -8810,6 +8810,7 @@ fn validate_display_profile_values(
     match display_bezel {
         "" | "off" | "system" | "themed" | "orionsangel" | "orionsangel-plain" | "ultrawide"
         | "ultrawide-night" => {}
+        other if crate::bezel_library::is_choice(other) => {}
         other => bail!("unknown bezel display setting: {other}"),
     }
     match save_states {
@@ -11899,7 +11900,7 @@ identity"
     }
 
     #[test]
-    fn existing_bezel_and_save_states_survive_ultrawide_migration() {
+    fn existing_bezel_and_save_states_survive_artwork_picker_migration() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.db");
         {
@@ -11917,7 +11918,7 @@ identity"
                          display_fullscreen TEXT NOT NULL DEFAULT '',
                          display_shader TEXT NOT NULL DEFAULT '',
                          display_bezel TEXT NOT NULL DEFAULT ''
-                             CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain')),
+                             CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain', 'ultrawide', 'ultrawide-night')),
                          save_states TEXT NOT NULL DEFAULT ''
                              CHECK (save_states IN ('', 'off', 'on')),
                          updated_at INTEGER NOT NULL,
@@ -11958,6 +11959,45 @@ identity"
             .unwrap();
         assert_eq!(updated.display_bezel, "ultrawide-night");
         assert_eq!(updated.save_states, "on");
+    }
+
+    #[test]
+    fn bezel_picker_choices_persist_per_game_and_reject_unsafe_ids() {
+        let (directory, store) = store();
+        let mut profile = EmulatorLaunchProfile {
+            scope_kind: "platform".into(),
+            scope_key: "Arcade".into(),
+            emulator_id: "mame-id".into(),
+            runtime_kind: "retroarch".into(),
+            core_name: "mame".into(),
+            display_bezel: "themed".into(),
+            ..Default::default()
+        };
+        store.set_emulator_launch_profile(&profile).unwrap();
+        profile.scope_kind = "game".into();
+        profile.scope_key = "vertical-game".into();
+        let mut ids: Vec<String> = crate::bezel_library::ARCADE_ART
+            .iter()
+            .map(|entry| entry.0.into())
+            .collect();
+        ids.push(format!("custom:{}", "a".repeat(64)));
+        for id in ids {
+            profile.display_bezel = id.clone();
+            store.set_emulator_launch_profile(&profile).unwrap();
+            let reopened = SettingsStore::at(directory.path().join("state.db")).unwrap();
+            let resolve = |game| {
+                reopened
+                    .resolve_launch_customization(game, "Arcade", "mame-id", "retroarch", "mame")
+                    .unwrap()
+                    .display_bezel
+            };
+            assert_eq!(resolve("vertical-game"), id);
+            assert_eq!(resolve("other-game"), "themed");
+        }
+        for id in ["custom:../bad", "custom:x", "arcade-duimon-missing"] {
+            profile.display_bezel = id.into();
+            assert!(store.set_emulator_launch_profile(&profile).is_err());
+        }
     }
 
     #[test]

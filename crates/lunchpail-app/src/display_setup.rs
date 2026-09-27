@@ -161,8 +161,9 @@ pub fn shader_presets_supported(runtime_kind: &str) -> bool {
     runtime_kind == "retroarch"
 }
 
-pub fn bezels_supported(platform: &str, runtime_kind: &str) -> bool {
-    runtime_kind == "retroarch" && !bezel_choices(platform).is_empty()
+pub fn bezels_supported(_platform: &str, runtime_kind: &str) -> bool {
+    // Custom PNGs are useful even when no community pack exists for a system.
+    runtime_kind == "retroarch"
 }
 
 pub struct BezelChoice {
@@ -170,14 +171,41 @@ pub struct BezelChoice {
     pub label: &'static str,
 }
 
+pub(crate) fn resolve_bezel_overlay(
+    platform: &str,
+    rom_stem: &str,
+    choice: &str,
+) -> Result<Option<PathBuf>> {
+    match choice {
+        "system" => crate::bezel_project::system_bezel_overlay(platform, rom_stem),
+        "themed" => crate::bezel_project::bezel_overlay(
+            platform,
+            rom_stem,
+            crate::bezel_project::PackStyle::GameArt,
+        ),
+        "orionsangel" => crate::bezel_orionsangel::overlay(platform, false),
+        "orionsangel-plain" => crate::bezel_orionsangel::overlay(platform, true),
+        "ultrawide" => crate::bezel_orionsangel::ultrawide_overlay(platform, false),
+        "ultrawide-night" => crate::bezel_orionsangel::ultrawide_overlay(platform, true),
+        other if crate::bezel_library::is_choice(other) => crate::bezel_library::overlay(other),
+        other => Err(anyhow::anyhow!("Unknown bezel choice {other}")),
+    }
+}
+
 /// Artwork choices are explicit sources, rather than an opaque "pack" whose
 /// per-game fallback can silently change its appearance.
 pub fn bezel_choices(platform: &str) -> Vec<BezelChoice> {
     if crate::bezel_project::arcade_bezels_supported(platform) {
-        return vec![BezelChoice {
+        let mut choices = vec![BezelChoice {
             id: "themed",
             label: "Bezel Project · game-specific arcade art",
         }];
+        choices.extend(
+            crate::bezel_library::ARCADE_ART
+                .iter()
+                .map(|(id, label, _)| BezelChoice { id, label }),
+        );
+        return choices;
     }
     let mut choices = Vec::new();
     if crate::bezel_project::theme_for_platform(platform).is_some() {
@@ -424,7 +452,7 @@ pub fn retroarch_config_value(executable: &EmulatorExecutable, key: &str) -> Opt
     config_value_from_text(&text, key)
 }
 
-fn config_value_from_text(text: &str, wanted_key: &str) -> Option<String> {
+pub(crate) fn config_value_from_text(text: &str, wanted_key: &str) -> Option<String> {
     let mut result = None;
     for line in text.lines() {
         let Some((key, value)) = line.split_once('=') else {
@@ -546,23 +574,13 @@ pub fn attach_launch_display_configuration(
         lines.push_str("aspect_ratio_index = \"22\"\n");
     } else if !display_bezel.is_empty() {
         let ultrawide = matches!(display_bezel, "ultrawide" | "ultrawide-night");
-        let selected = match display_bezel {
-            "system" => crate::bezel_project::system_bezel_overlay(platform, rom_stem),
-            "themed" => crate::bezel_project::bezel_overlay(
-                platform,
-                rom_stem,
-                crate::bezel_project::PackStyle::GameArt,
-            ),
-            "orionsangel" => crate::bezel_orionsangel::overlay(platform, false),
-            "orionsangel-plain" => crate::bezel_orionsangel::overlay(platform, true),
-            "ultrawide" | "ultrawide-night" if customization.display_fullscreen == "false" => {
-                Err(anyhow::anyhow!(
-                    "21:9 artwork needs fullscreen; change Display fullscreen to On or Inherit"
-                ))
-            }
-            "ultrawide" => crate::bezel_orionsangel::ultrawide_overlay(platform, false),
-            "ultrawide-night" => crate::bezel_orionsangel::ultrawide_overlay(platform, true),
-            other => Err(anyhow::anyhow!("Unknown bezel choice {other}")),
+        let managed = crate::bezel_library::is_choice(display_bezel);
+        let selected = if (ultrawide || managed) && customization.display_fullscreen == "false" {
+            Err(anyhow::anyhow!(
+                "Fitted artwork needs fullscreen; change Display fullscreen to On or Inherit"
+            ))
+        } else {
+            resolve_bezel_overlay(platform, rom_stem, display_bezel)
         };
         match selected.and_then(|overlay| {
             overlay
@@ -571,7 +589,7 @@ pub fn attach_launch_display_configuration(
                     // this can differ from the monitor mode under fractional
                     // scaling. The overlay itself remains full-screen.
                     let known_dimensions = output_dimensions.filter(|(w, h)| *w > 0 && *h > 0);
-                    let dimensions = if ultrawide {
+                    let dimensions = if ultrawide || managed {
                         Some(probe_retroarch_output_dimensions(
                             executable,
                             known_dimensions,
@@ -580,23 +598,31 @@ pub fn attach_launch_display_configuration(
                         known_dimensions
                     };
                     let prepared = aspect_fitted_overlay(&path)?;
-                    let viewport =
-                        if ultrawide {
-                            let (width, height) = dimensions
-                                .context("the output resolution is needed for 21:9 artwork")?;
-                            Some(ultrawide_viewport(width, height).context(
-                                "the output resolution cannot fit the 21:9 game opening",
-                            )?)
-                        } else {
-                            None
-                        };
-                    Ok((prepared, viewport))
+                    let opening = if managed {
+                        Some(crate::bezel_library::opening(&path)?)
+                    } else {
+                        None
+                    };
+                    let viewport = if let Some(opening) = opening {
+                        let (width, height) = dimensions
+                            .context("The output resolution is needed for fitted artwork")?;
+                        Some(opening.viewport(width, height))
+                    } else if ultrawide {
+                        let (width, height) = dimensions
+                            .context("the output resolution is needed for 21:9 artwork")?;
+                        let (x, y, w, h) = ultrawide_viewport(width, height)
+                            .context("the output resolution cannot fit the 21:9 game opening")?;
+                        Some((x as i32, y as i32, w, h))
+                    } else {
+                        None
+                    };
+                    Ok((prepared, viewport, opening))
                 })
                 .transpose()
         }) {
-            Ok(Some((overlay_path, viewport))) => {
+            Ok(Some((overlay_path, viewport, opening))) => {
                 external_bezel_active = true;
-                reflective_artwork = Some((overlay_path.clone(), ultrawide));
+                reflective_artwork = Some((overlay_path.clone(), ultrawide, opening));
                 // The actual output can change after launch (window resizing,
                 // fullscreen, another monitor). Leave any unused area black.
                 black_sidebars = true;
@@ -662,7 +688,7 @@ pub fn attach_launch_display_configuration(
                                 "RetroTube TV could not install its stable viewport preset: {error:#}"
                             )),
                         }
-                        if let Some((overlay, ultrawide)) = &reflective_artwork {
+                        if let Some((overlay, ultrawide, opening)) = &reflective_artwork {
                             let install = || -> Result<PathBuf> {
                                 let overlay = fs::read_to_string(overlay)?;
                                 let image = config_value_from_text(&overlay, "overlay0_overlay")
@@ -670,11 +696,12 @@ pub fn attach_launch_display_configuration(
                                 let candidate =
                                     root.join("lunchpail/retrotube-tv-reflective-artwork.slangp");
                                 fs::copy(&preset_path, &candidate)?;
-                                crate::retrotube_artwork::install(
+                                crate::retrotube_artwork::install_with_opening(
                                     &base,
                                     &candidate,
                                     Path::new(&image),
                                     *ultrawide,
+                                    *opening,
                                 )?;
                                 Ok(candidate)
                             };
@@ -1196,12 +1223,10 @@ mod tests {
             assert_eq!(effective_bezel_choice(platform, "system"), "themed");
             assert_eq!(effective_bezel_choice(platform, "off"), "off");
             assert_eq!(effective_bezel_choice(platform, "ultrawide"), "ultrawide");
-            assert_eq!(
+            assert!(
                 bezel_choices(platform)
                     .iter()
-                    .map(|choice| choice.id)
-                    .collect::<Vec<_>>(),
-                ["themed"]
+                    .any(|choice| choice.id == "themed")
             );
             assert!(bezels_supported(platform, "retroarch"));
             assert!(!bezels_supported(platform, "native"));

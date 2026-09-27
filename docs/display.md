@@ -53,6 +53,22 @@ or refresh it. Installing a shader collection does not select it for every game.
 
 ## Which bezel should I use?
 
+Open **Settings & mappings → Display settings → Choose bezel…** in a game's
+details (also available in Couch Mode). Select a design to preview it, then
+choose **Use this bezel**. Nothing changes while you browse. Leave **This game**
+selected to keep other games unchanged; choose **This platform** to change its default.
+
+Arcade games offer The Bezel Project's matching game artwork and Duimon's
+21:9 arcade/cabinet designs, with horizontal and vertical screen openings.
+For vertical games such as DoDonPachi, choose a vertical design. Artwork is
+downloaded only when previewed or first used, then cached.
+
+**Import PNG…** adds your own artwork. Use a PNG with an enclosed transparent
+screen opening through its center, up to 16 MB and 16 megapixels. Lunchpail
+keeps an unchanged copy, so moving the original file won't break it. Imported
+and Duimon arcade designs use fullscreen for screen alignment. RetroTube TV
+also fits its picture and reflections to the detected opening.
+
 Prefer a game-specific bezel for arcade games when one is available. A system
 bezel is a useful fallback. Use the artwork selector when the game or system
 has several choices.

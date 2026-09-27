@@ -164,6 +164,7 @@ fn main() {
                 "qml/GameFilesCard.qml",
                 "qml/GameSaveLocationsCard.qml",
                 "qml/GamePlayHero.qml",
+                "qml/BezelPickerDialog.qml",
                 "qml/GameSoundtrackCard.qml",
                 "qml/GameTorrentSources.qml",
                 "qml/GameWindowBehavior.qml",

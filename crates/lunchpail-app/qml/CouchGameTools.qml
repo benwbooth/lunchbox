@@ -17,6 +17,7 @@ Column {
     readonly property bool locked: details.launch_busy || details.game_running
     readonly property bool retroarch: (details.emulator_name || "").toLowerCase().includes("retroarch")
     signal achievementsSetupRequested()
+    signal bezelPickerRequested()
     signal removeInstallationRequested()
     signal manageIdentityRequested()
     signal torrentRequested()
@@ -64,6 +65,8 @@ Column {
                                 value: shader ? tools.details.display_shader_preset_id_at(i) : tools.details.display_bezel_choice_id_at(i),
                                 label: shader ? tools.details.display_shader_preset_label_at(i) : tools.details.display_bezel_choice_label_at(i)
                             })
+                            if (!shader && setting.modelData.current && !items.some(item => item.value === setting.modelData.current))
+                                items.push({value: setting.modelData.current, label: tools.details.display_bezel_label()})
                             return items
                         }
                         function sync() { currentIndex = Math.max(0, indexOfValue(setting.modelData.current)) }
@@ -78,6 +81,12 @@ Column {
                 width: parent.width
                 text: "Translate this game"; checked: tools.details.translation_opted_in
                 onClicked: tools.details.save_translation_opt_in(checked)
+            }
+            LbButton {
+                width: parent.width; implicitHeight: 50
+                visible: tools.details.display_bezel_supported
+                text: "Choose bezel…"
+                onClicked: tools.bezelPickerRequested()
             }
         }
     }

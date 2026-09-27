@@ -9,6 +9,15 @@ use anyhow::{Context, Result, ensure};
 /// upstream files remain untouched. Reject unfamiliar layouts rather than
 /// silently loading a shader with broken screen geometry.
 pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool) -> Result<String> {
+    final_pass_with_opening(source, shader_directory, ultrawide, None)
+}
+
+fn final_pass_with_opening(
+    source: &str,
+    shader_directory: &Path,
+    ultrawide: bool,
+    opening: Option<crate::bezel_library::Opening>,
+) -> Result<String> {
     let background = "get_scaled_coords_aspect_fgbg(vBg_img_coords, global.FinalViewportSize, image_aspect, rotated_bg, vIsRotated, vIn_aspect)";
     let coordinates = "    vOutputCoord = antiburn_TexCoord ;";
     let light = "vec3 light = pixel_ambi.rgb * (ambi_mask) * (1- fg_image_alpha_adapted);";
@@ -67,16 +76,52 @@ pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool)
             .replace('\\', "/");
         adapted = adapted.replace(&directive, &format!("#include \"{path}\""));
     }
-    if ultrawide {
+    if ultrawide || opening.is_some() {
         // This is the same centered opening as the old custom viewport, now
         // calculated by the GPU so fullscreen/window resizing stays correct.
         let fit = format!(
             "{}\n{coordinates}",
-            opening_fit("vTexCoord", "vIn_aspect", "bIsRotated")
+            selected_opening_fit("vTexCoord", "vIn_aspect", "bIsRotated", opening)
         );
         adapted = adapted.replace(coordinates, &fit);
     }
     Ok(adapted)
+}
+
+fn selected_opening_fit(
+    coordinates: &str,
+    aspect: &str,
+    rotated: &str,
+    opening: Option<crate::bezel_library::Opening>,
+) -> String {
+    let Some(o) = opening else {
+        return opening_fit(coordinates, aspect, rotated);
+    };
+    let offset_x = o.x as f64 + o.width as f64 / 2.0 - o.image_width as f64 / 2.0;
+    let offset_y = o.y as f64 + o.height as f64 / 2.0 - o.image_height as f64 / 2.0;
+    format!(
+        "    vec2 lunchpailOutput = global.FinalViewportSize.xy;\n\
+         float lunchpailArtScale = min(lunchpailOutput.x / {iw}.0, lunchpailOutput.y / {ih}.0);\n\
+         vec2 lunchpailHole = vec2({w}.0, {h}.0) * lunchpailArtScale;\n\
+         float lunchpailAspect = {rotated} ? 1.0 / {aspect} : {aspect};\n\
+         vec2 lunchpailOpening = vec2(lunchpailAspect, 1.0) * min(lunchpailHole.x / lunchpailAspect, lunchpailHole.y);\n\
+         vec2 lunchpailOriginal = vec2(lunchpailAspect, 1.0) * min(lunchpailOutput.x / lunchpailAspect, lunchpailOutput.y);\n\
+         vec2 lunchpailOffset = vec2({offset_x:.3}, {offset_y:.3}) * lunchpailArtScale;\n\
+         #ifdef _HAS_ROTATION_UNIFORM\n\
+         uint lunchpailRotation = params.Rotation;\n\
+         #else\n\
+         uint lunchpailRotation = uint({rotated});\n\
+         #endif\n\
+         if (lunchpailRotation == 1u || lunchpailRotation == 3u) {{\n\
+             lunchpailOriginal = lunchpailOriginal.yx; lunchpailOpening = lunchpailOpening.yx;\n\
+             lunchpailOffset = lunchpailRotation == 1u ? vec2(-lunchpailOffset.y, lunchpailOffset.x) : vec2(lunchpailOffset.y, -lunchpailOffset.x);\n\
+         }} else if (lunchpailRotation == 2u) lunchpailOffset = -lunchpailOffset;\n\
+         {coordinates} = (({coordinates} - 0.5) * lunchpailOriginal - lunchpailOffset) / lunchpailOpening + 0.5;\n",
+        iw = o.image_width,
+        ih = o.image_height,
+        w = o.width,
+        h = o.height
+    )
 }
 
 fn opening_fit(coordinates: &str, aspect: &str, rotated: &str) -> String {
@@ -93,6 +138,16 @@ fn opening_fit(coordinates: &str, aspect: &str, rotated: &str) -> String {
 }
 
 pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool) -> Result<()> {
+    install_with_opening(base, preset, image, ultrawide, None)
+}
+
+pub(crate) fn install_with_opening(
+    base: &Path,
+    preset: &Path,
+    image: &Path,
+    ultrawide: bool,
+    opening: Option<crate::bezel_library::Opening>,
+) -> Result<()> {
     let koko = base
         .parent()
         .and_then(Path::parent)
@@ -107,7 +162,7 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
     );
     let directory = koko.join("shaders-ng");
     let source = fs::read_to_string(directory.join("final_pass.slang"))?;
-    let shader = final_pass(&source, &directory, ultrawide)?;
+    let shader = final_pass_with_opening(&source, &directory, ultrawide, opening)?;
     let shader_path = preset.with_extension("slang");
     fs::write(&shader_path, shader)?;
     // Reference presets may override parameters/textures, but not shader passes.
@@ -149,7 +204,7 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
     settings.insert("scale16".into(), "4".into());
     settings.insert("float_framebuffer16".into(), "true".into());
     settings.insert("filter_linear16".into(), "false".into());
-    if ultrawide {
+    if ultrawide || opening.is_some() {
         let source = fs::read_to_string(directory.join("ambi_temporal_pass.slang"))?;
         let anchor = "    if (bNeed_NO_integer_scale) {";
         ensure!(
@@ -166,7 +221,7 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
             anchor,
             &format!(
                 "{}\n{anchor}",
-                opening_fit("pre_pass_coords", "in_aspect", "isrotated")
+                selected_opening_fit("pre_pass_coords", "in_aspect", "isrotated", opening)
             ),
         );
         for include in ["config.inc", "includes/functions.include.slang"] {
@@ -327,6 +382,28 @@ mod tests {
         assert!(adapted.contains("global.FinalViewportSize.xy"));
         assert!(adapted.contains("vec2(1186.0, 888.0)"));
         assert!(adapted.contains("vTexCoord - 0.5"));
+    }
+
+    #[test]
+    fn custom_aperture_preserves_core_aspect_and_aligns_ambient_geometry() {
+        let opening = crate::bezel_library::Opening {
+            image_width: 2560,
+            image_height: 1080,
+            x: 955,
+            y: 96,
+            width: 650,
+            height: 888,
+        };
+        let shader =
+            final_pass_with_opening(SOURCE, Path::new("/shaders/koko"), false, Some(opening))
+                .unwrap();
+        assert!(shader.contains("vec2(650.0, 888.0)"));
+        assert!(shader.contains("min(lunchpailHole.x / lunchpailAspect, lunchpailHole.y)"));
+        assert!(shader.contains("vec2(0.000, 0.000)"));
+        assert!(
+            selected_opening_fit("pre_pass_coords", "in_aspect", "isrotated", Some(opening))
+                .contains("vec2(650.0, 888.0)")
+        );
     }
 
     #[test]

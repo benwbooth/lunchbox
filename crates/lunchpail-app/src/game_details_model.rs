@@ -218,6 +218,11 @@ pub mod qobject {
         #[qproperty(bool, display_save_states_supported)]
         #[qproperty(QString, display_effective_summary)]
         #[qproperty(i32, display_revision)]
+        #[qproperty(QString, bezel_catalog_json)]
+        #[qproperty(QString, bezel_preview_id)]
+        #[qproperty(QString, bezel_preview_url)]
+        #[qproperty(QString, bezel_status)]
+        #[qproperty(bool, bezel_busy)]
         type GameDetailsModel = super::GameDetailsModelRust;
 
         #[qinvokable]
@@ -509,6 +514,18 @@ pub mod qobject {
 
         #[qinvokable]
         fn display_bezel_choice_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_bezel_label(self: &GameDetailsModel) -> QString;
+
+        #[qinvokable]
+        fn load_bezel_choices(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn preview_bezel(self: Pin<&mut GameDetailsModel>, choice: QString);
+
+        #[qinvokable]
+        fn import_bezel(self: Pin<&mut GameDetailsModel>, path: QString);
 
         #[qinvokable]
         fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
@@ -934,6 +951,12 @@ pub struct GameDetailsModelRust {
     display_save_states_supported: bool,
     display_effective_summary: QString,
     display_revision: i32,
+    bezel_catalog_json: QString,
+    bezel_preview_id: QString,
+    bezel_preview_url: QString,
+    bezel_status: QString,
+    bezel_busy: bool,
+    bezel_generation: u64,
     launch_profile_preview_arguments: Vec<String>,
     launch_profile_preview_fallback_extra_arguments: String,
     launch_profile_preview_fallback_command_template: String,
@@ -1200,6 +1223,12 @@ impl Default for GameDetailsModelRust {
             display_save_states_supported: false,
             display_effective_summary: QString::default(),
             display_revision: 0,
+            bezel_catalog_json: qstring("[]"),
+            bezel_preview_id: QString::default(),
+            bezel_preview_url: QString::default(),
+            bezel_status: QString::default(),
+            bezel_busy: false,
+            bezel_generation: 0,
             launch_profile_preview_arguments: Vec::new(),
             launch_profile_preview_fallback_extra_arguments: String::new(),
             launch_profile_preview_fallback_command_template: String::new(),
@@ -1789,6 +1818,7 @@ fn display_value_labels(
         "ultrawide" => "Duimon · ultrawide 21:9".to_owned(),
         "ultrawide-night" => "Duimon · ultrawide 21:9 night".to_owned(),
         "off" => "Off".to_owned(),
+        other if crate::bezel_library::is_choice(other) => crate::bezel_library::label(other),
         other => other.to_owned(),
     };
     let states = match resolved.save_states.as_str() {
@@ -5548,6 +5578,106 @@ impl qobject::GameDetailsModel {
 
     pub fn display_bezel_choice_count(&self) -> i32 {
         count_i32(crate::display_setup::bezel_choices(&self.platform().to_string()).len())
+    }
+
+    pub fn display_bezel_label(&self) -> QString {
+        let id = self.display_bezel().to_string();
+        if id.is_empty() {
+            return self.display_inherited_bezel_label().clone();
+        }
+        if id == "off" {
+            return qstring("Off");
+        }
+        qstring(
+            crate::display_setup::bezel_choices(&self.platform().to_string())
+                .iter()
+                .find(|choice| choice.id == id)
+                .map(|choice| choice.label.to_owned())
+                .unwrap_or_else(|| crate::bezel_library::label(&id)),
+        )
+    }
+
+    pub fn load_bezel_choices(mut self: Pin<&mut Self>) {
+        self.as_mut().set_bezel_catalog_json(qstring("[]"));
+        self.as_mut().start_bezel_job(None, None);
+    }
+
+    pub fn preview_bezel(mut self: Pin<&mut Self>, choice: QString) {
+        if *self.as_ref().bezel_busy() {
+            return;
+        }
+        let choice = choice.to_string();
+        if choice.is_empty() || choice == "off" {
+            self.as_mut().set_bezel_preview_id(qstring(choice));
+            self.as_mut().set_bezel_preview_url(QString::default());
+            self.as_mut().set_bezel_status(QString::default());
+            return;
+        }
+        self.as_mut().start_bezel_job(Some(choice), None);
+    }
+
+    pub fn import_bezel(mut self: Pin<&mut Self>, path: QString) {
+        if *self.as_ref().bezel_busy() || path.is_empty() {
+            return;
+        }
+        self.as_mut().start_bezel_job(None, Some(path.to_string()));
+    }
+
+    fn start_bezel_job(mut self: Pin<&mut Self>, choice: Option<String>, import: Option<String>) {
+        let generation = self.as_ref().rust().bezel_generation.wrapping_add(1);
+        self.as_mut().rust_mut().bezel_generation = generation;
+        let details_generation = self.as_ref().rust().details_generation;
+        let platform = self.as_ref().platform().to_string();
+        let rom = Path::new(&self.as_ref().rust().local_file_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_owned();
+        self.as_mut().set_bezel_busy(true);
+        self.as_mut()
+            .set_bezel_preview_id(qstring(choice.as_deref().unwrap_or("")));
+        self.as_mut().set_bezel_preview_url(QString::default());
+        self.as_mut().set_bezel_status(QString::default());
+        let qt_thread = self.as_ref().qt_thread();
+        let spawned = std::thread::Builder::new()
+            .name("lunchpail-bezel-picker".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<_> {
+                    let choice = if let Some(path) = import {
+                        Some(crate::bezel_library::import(Path::new(&path))?)
+                    } else {
+                        choice
+                    };
+                    let preview = match &choice {
+                        Some(id) => crate::bezel_library::preview(&platform, &rom, id)?,
+                        None => String::new(),
+                    };
+                    let rows = serde_json::to_string(&crate::bezel_library::choices(&platform)?)?;
+                    Ok((choice.unwrap_or_default(), preview, rows))
+                })()
+                .map_err(|error| format!("{error:#}"));
+                let _ = qt_thread.queue(move |mut model| {
+                    if model.as_ref().rust().bezel_generation != generation {
+                        return;
+                    }
+                    if model.as_ref().rust().details_generation == details_generation {
+                        match result {
+                            Ok((id, preview, rows)) => {
+                                model.as_mut().set_bezel_preview_id(qstring(id));
+                                model.as_mut().set_bezel_preview_url(qstring(preview));
+                                model.as_mut().set_bezel_catalog_json(qstring(rows));
+                            }
+                            Err(error) => model.as_mut().set_bezel_status(qstring(error)),
+                        }
+                    }
+                    model.as_mut().set_bezel_busy(false);
+                });
+            });
+        if let Err(error) = spawned {
+            self.as_mut()
+                .set_bezel_status(qstring(format!("Could not load artwork: {error}")));
+            self.as_mut().set_bezel_busy(false);
+        }
     }
 
     pub fn display_bezel_choice_id_at(&self, index: i32) -> QString {

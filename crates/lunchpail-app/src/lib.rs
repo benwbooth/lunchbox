@@ -6,6 +6,7 @@ mod arcade_settings;
 mod mame_command;
 mod bezel_orionsangel;
 mod bezel_project;
+mod bezel_library;
 mod build_info;
 mod catalog;
 mod collection_identity;

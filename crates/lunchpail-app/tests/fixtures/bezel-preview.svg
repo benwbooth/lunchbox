@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="1080" viewBox="0 0 2560 1080">
+  <defs><linearGradient id="g"><stop stop-color="#273e5a"/><stop offset=".5" stop-color="#0c111a"/><stop offset="1" stop-color="#273e5a"/></linearGradient></defs>
+  <path fill="url(#g)" fill-rule="evenodd" d="M0 0H2560V1080H0Z M940 80V1000H1620V80Z"/>
+  <path fill="none" stroke="#6683a3" stroke-width="24" d="M930 70H1630V1010H930Z"/>
+  <text x="360" y="560" fill="#a5bace" font-family="sans-serif" font-size="70">ARCADE</text>
+</svg>

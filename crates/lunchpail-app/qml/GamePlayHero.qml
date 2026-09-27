@@ -61,6 +61,8 @@ Rectangle {
     required property string displayFullscreen
     required property string displayShader
     required property string displayBezel
+    property string displayBezelLabel: displayBezel
+    signal bezelPickerRequested()
     required property string displaySaveStates
     required property string displayInheritedFullscreenLabel
     required property string displayInheritedShaderLabel
@@ -531,6 +533,8 @@ Rectangle {
                                     value: hero.displayBezelChoiceIdAt(i),
                                     label: hero.displayBezelChoiceLabelAt(i)
                                 })
+                            if (hero.displayBezel && !items.some(item => item.value === hero.displayBezel))
+                                items.push({value: hero.displayBezel, label: hero.displayBezelLabel})
                             return items
                         }
                         onModelChanged: displayBezelCombo.syncValue()
@@ -569,6 +573,11 @@ Rectangle {
                         color: hero.muted
                         font.pixelSize: 8
                         wrapMode: Text.WordWrap
+                    }
+                    LbButton {
+                        width: parent.width
+                        text: "Choose bezel…"
+                        onClicked: hero.bezelPickerRequested()
                     }
                     Text {
                         width: parent.width

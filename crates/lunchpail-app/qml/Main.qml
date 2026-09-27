@@ -2316,6 +2316,12 @@ ApplicationWindow {
     NativeFileDialog {
         id: nativeFileDialog
     }
+    BezelPickerDialog {
+        id: bezelPicker
+        parent: Overlay.overlay
+        backend: gameDetails
+        pickFile: function() { return nativeFileDialog.pick_open_file("Import bezel artwork", "PNG images", "png") }
+    }
 
     GameModsModel { id: gameMods }
     PatchCatalogModel { id: patchCatalog; onInstalled: gameMods.reload_profile() }
@@ -11821,6 +11827,7 @@ ApplicationWindow {
                     section: couchGameToolDialog.section
                     details: gameDetails; mods: gameMods; patches: patchCatalog
                     achievements: retroAchievements; saveSync: saveSync
+                    onBezelPickerRequested: bezelPicker.begin()
                     pickPatchFile: function() { return nativeFileDialog.pick_open_file("Import a translation or mod patch", "ROM/disc patches", "ips,ips32,bps,ups,ppf,xdelta,xdelta3,vcdiff") }
                     pickCheatFile: function() { return nativeFileDialog.pick_open_file("Import RetroArch cheats", "Cheat files", "cht") }
                     pickCheatExport: function() { return nativeFileDialog.pick_save_file("Export cheats", "Cheat files", "cht", "Game cheats.cht") }
@@ -13552,6 +13559,8 @@ ApplicationWindow {
                         displayFullscreen: gameDetails.display_fullscreen
                         displayShader: gameDetails.display_shader
                         displayBezel: gameDetails.display_bezel
+                        displayBezelLabel: { gameDetails.display_revision; return gameDetails.display_bezel_label() }
+                        onBezelPickerRequested: bezelPicker.begin()
                         displaySaveStates: gameDetails.display_save_states
                         displayInheritedFullscreenLabel: gameDetails.display_inherited_fullscreen_label
                         displayInheritedShaderLabel: gameDetails.display_inherited_shader_label
