@@ -18,6 +18,7 @@ TestCase {
             library: ListModel {
                 property int media_revision: 0
                 function artwork_url(id, kind) { return "" }
+                function exact_artwork_url(id, kind) { return "" }
                 function request_artwork(id, title, platform, kind) {}
                 Component.onCompleted: {
                     for (let i = 0; i < 36; ++i)

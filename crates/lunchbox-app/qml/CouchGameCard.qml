@@ -24,7 +24,10 @@ Item {
     property int artworkRevision: library.media_revision
     readonly property url artwork: {
         artworkRevision
-        return library.artwork_url(gameMediaId, wheel ? "clear-logo" : "box-front")
+        // Generic artwork lookup may substitute a portrait cover when a logo
+        // is missing. The wheel needs a logo or its readable title fallback.
+        return wheel ? library.exact_artwork_url(gameMediaId, "clear-logo")
+                     : library.artwork_url(gameMediaId, "box-front")
     }
     signal activated(int index)
 
