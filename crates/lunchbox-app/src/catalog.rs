@@ -235,6 +235,9 @@ fn project_data_path(file_name: &str) -> PathBuf {
 pub fn load(path: &Path) -> Result<Catalog> {
     let connection = open_read_only(path, "Lunchbox database")?;
     validate_canonical_schema(&connection)?;
+    if let Err(error) = crate::arcade::initialize(&connection) {
+        eprintln!("LUNCHBOX_ARCADE_IDENTITIES_UNAVAILABLE {error:#}");
+    }
     if let Err(error) = crate::arcade_content::initialize(&connection) {
         eprintln!("LUNCHBOX_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
     }
@@ -261,6 +264,9 @@ pub fn load(path: &Path) -> Result<Catalog> {
 pub fn load_preview(path: &Path, focus: &CatalogPreviewFocus) -> Result<Option<CatalogPreview>> {
     let canonical = open_read_only(path, "Lunchbox database")?;
     validate_canonical_schema(&canonical)?;
+    if let Err(error) = crate::arcade::initialize(&canonical) {
+        eprintln!("LUNCHBOX_ARCADE_IDENTITIES_UNAVAILABLE {error:#}");
+    }
     if let Err(error) = crate::arcade_content::initialize(&canonical) {
         eprintln!("LUNCHBOX_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
     }

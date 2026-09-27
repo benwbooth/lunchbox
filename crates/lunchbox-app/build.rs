@@ -43,6 +43,7 @@ struct GeneratedArcadeEntry {
     preferred_lookup: String,
     video_lookup: String,
     lookup_rank: u8,
+    gambling: bool,
 }
 
 fn main() {
@@ -543,6 +544,7 @@ fn generate_arcade_lookup() {
                             let (lookup_rank, preferred_lookup, video_lookup) =
                                 lookup.unwrap_or_else(|| (0, String::new(), String::new()));
                             entries.push(GeneratedArcadeEntry {
+                                gambling: is_gambling_machine(&game),
                                 database_id,
                                 title: game.title.unwrap_or_default(),
                                 source: game.source.unwrap_or_default(),
@@ -599,14 +601,15 @@ fn generate_arcade_lookup() {
     let mut generated = String::from("pub static ARCADE_LOOKUP: &[ArcadeLookupEntry] = &[\n");
     for entry in entries {
         generated.push_str(&format!(
-            "    ArcadeLookupEntry {{ database_id: {}, title: {:?}, source: {:?}, subtype: ArcadeSubtype::{}, preferred_lookup: {:?}, video_lookup: {:?}, lookup_rank: {} }},\n",
+            "    ArcadeLookupEntry {{ database_id: {}, title: {:?}, source: {:?}, subtype: ArcadeSubtype::{}, preferred_lookup: {:?}, video_lookup: {:?}, lookup_rank: {}, gambling: {} }},\n",
             entry.database_id,
             entry.title,
             entry.source,
             entry.subtype.rust_variant_name(),
             entry.preferred_lookup,
             entry.video_lookup,
-            entry.lookup_rank
+            entry.lookup_rank,
+            entry.gambling
         ));
     }
     generated.push_str("];\n");
@@ -643,7 +646,15 @@ fn choose_arcade_lookup(game: &GameFields) -> Option<(u8, String, String)> {
     Some((preferred_lookup.0, preferred_lookup.1, video_lookup))
 }
 
+fn is_gambling_machine(game: &GameFields) -> bool {
+    let genre = game.genre.as_deref().unwrap_or_default().to_ascii_lowercase();
+    ["fruit machine", "slot machine", "reels", "gambl", "casino"].iter().any(|kind| genre.contains(kind))
+}
+
 fn classify_arcade_subtype(game: &GameFields) -> GeneratedArcadeSubtype {
+    // Scraped notes can describe a different game with the same name. The
+    // imported machine genre is more specific than those shared descriptions.
+    if is_gambling_machine(game) { return GeneratedArcadeSubtype::Standard; }
     let normalized = game
         .source
         .as_deref()

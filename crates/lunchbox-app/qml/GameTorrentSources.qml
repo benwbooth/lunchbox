@@ -45,7 +45,7 @@ Column {
     }
     readonly property bool shouldShowSources:
         (!installed || alternativesExpanded)
-        && (showAddSource || ranking || matchingSourceCount > 0
+        && (alternativesExpanded || showAddSource || ranking || matchingSourceCount > 0
             || registeredSourceCount > 0)
 
     signal addSourceRequested()

@@ -18,6 +18,12 @@ Lunchbox's download review tries to include the files needed for the chosen
 game. Check the review rather than downloading a single matching filename
 from an unrelated collection.
 
+Lunchbox checks imported arcade ROM names against the MAME catalog to avoid
+mixing up video games and identically named pinball or gambling machines.
+For an installed game, **Other download options** lets you review another
+set without deleting the current files. Arcade artwork uses the exact MAME
+release names too, so player-count and revision labels do not hide matching art.
+
 ## Choose the right hardware
 
 “Arcade” covers several different machines. Neo Geo, Naomi, Atomiswave, and

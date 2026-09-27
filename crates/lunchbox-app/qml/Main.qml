@@ -13484,6 +13484,15 @@ ApplicationWindow {
                         }
                     }
 
+                    LbButton {
+                        width: parent.width
+                        visible: !gameDetails.loading
+                                 && (gameDetails.local || root.selectedDownloadImported)
+                                 && gameDetails.bundle_count > 0
+                        text: root.downloadAlternativesExpanded ? "Hide download options" : "Other download options"
+                        onClicked: root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
+                    }
+
                     GameTorrentSources {
                         width: parent.width
                         detailsModel: gameDetails

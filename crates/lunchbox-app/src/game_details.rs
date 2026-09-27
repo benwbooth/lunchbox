@@ -1716,6 +1716,9 @@ pub fn load_torrent_files_for_game(
     }
 
     if is_arcade_rom_bundle(bundle) {
+        if let Some(path) = catalog::requested_database_path() {
+            crate::arcade::initialize(&catalog::open_read_only(&path, "Lunchbox canonical database")?)?;
+        }
         let use_parent = bundle.collection.eq_ignore_ascii_case("MAME")
             && catalog::normalize_platform_key(&bundle.provider_platform) == "roms-merged";
         let lookup =
@@ -4471,6 +4474,21 @@ mod tests {
     fn live_minerva_metadata_matches_exact_linked_alternate_title() {
         let evidence = alternate_title_probe().unwrap();
         assert!(evidence.contains("matched_title="));
+    }
+
+    #[test]
+    #[ignore = "requires local catalog and cached Minerva torrent metadata"]
+    fn live_simpsons_nonmerged_download_matches_konami_machine() {
+        let details = load("475a478a-2e3d-4833-b044-7e835df5698a", "The Simpsons", "Arcade", false, true).unwrap();
+        let bundle = details.bundles.iter().find(|bundle| is_non_merged_arcade_bundle(bundle)).unwrap();
+        let settings = crate::settings::SettingsStore::open_default().unwrap().load().unwrap();
+        let candidates = load_torrent_files_for_game(bundle, &details.title, &details.alternate_titles,
+            &ReleasePreferences { region_priority: settings.region_priority, version_preference: settings.version_preference },
+            Some(2455)).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert!(candidates[0].filename.ends_with("/simpsons2p.zip"));
+        println!("SIMPSONS_DOWNLOAD file={} bytes={} score={}", candidates[0].filename,
+            candidates[0].byte_size, candidates[0].match_score);
     }
 
     #[test]

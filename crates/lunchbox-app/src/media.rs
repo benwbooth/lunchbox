@@ -1561,7 +1561,7 @@ fn fetch_libretro(
             return Ok(Some((fetched_kind, output)));
         }
 
-        for candidate in libretro_title_candidates(&request.title) {
+        for candidate in libretro_request_titles(request) {
             if should_yield() { return Err(MediaFetchYield.into()); }
             let url = format!(
                 "{}/{}/{}/{}.png",
@@ -2303,7 +2303,8 @@ fn media_output_path(root: &Path, database_id: i64, kind: ArtworkKind) -> PathBu
 fn negative_cache_path(root: &Path, database_id: i64, kind: ArtworkKind) -> PathBuf {
     root.join(format!("lb-{database_id}"))
         .join("libretro")
-        .join(format!(".missing-{}", kind.key()))
+        // v2 includes exact arcade release names from the MAME catalog.
+        .join(format!(".missing-v2-{}", kind.key()))
 }
 
 fn screenscraper_negative_cache_path(
@@ -2495,6 +2496,17 @@ fn libretro_title_candidates(title: &str) -> Vec<String> {
     candidates
 }
 
+fn libretro_request_titles(request: &MediaFetchRequest) -> Vec<String> {
+    let mut titles = Vec::new();
+    if crate::arcade::is_arcade_family_platform(&request.platform) {
+        for title in crate::arcade::artwork_titles(&request.title, Some(request.database_id)) {
+            push_unique(&mut titles, sanitize_libretro_title(&title, false));
+        }
+    }
+    for title in libretro_title_candidates(&request.title) { push_unique(&mut titles, title); }
+    titles
+}
+
 fn push_title_variants(values: &mut Vec<String>, title: &str) {
     let title = strip_known_extension(title.trim());
     let official = sanitize_libretro_title(title, false);
@@ -2569,6 +2581,24 @@ fn percent_encode_path_segment(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires the canonical MAME catalog and network access"]
+    fn live_arcade_artwork_uses_exact_provider_release_name() {
+        let connection = crate::catalog::open_read_only(&crate::catalog::requested_database_path().unwrap(), "artwork test").unwrap();
+        crate::arcade::initialize(&connection).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let request = MediaFetchRequest { database_id: 2455, title: "The Simpsons".into(), platform: "Arcade".into(),
+            requested_kind: ArtworkKind::BoxFront, force: true, exact_only: true, request_id: "simpsons-artwork-test".into() };
+        let candidates = libretro_request_titles(&request);
+        assert_eq!(candidates[0], "The Simpsons (4 Players World, set 1)");
+        let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(15))).build().into();
+        let (kind, path) = fetch_libretro(&agent, root.path(), LIBRETRO_THUMBNAILS_URL, &request, 0, &|| false).unwrap().unwrap();
+        assert_eq!(kind, ArtworkKind::BoxFront);
+        assert!(path.metadata().unwrap().len() > 1000);
+        println!("ARCADE_ARTWORK_TEST path={}", root.keep().display());
+    }
 
     fn fetch_request(database_id: i64, kind: ArtworkKind) -> MediaFetchRequest {
         MediaFetchRequest {
