@@ -1564,6 +1564,7 @@ fn build_alphabet_index(
     metadata_titles: &HashMap<String, String>,
     collection_presentations: &HashMap<String, HashMap<String, CollectionMemberPresentation>>,
     active_presentation_collection_id: &str,
+    metadata_overrides: &HashMap<String, GameMetadataOverride>,
 ) -> AlphabetIndex {
     let mut index = AlphabetIndex::default();
     for (row, catalog_index) in filtered_indices.iter().copied().enumerate() {
@@ -1575,6 +1576,12 @@ fn build_alphabet_index(
             metadata_titles,
             collection_presentations,
             active_presentation_collection_id,
+        );
+        let title = catalog.list_metadata.title_order_text(
+            catalog_index,
+            game,
+            metadata_overrides,
+            Some(title),
         );
         let Some(rank) = title_alphabet_rank(title) else {
             continue;
@@ -2457,13 +2464,21 @@ impl qobject::LibraryModel {
             .map(|preferences| validate_library_session_preferences(&catalog, preferences).0)
             .unwrap_or_default();
         let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
-        let filtered_indices = (0..preview_game_count).collect::<Vec<_>>();
+        let filtered_indices = catalog::filter_indices(
+            &catalog,
+            &Filter {
+                display_titles: Arc::clone(&self.as_ref().rust().metadata_titles),
+                metadata_overrides: Arc::clone(&self.as_ref().rust().metadata_overrides),
+                ..Filter::default()
+            },
+        );
         let alphabet_index = build_alphabet_index(
             &catalog,
             &filtered_indices,
             &self.as_ref().rust().metadata_titles,
             &self.as_ref().rust().collection_presentations,
             &self.as_ref().rust().active_presentation_collection_id,
+            &self.as_ref().rust().metadata_overrides,
         );
         let alphabet_navigation_available = title_sort_supports_alphabet(
             &self.as_ref().sort_field().to_string(),
@@ -2812,6 +2827,7 @@ impl qobject::LibraryModel {
                     &metadata_titles,
                     &collection_presentations,
                     &self.as_ref().rust().active_presentation_collection_id,
+                    &metadata_overrides,
                 );
                 let alphabet_navigation_available = title_sort_supports_alphabet(
                     &self.as_ref().sort_field().to_string(),
@@ -3148,6 +3164,7 @@ impl qobject::LibraryModel {
                     &metadata_titles,
                     &collection_presentations,
                     &active_presentation_collection_id,
+                    &filter.metadata_overrides,
                 );
                 let alphabet_navigation_available =
                     title_sort_supports_alphabet(&filter.sort_field, &filter.availability);
@@ -4831,14 +4848,20 @@ impl qobject::LibraryModel {
         usize::try_from(row)
             .ok()
             .and_then(|row| self.rust().filtered_indices.get(row))
-            .and_then(|catalog_index| self.rust().catalog.games.get(*catalog_index))
-            .map(|game| {
-                collection_scoped_display_title(
+            .and_then(|catalog_index| {
+                let game = self.rust().catalog.games.get(*catalog_index)?;
+                let title = collection_scoped_display_title(
                     game,
                     &self.rust().metadata_titles,
                     &self.rust().collection_presentations,
                     &self.rust().active_presentation_collection_id,
-                )
+                );
+                Some(self.rust().catalog.list_metadata.title_order_text(
+                    *catalog_index,
+                    game,
+                    &self.rust().metadata_overrides,
+                    Some(title),
+                ))
             })
             .and_then(title_alphabet_rank)
             .and_then(|rank| ALPHABET_LABELS.get(rank))
@@ -7529,7 +7552,7 @@ mod tests {
     #[test]
     fn alphabet_index_uses_exact_visible_titles_and_filtered_rows() {
         let mut numeric = game("numeric", "Arcade", false, true);
-        numeric.title = "3 Count Bout".to_owned();
+        numeric.title = "The 3 Count Bout".to_owned();
         let mut metadata = game("metadata", "Arcade", false, true);
         metadata.title = "Alpha".to_owned();
         let mut collection = game("collection", "Arcade", false, true);
@@ -7540,13 +7563,13 @@ mod tests {
             games: vec![numeric, metadata, collection, symbol],
             ..Catalog::default()
         };
-        let metadata_titles = HashMap::from([("metadata".to_owned(), "Beta".to_owned())]);
+        let metadata_titles = HashMap::from([("metadata".to_owned(), "The Beta".to_owned())]);
         let collection_presentations = HashMap::from([(
             "cabinet".to_owned(),
             HashMap::from([(
                 "collection".to_owned(),
                 CollectionMemberPresentation {
-                    display_title: "Camera".to_owned(),
+                    display_title: "The Camera".to_owned(),
                     notes: String::new(),
                 },
             )]),
@@ -7558,6 +7581,7 @@ mod tests {
             &metadata_titles,
             &collection_presentations,
             "cabinet",
+            &HashMap::new(),
         );
 
         assert_eq!(index.first_row(0), 1);
@@ -7565,6 +7589,72 @@ mod tests {
         assert_eq!(index.first_row(alphabet_rank_for_label("C").unwrap()), 2);
         assert_eq!(index.first_row(alphabet_rank_for_label("A").unwrap()), -1);
         assert_eq!(index.first_row(alphabet_rank_for_label("Z").unwrap()), -1);
+    }
+
+    #[test]
+    fn alphabet_index_matches_article_aware_sorting_and_manual_sort_titles() {
+        let titles = ["The Simpsons", "Sonic", "Theme Park"];
+        let catalog = Catalog {
+            games: titles
+                .iter()
+                .map(|title| {
+                    let mut game = game(title, "Arcade", false, true);
+                    game.title = (*title).into();
+                    game
+                })
+                .collect(),
+            ..Catalog::default()
+        };
+        for sort_field in ["default", "title"] {
+            for sort_descending in [false, true] {
+                for manual_sort in [false, true] {
+                    let mut filter = Filter {
+                        sort_field: sort_field.into(),
+                        sort_descending,
+                        ..Filter::default()
+                    };
+                    if manual_sort {
+                        filter.metadata_overrides = Arc::new(HashMap::from([(
+                            "The Simpsons".into(),
+                            GameMetadataOverride {
+                                sort_title: Some("The Simpsons".into()),
+                                ..GameMetadataOverride::default()
+                            },
+                        )]));
+                    }
+                    let rows = catalog::filter_indices(&catalog, &filter);
+                    let index = build_alphabet_index(
+                        &catalog,
+                        &rows,
+                        &HashMap::new(),
+                        &HashMap::new(),
+                        "",
+                        &filter.metadata_overrides,
+                    );
+                    let expected = if manual_sort {
+                        vec![1, 0, 2]
+                    } else {
+                        vec![0, 1, 2]
+                    };
+                    let expected = if sort_descending {
+                        expected.into_iter().rev().collect()
+                    } else {
+                        expected
+                    };
+                    assert_eq!(rows, expected);
+                    for (label, members) in [
+                        ("S", if manual_sort { vec![1] } else { vec![0, 1] }),
+                        ("T", if manual_sort { vec![0, 2] } else { vec![2] }),
+                    ] {
+                        let first = rows.iter().position(|row| members.contains(row)).unwrap();
+                        assert_eq!(
+                            index.first_row(alphabet_rank_for_label(label).unwrap()),
+                            first as i32
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

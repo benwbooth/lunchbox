@@ -593,10 +593,10 @@ impl ListMetadata {
         overrides: &HashMap<String, GameMetadataOverride>,
     ) -> ListSortKey {
         match column {
-            ListColumn::Title => ListSortKey::Text(
-                self.effective_sort_title(index, game, overrides)
-                    .map(str::to_lowercase),
-            ),
+            ListColumn::Title => ListSortKey::Text(Some(
+                self.title_order_text(index, game, overrides, None)
+                    .to_lowercase(),
+            )),
             ListColumn::Availability => {
                 ListSortKey::Integer(Some(i64::from(availability_rank(game))))
             }
@@ -672,6 +672,35 @@ impl ListMetadata {
             _ => return None,
         };
         self.text(text_index)
+    }
+
+    /// Shared by title sorting and A–Z navigation. Explicit user sort titles
+    /// remain literal; ordinary titles ignore English leading articles.
+    pub(crate) fn title_order_text<'a>(
+        &'a self,
+        index: usize,
+        game: &'a Game,
+        overrides: &'a HashMap<String, GameMetadataOverride>,
+        display_title: Option<&'a str>,
+    ) -> &'a str {
+        let metadata = overrides.get(&game.id);
+        let title = display_title
+            .or_else(|| metadata.and_then(|metadata| metadata.title.as_deref()))
+            .unwrap_or(&game.title);
+        if let Some(sort_title) = metadata.and_then(|metadata| metadata.sort_title.as_deref()) {
+            return nonempty(sort_title).unwrap_or_else(|| title_without_article(title));
+        }
+        // A collection alias or renamed title sorts by the name the user sees,
+        // not by a stale sort title from the source catalog.
+        let title = if title == game.title {
+            self.rows
+                .get(index)
+                .and_then(|row| self.text(row.sort_title))
+                .unwrap_or(title)
+        } else {
+            title
+        };
+        title_without_article(title)
     }
 
     fn effective_sort_title<'a>(
@@ -801,6 +830,23 @@ fn format_release_date(value: &str) -> String {
         format!("{month_name} {year}")
     } else {
         format!("{month_name} {day}, {year}")
+    }
+}
+
+fn title_without_article(title: &str) -> &str {
+    let title = title.trim();
+    let Some((article, rest)) = title.split_once(char::is_whitespace) else {
+        return title;
+    };
+    let rest = rest.trim_start();
+    if !rest.is_empty()
+        && ["the", "a", "an"]
+            .iter()
+            .any(|candidate| article.eq_ignore_ascii_case(candidate))
+    {
+        rest
+    } else {
+        title
     }
 }
 
@@ -968,6 +1014,77 @@ mod tests {
         );
         assert!(metadata.matches_search(0, &game, &overrides, "chozo"));
         assert_eq!(game.id, "game");
+    }
+
+    #[test]
+    fn title_order_ignores_only_complete_leading_articles() {
+        for (title, expected) in [
+            ("The Simpsons", "Simpsons"),
+            ("THE Legend of Zelda", "Legend of Zelda"),
+            (" A Boy and His Blob ", "Boy and His Blob"),
+            ("An American Tail", "American Tail"),
+            ("The\u{a0}7th Guest", "7th Guest"),
+            ("The   Last Ninja", "Last Ninja"),
+            ("The", "The"),
+            ("A", "A"),
+            ("Thexder", "Thexder"),
+            ("Another World", "Another World"),
+            ("Theme Park", "Theme Park"),
+            ("Simpsons, The", "Simpsons, The"),
+            ("ゼルダの伝説", "ゼルダの伝説"),
+            ("", ""),
+        ] {
+            assert_eq!(title_without_article(title), expected, "{title:?}");
+        }
+    }
+
+    #[test]
+    fn title_order_preserves_manual_sort_titles_and_normalizes_catalog_titles() {
+        let mut builder = ListMetadataBuilder::with_capacity(1);
+        builder
+            .push(MetadataInput {
+                sort_title: Some("The Simpsons".into()),
+                ..MetadataInput::default()
+            })
+            .unwrap();
+        let metadata = builder.finish();
+        let mut game = game("game");
+        game.title = "The Simpsons".into();
+        let overrides = HashMap::new();
+        assert_eq!(
+            metadata.title_order_text(0, &game, &overrides, None),
+            "Simpsons"
+        );
+        assert_eq!(
+            metadata.title_order_text(0, &game, &overrides, Some("The Arcade Game")),
+            "Arcade Game"
+        );
+        assert!(
+            matches!(metadata.sort_key(0, &game, ListColumn::Title, &overrides),
+            ListSortKey::Text(Some(value)) if value == "simpsons")
+        );
+        assert_eq!(
+            metadata.display_value(0, &game, ListColumn::Title, &overrides),
+            "The Simpsons"
+        );
+        assert!(metadata.matches_search(0, &game, &overrides, "the simpsons"));
+
+        let mut overrides = HashMap::from([(
+            game.id.clone(),
+            GameMetadataOverride {
+                sort_title: Some("The Simpsons".into()),
+                ..GameMetadataOverride::default()
+            },
+        )]);
+        assert_eq!(
+            metadata.title_order_text(0, &game, &overrides, None),
+            "The Simpsons"
+        );
+        overrides.get_mut(&game.id).unwrap().sort_title = Some(String::new());
+        assert_eq!(
+            metadata.title_order_text(0, &game, &overrides, None),
+            "Simpsons"
+        );
     }
 
     #[test]

@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -2038,7 +2037,7 @@ pub(crate) fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>
 pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
     let search = filter.search.trim().to_lowercase();
     let selected_tag = filter.tag.trim().to_lowercase();
-    let mut indices = catalog
+    let indices = catalog
         .games
         .iter()
         .enumerate()
@@ -2047,52 +2046,63 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         })
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
-    // Recently Played is an automatic chronological collection, not another
-    // view of the saved alphabetical/column sort. Leave that preference intact
-    // for the library and other collections.
-    if filter.availability == "recent" {
-        indices.sort_by(|left, right| compare_games(catalog, filter, *left, *right));
-        return indices;
-    }
-    if let Some(column) = ListColumn::parse(&filter.sort_field) {
-        let mut keyed = indices
-            .into_iter()
-            .map(|index| {
-                let key = catalog.list_metadata.sort_key(
+    let recent = filter.availability == "recent";
+    let column = ListColumn::parse(&filter.sort_field);
+    // Normalize once per game, not for every comparison in a large library.
+    let mut keyed = indices
+        .into_iter()
+        .map(|index| {
+            let game = &catalog.games[index];
+            let title = catalog
+                .list_metadata
+                .title_order_text(
                     index,
-                    &catalog.games[index],
-                    column,
+                    game,
                     &filter.metadata_overrides,
-                );
-                (index, key)
-            })
-            .collect::<Vec<_>>();
-        keyed.sort_by(|(left_index, left_key), (right_index, right_key)| {
-            let left_game = &catalog.games[*left_index];
-            let right_game = &catalog.games[*right_index];
-            let ordering = left_key
-                .compare(right_key)
-                .then_with(|| {
-                    title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
-                })
+                    filter.display_titles.get(&game.id).map(String::as_str),
+                )
+                .to_lowercase();
+            let primary = column
+                .filter(|column| !recent && *column != ListColumn::Title)
+                .map(|column| {
+                    catalog
+                        .list_metadata
+                        .sort_key(index, game, column, &filter.metadata_overrides)
+                });
+            (index, title, primary)
+        })
+        .collect::<Vec<_>>();
+    keyed.sort_by(
+        |(left, left_title, left_key), (right, right_title, right_key)| {
+            let left_game = &catalog.games[*left];
+            let right_game = &catalog.games[*right];
+            let primary = if recent {
+                // Recently Played always remains newest first.
+                filter
+                    .recent_game_order
+                    .get(&right_game.id)
+                    .cmp(&filter.recent_game_order.get(&left_game.id))
+            } else if let (Some(left_key), Some(right_key)) = (left_key, right_key) {
+                left_key.compare(right_key)
+            } else if column.is_none() && filter.availability.starts_with("collection:") {
+                filter
+                    .collection_game_order
+                    .get(&left_game.id)
+                    .cmp(&filter.collection_game_order.get(&right_game.id))
+            } else {
+                Ordering::Equal
+            };
+            let ordering = primary
+                .then_with(|| left_title.cmp(right_title))
                 .then_with(|| left_game.id.cmp(&right_game.id));
-            if filter.sort_descending {
+            if filter.sort_descending && !recent {
                 ordering.reverse()
             } else {
                 ordering
             }
-        });
-        return keyed.into_iter().map(|(index, _)| index).collect();
-    }
-    indices.sort_by(|left, right| {
-        let ordering = compare_games(catalog, filter, *left, *right);
-        if filter.sort_descending {
-            ordering.reverse()
-        } else {
-            ordering
-        }
-    });
-    indices
+        },
+    );
+    keyed.into_iter().map(|(index, _, _)| index).collect()
 }
 
 pub(crate) fn list_facet_values(
@@ -2209,46 +2219,6 @@ fn game_matches_filter(
                         &filter.metadata_overrides,
                     ))
             })
-}
-
-fn compare_games(catalog: &Catalog, filter: &Filter, left: usize, right: usize) -> Ordering {
-    let left_game = &catalog.games[left];
-    let right_game = &catalog.games[right];
-    let identity_tie_break = || left_game.id.cmp(&right_game.id);
-    match filter.sort_field.as_str() {
-        _ if filter.availability == "recent" => filter
-            .recent_game_order
-            .get(&right_game.id)
-            .cmp(&filter.recent_game_order.get(&left_game.id))
-            .then_with(|| {
-                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
-            })
-            .then_with(identity_tie_break),
-        _ if filter.availability.starts_with("collection:") => filter
-            .collection_game_order
-            .get(&left_game.id)
-            .cmp(&filter.collection_game_order.get(&right_game.id))
-            .then_with(|| {
-                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
-            })
-            .then_with(identity_tie_break),
-        _ => title_sort_key(left_game, filter)
-            .cmp(&title_sort_key(right_game, filter))
-            .then_with(identity_tie_break),
-    }
-}
-
-fn title_sort_key<'a>(game: &'a Game, filter: &'a Filter) -> Cow<'a, str> {
-    if let Some(title) = filter.display_titles.get(&game.id) {
-        Cow::Owned(title.to_lowercase())
-    } else {
-        Cow::Borrowed(
-            game.search_key
-                .split_once('\n')
-                .map(|(title, _)| title)
-                .unwrap_or(&game.search_key),
-        )
-    }
 }
 
 #[cfg(test)]
@@ -2485,6 +2455,63 @@ mod tests {
         );
         assert_eq!(catalog.games[0].title, "Metroid");
         assert_eq!(catalog.games[0].id, "metroid");
+    }
+
+    #[test]
+    fn title_sorting_ignores_articles_in_default_title_and_column_tie_breaks() {
+        let titles = [
+            "The Simpsons",
+            "Sonic",
+            "Theme Park",
+            "An American Tail",
+            "A Boy and His Blob",
+            "The 7th Guest",
+        ];
+        let catalog = Catalog {
+            games: titles
+                .iter()
+                .enumerate()
+                .map(|(index, title)| Game {
+                    id: index.to_string(),
+                    title: (*title).into(),
+                    platform: "Shared platform".into(),
+                    search_key: title.to_lowercase(),
+                    ..Game::default()
+                })
+                .collect(),
+            ..Catalog::default()
+        };
+        for sort_field in ["default", "title", "platform"] {
+            for sort_descending in [false, true] {
+                let mut expected = vec![5, 3, 4, 0, 1, 2];
+                if sort_descending {
+                    expected.reverse();
+                }
+                assert_eq!(
+                    filter_indices(
+                        &catalog,
+                        &Filter {
+                            sort_field: sort_field.into(),
+                            sort_descending,
+                            ..Filter::default()
+                        }
+                    ),
+                    expected,
+                    "{sort_field}, descending={sort_descending}"
+                );
+            }
+        }
+        assert_eq!(catalog.games[0].title, "The Simpsons");
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "the simpsons".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
     }
 
     #[test]

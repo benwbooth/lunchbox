@@ -50,6 +50,10 @@ such as Installed, Minerva, or hidden non-retail releases.
 Grid view emphasizes artwork. List view lets you choose columns, sort records,
 and filter exact values.
 
+Title sorting and the A–Z shortcuts ignore leading **The**, **A**, and **An**:
+**The Simpsons** appears under **S**, without changing its displayed name.
+Set a game's **Sort title** in its metadata if you want a different placement.
+
 **Homebrew / pirate releases** also covers ROM hacks, bootlegs, and unlicensed
 releases. Choose **Exclude** to hide them or **Only** to find them. Lunchpail
 combines the recorded release type with ROM metadata, including homebrew tags
