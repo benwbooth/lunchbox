@@ -158,9 +158,11 @@ fn routing_config(
         );
         // RetroArch's analog-to-digital input mode reuses the left stick
         // while preserving the virtual Xbox pad's autoconfigured D-pad.
-        // Do not use it for cores with an independent analog stick.
+        // Force it: cores can poll analog input for a separate right-stick
+        // action (e.g. a stylus), which disables ordinary analog-to-D-pad.
+        // The topology check guarantees no target action owns the left axes.
         config.push_str(if directional_target == Some("dpad") {
-            "input_player1_analog_dpad_mode = \"1\"\n"
+            "input_player1_analog_dpad_mode = \"3\"\n"
         } else {
             "input_player1_analog_dpad_mode = \"0\"\n"
         });
@@ -425,6 +427,48 @@ mod tests {
     }
 
     #[test]
+    fn sc2_ds_routes_both_movement_controls_without_rebinding_the_stylus() {
+        for (core, platform) in [
+            ("desmume", "Nintendo DS"),
+            ("melonds_ds", "Nintendo DS"),
+            ("melonds_ds", "Nintendo DSi"),
+        ] {
+            assert_eq!(directional_target(core, platform), Some("dpad"));
+            let mut session = RetroArchControllerSession {
+                stop: None,
+                worker: None,
+                failure: Arc::new(Mutex::new(None)),
+                steam_virtual_event: None,
+                joypad_index: 3,
+            };
+            let owned = session.config(core, platform);
+            for (direction, button, axis) in [
+                ("up", "11", "-1"),
+                ("down", "12", "+1"),
+                ("left", "13", "-0"),
+                ("right", "14", "+0"),
+            ] {
+                assert!(owned.contains(&format!("input_player1_{direction}_btn = \"{button}\"")));
+                assert!(owned.contains(&format!("input_player1_{direction}_axis = \"{axis}\"")));
+            }
+            for (output, axis) in [
+                ("r_x_minus", "-2"),
+                ("r_x_plus", "+2"),
+                ("r_y_minus", "-3"),
+                ("r_y_plus", "+3"),
+            ] {
+                assert!(owned.contains(&format!("input_player1_{output}_axis = \"{axis}\"")));
+            }
+            session.steam_virtual_event = Some(PathBuf::from("/dev/input/event999"));
+            let steam = session.config(core, platform);
+            assert!(steam.contains("input_player1_analog_dpad_mode = \"3\""));
+            assert!(steam.contains("input_autodetect_enable = \"true\""));
+            assert!(!steam.contains("input_player1_r_x"));
+            assert!(!steam.contains("input_player1_r_y"));
+        }
+    }
+
+    #[test]
     fn steam_virtual_pad_enables_analog_to_dpad_only_for_single_dpad_target() {
         let session = RetroArchControllerSession {
             stop: None,
@@ -436,7 +480,7 @@ mod tests {
         assert!(
             session
                 .config("mesen-s", "SNES")
-                .contains("input_player1_analog_dpad_mode = \"1\"")
+                .contains("input_player1_analog_dpad_mode = \"3\"")
         );
         assert!(
             session

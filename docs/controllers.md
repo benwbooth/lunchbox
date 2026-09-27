@@ -61,6 +61,9 @@ both the source D-pad and left stick for that same target. You can then use
 whichever feels better. Targets with separate D-pad and analog controls retain
 that distinction.
 
+For DS/DSi stick-stylus profiles, both the D-pad and left stick control
+movement, while the right stick remains dedicated to the stylus.
+
 For a two-action-button target, a four-face-button source can use its spare
 buttons as turbo where the emulator supports it, or as duplicates of the
 main pair. This is not limited to one controller brand. Hardware turbo buttons

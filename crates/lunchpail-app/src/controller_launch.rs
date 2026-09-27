@@ -13479,6 +13479,123 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn ds_dpad_and_left_stick_share_movement_but_preserve_right_stylus_axes() {
+        for source in ["xbox", "dualshock"] {
+            for hat in [false, true] {
+                let (mut calibration, mut numbering) = calibrated_layout(source);
+                if hat {
+                    numbering.axes.extend([16, 17]);
+                    for (direction, code, sign) in [
+                        ("up", 17, -1),
+                        ("down", 17, 1),
+                        ("left", 16, -1),
+                        ("right", 16, 1),
+                    ] {
+                        let binding = calibration.bindings.get_mut(direction).unwrap();
+                        let native = NativeInput {
+                            code: 3 << 16 | code,
+                            direction: sign,
+                        };
+                        binding.code = native.code;
+                        binding.direction = sign;
+                        binding.kind = "axis".into();
+                        binding.native = Some(native);
+                        binding.axis = Some(crate::controller_axis::AxisMeasurement {
+                            minimum: -1,
+                            maximum: 1,
+                            released: 0,
+                            pressed: i32::from(sign),
+                            flat: 0,
+                            fuzz: 0,
+                            resolution: 0,
+                        });
+                    }
+                }
+                for id in [
+                    "retroarch:desmume:nds-stylus-emulated",
+                    "retroarch:desmume:nds-stylus-absolute",
+                    "retroarch:melonds_ds:ds-stylus",
+                    "retroarch:melonds_ds:dsi-stylus",
+                ] {
+                    let profile = catalog()
+                        .emulator_profiles
+                        .iter()
+                        .find(|p| p.id == id)
+                        .unwrap();
+                    // Already-saved manual movement choices must gain the same
+                    // alternate route without losing any other assignment.
+                    for stick_primary in [false, true] {
+                        calibration.target_mappings.remove(id);
+                        if stick_primary {
+                            calibration.target_mappings.insert(
+                                id.into(),
+                                ["up", "down", "left", "right"]
+                                    .map(|direction| {
+                                        (direction.into(), format!("stick_{direction}"))
+                                    })
+                                    .into(),
+                            );
+                        }
+                        let mapping = calibration.plan_profile(profile).unwrap();
+                        let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+                        let mode = if hat { "3" } else { "0" };
+                        assert!(
+                            config
+                                .contains(&format!("input_player1_analog_dpad_mode = \"{mode}\""))
+                        );
+                        for row in mapping.rows {
+                            let output =
+                                OUTPUTS.iter().find(|(id, _)| *id == row.output).unwrap().1;
+                            let primary = row.input.as_ref().unwrap().native.as_ref().unwrap();
+                            let (suffix, value) = numbering.binding(primary).unwrap();
+                            assert!(
+                                config.contains(&format!(
+                                    "input_player1_{output}_{suffix} = \"{value}\""
+                                )),
+                                "{id}/{source}/{output}"
+                            );
+                            if row.output.starts_with("DPad") {
+                                let alternate = row
+                                    .alternate_input
+                                    .as_ref()
+                                    .expect("missing alternate movement")
+                                    .native
+                                    .as_ref()
+                                    .unwrap();
+                                let (alt_suffix, alt_value) = numbering.binding(alternate).unwrap();
+                                let alt_output = if hat {
+                                    crate::controller_layout::spare_retropad_direction(
+                                        &profile.bindings,
+                                        &row.output,
+                                    )
+                                    .unwrap()
+                                } else {
+                                    output
+                                };
+                                assert!(config.contains(&format!(
+                                    "input_player1_{alt_output}_{alt_suffix} = \"{alt_value}\""
+                                )));
+                            } else {
+                                assert!(
+                                    row.alternate_input.is_none(),
+                                    "non-movement action acquired an alternate"
+                                );
+                            }
+                            if row.target_id.starts_with("right_stick_") {
+                                assert_eq!(
+                                    row.physical_id.as_deref(),
+                                    Some(row.target_id.as_str())
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn flycast_arcade_resume_keeps_the_selected_physical_controller() {
         let (calibration, numbering) = calibrated_layout("brawler64");
         for id in ["retroarch:flycast:arcade-6", "retroarch:flycast:arcade-8"] {

@@ -7,7 +7,7 @@ use crate::controller_catalog::{Control, Layout};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const POLICY_VERSION: u32 = 10;
+pub const POLICY_VERSION: u32 = 11;
 
 /// Equivalent pressure roles; digital fallback buttons are not aliases.
 pub(crate) fn pressure_role(id: &str) -> Option<&'static str> {
@@ -144,16 +144,12 @@ fn directional_alternates(
 
 /// Return the only left-side directional cluster requested by a target.
 /// A system with separate pad and stick actions must never merge the two.
+/// An independent right analog control does not consume the spare left stick
+/// when the target has only a D-pad on the left (for example a stylus cursor).
 pub(crate) fn single_left_directional_group(
     target: &Layout,
     requested: &BTreeSet<&str>,
 ) -> Option<&'static str> {
-    if target.controls.iter().any(|control| {
-        requested.contains(control.id.as_str())
-            && directional_cluster(target, control).is_some_and(|(right, _)| right)
-    }) {
-        return None;
-    }
     let has_any = |group| {
         target.controls.iter().any(|control| {
             requested.contains(control.id.as_str())
@@ -164,13 +160,17 @@ pub(crate) fn single_left_directional_group(
     if has_any("dpad") == has_any("stick") {
         return None;
     }
-    if has_any("dpad") {
-        Some("dpad")
-    } else if has_any("stick") {
-        Some("stick")
-    } else {
-        None
+    let group = if has_any("dpad") { "dpad" } else { "stick" };
+    if target.controls.iter().any(|control| {
+        requested.contains(control.id.as_str())
+            && directional_cluster(target, control).is_some_and(|(right, _)| right)
+            // Preserve twin-stick / twin-digital semantics. Only a lone
+            // left D-pad plus a separate right analog channel is safe here.
+            && !(group == "dpad" && control.group == "stick" && control.analog)
+    }) {
+        return None;
     }
+    Some(group)
 }
 
 /// A digital target may use RetroArch's otherwise-unused left analog channels
@@ -1225,6 +1225,45 @@ mod tests {
         assert_eq!(pairs["b"], "y");
         assert_eq!(pairs["c_up"], "right_stick_up");
         assert_eq!(pairs["z"], "l2");
+    }
+
+    #[test]
+    fn right_analog_controls_do_not_block_an_unused_left_stick() {
+        let db = catalog();
+        for source_id in ["xbox", "dualshock"] {
+            let source = db.layout(source_id).unwrap();
+            let available = source.controls.iter().map(|c| c.id.as_str()).collect();
+            for target_id in ["nds-stylus-controls", "nds-melonds-stylus"] {
+                let target = db.layout(target_id).unwrap();
+                let requested = target.controls.iter().map(|c| c.id.as_str()).collect();
+                let result = resolve(source, target, &available, &requested);
+                assert_eq!(
+                    single_left_directional_group(target, &requested),
+                    Some("dpad")
+                );
+                assert_eq!(result.directional_alternates.len(), 4);
+                for direction in ["up", "down", "left", "right"] {
+                    assert_eq!(result.assignments[direction], direction);
+                    assert_eq!(
+                        result.directional_alternates[direction],
+                        format!("stick_{direction}")
+                    );
+                    let right = format!("right_stick_{direction}");
+                    assert_eq!(result.assignments[&right], right);
+                    assert!(!result.directional_alternates.contains_key(&right));
+                }
+            }
+        }
+        // A genuinely twin-analog layout, even without a requested D-pad,
+        // must still retain two separate movement clusters.
+        let target = db.layout("dualshock").unwrap();
+        let requested = target
+            .controls
+            .iter()
+            .filter(|c| c.analog)
+            .map(|c| c.id.as_str())
+            .collect();
+        assert_eq!(single_left_directional_group(target, &requested), None);
     }
 
     #[test]
