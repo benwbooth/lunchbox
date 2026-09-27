@@ -101,7 +101,7 @@ ColumnLayout {
         }
         const next = playerDevices.slice()
         next[player] = id
-        const error = settingsModel.save_controller_player_order(JSON.stringify(next))
+        const error = settingsModel.save_controller_player_order(JSON.stringify(next), gamePlatform)
         if (error) { status = error; return }
         playerDevices = next
         selectedPlayer = player
@@ -118,7 +118,7 @@ ColumnLayout {
         const next = playerDevices.slice()
         const previous = next[player - 1]
         next[player - 1] = next[player]; next[player] = previous
-        const error = settingsModel.save_controller_player_order(JSON.stringify(next))
+        const error = settingsModel.save_controller_player_order(JSON.stringify(next), gamePlatform)
         if (error) { status = error; return }
         playerDevices = next; selectedPlayer = player - 1
         selectDevice(next[selectedPlayer]); status = "Player order saved."
@@ -126,7 +126,7 @@ ColumnLayout {
     function removeLastPlayer() {
         if (playerDevices.length < 2 || dirty) return
         const next = playerDevices.slice(0, -1)
-        const error = settingsModel.save_controller_player_order(JSON.stringify(next))
+        const error = settingsModel.save_controller_player_order(JSON.stringify(next), gamePlatform)
         if (error) { status = error; return }
         playerDevices = next
         selectedPlayer = Math.min(selectedPlayer, next.length - 1)
@@ -134,7 +134,7 @@ ColumnLayout {
         status = "Player assignments saved."
     }
     function restorePlayers() {
-        const ids = JSON.parse(settingsModel.controller_player_order_json())
+        const ids = JSON.parse(settingsModel.controller_player_order_json(gamePlatform))
         playerDevices = ids.length ? ids : [""]
         selectedPlayer = Math.min(selectedPlayer, playerDevices.length - 1)
         for (const id of playerDevices) prepareController(id)
@@ -326,7 +326,7 @@ ColumnLayout {
                             objectName: "playerController" + playerCard.index
                             Layout.fillWidth: true; model: setup.controllerChoices(playerCard.index); textRole: "name"
                             currentIndex: Math.max(0, model.findIndex(item => item.id === playerCard.deviceId))
-                            onActivated: setup.assignPlayer(playerCard.index, model[currentIndex].id)
+                            onActivated: function(choice) { setup.assignPlayer(playerCard.index, model[choice].id) }
                             Accessible.name: "Controller for Player " + (playerCard.index + 1)
                         }
                         LbButton {
@@ -378,7 +378,10 @@ ColumnLayout {
             LbButton { text: "Refresh"; enabled: !setup.settingsModel.controller_busy; onClicked: setup.settingsModel.refresh_controllers() }
         }
         LbCheckBox { id: showVirtual; text: "Include virtual controllers (Steam Input, etc.)" }
-        Label { text: "Player assignments and controller setups are saved as you go and reused across games."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        Label { text: setup.gamePlatform
+            ? "Player assignments are saved automatically for " + setup.gamePlatform + ". Other systems keep their own controllers."
+            : "Player assignments are saved automatically as defaults. Choose controllers from a game's setup to save them for that system."
+            Layout.fillWidth: true; wrapMode: Text.WordWrap }
         LbButton { objectName: "nextTarget"; text: "Next: target system"; highlighted: true; enabled: setup.playersReady; onClicked: setup.stage = 1 }
     }
     ColumnLayout {
@@ -463,7 +466,15 @@ ColumnLayout {
             currentIndex: setup.selectedPlayer; enabled: !setup.dirty
             onActivated: { setup.selectedPlayer = currentIndex; setup.selectDevice(setup.playerDevices[currentIndex]) }
         }
-        ControllerMappingView { id: mapping; objectName: "guidedMappingView"; Layout.fillWidth: true; settingsModel: setup.settingsModel; sourceLayout: setup.sourceLayout; destinationLayout: setup.targetLayout; rows: setup.preview.rows || []; twinRoutes: setup.preview.twins || []; simple: true }
+        ControllerMappingView { id: mapping; objectName: "guidedMappingView"; Layout.fillWidth: true; settingsModel: setup.settingsModel; sourceLayout: setup.sourceLayout; destinationLayout: setup.targetLayout; rows: setup.preview.rows || []; twinRoutes: (setup.preview.twins || []).concat(setup.preview.extra_faces || []); simple: true }
+        Label {
+            objectName: "extraFaceMappings"
+            visible: (setup.preview.extra_faces || []).length > 0
+            Layout.fillWidth: true; wrapMode: Text.WordWrap
+            text: (setup.preview.extra_faces || []).map(route =>
+                mapping.layoutLabel(setup.sourceLayout, route.physical_id) + " → " + route.target_label).join("   ·   ")
+            color: "#8ad4b7"
+        }
         Label {
             Layout.fillWidth: true; wrapMode: Text.WordWrap
             text: setup.preview.error || (setup.missing ? setup.missing + " required controls need an assignment." : "All required target controls have an assignment.")

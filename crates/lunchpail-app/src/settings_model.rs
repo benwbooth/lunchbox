@@ -1193,10 +1193,13 @@ pub mod qobject {
         fn controller_action_at(self: &SettingsModel, index: i32) -> QString;
 
         #[qinvokable]
-        fn controller_player_order_json(self: &SettingsModel) -> QString;
+        fn controller_player_order_json(self: &SettingsModel, platform: QString) -> QString;
         #[qinvokable]
-        fn save_controller_player_order(self: Pin<&mut SettingsModel>, players: QString)
-        -> QString;
+        fn save_controller_player_order(
+            self: Pin<&mut SettingsModel>,
+            players: QString,
+            platform: QString,
+        ) -> QString;
 
         #[qinvokable]
         fn controller_profile_at(self: &SettingsModel, index: i32) -> QString;
@@ -10067,7 +10070,10 @@ impl qobject::SettingsModel {
                 })
                 .unwrap_or_default();
             Ok(
-                serde_json::json!({"rows":plan.rows,"twins":twins,"error":"", "launch_ready":plan.automatic_launch_ready}),
+                serde_json::json!({"rows":plan.rows,"twins":twins,"extra_faces":crate::controller_catalog::catalog()
+                    .emulator_profiles.iter().find(|candidate| candidate.id == profile)
+                    .map(|emulator| crate::controller_launch::spare_face_routes(&calibration, emulator, &plan))
+                    .unwrap_or_default(),"error":"", "launch_ready":plan.automatic_launch_ready}),
             )
         })();
         qstring(match result {
@@ -10079,13 +10085,13 @@ impl qobject::SettingsModel {
         })
     }
 
-    pub fn controller_player_order_json(&self) -> QString {
+    pub fn controller_player_order_json(&self, platform: QString) -> QString {
         qstring(
             serde_json::to_string(
                 &self
                     .rust()
                     .controller_mapping
-                    .player_mappings
+                    .players_for_system(&platform.to_string())
                     .iter()
                     .map(|player| player.controller_id.clone().unwrap_or_default())
                     .collect::<Vec<_>>(),
@@ -10094,7 +10100,12 @@ impl qobject::SettingsModel {
         )
     }
 
-    pub fn save_controller_player_order(mut self: Pin<&mut Self>, players: QString) -> QString {
+    pub fn save_controller_player_order(
+        mut self: Pin<&mut Self>,
+        players: QString,
+        platform: QString,
+    ) -> QString {
+        let platform = platform.to_string();
         let result = (|| -> anyhow::Result<_> {
             anyhow::ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
             let mut ids: Vec<String> = serde_json::from_str(&players.to_string())?;
@@ -10125,7 +10136,7 @@ impl qobject::SettingsModel {
                             .as_ref()
                             .rust()
                             .controller_mapping
-                            .player_mappings
+                            .players_for_system(&platform)
                             .iter()
                             .any(|player| player.controller_id.as_deref() == Some(id)),
                     "Reconnect this controller before assigning it to a player"
@@ -10137,7 +10148,7 @@ impl qobject::SettingsModel {
                 .into_iter()
                 .map(|id| {
                     mapping
-                        .player_mappings
+                        .players_for_system(&platform)
                         .iter()
                         .find(|p| p.controller_id.as_deref() == Some(id.as_str()))
                         .cloned()
@@ -10147,16 +10158,15 @@ impl qobject::SettingsModel {
                         })
                 })
                 .collect();
-            SettingsStore::open_default()?.save_controller_player_order(&players)?;
+            SettingsStore::open_default()?.save_controller_player_order(&platform, &players)?;
             Ok(players)
         })();
         match result {
             Ok(players) => {
-                self.as_mut().rust_mut().controller_mapping.player_mappings = players;
                 self.as_mut()
                     .rust_mut()
                     .controller_mapping
-                    .explicit_player_selection = true;
+                    .set_player_order(&platform, players);
                 self.as_mut().bump_controller_revision();
                 qstring("")
             }

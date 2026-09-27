@@ -10,6 +10,10 @@ A pad can work in the library before its emulator mapping is configured.
 3. Use **Add player** for additional players, then choose their controllers.
 4. Continue to the target system and review the mapping.
 
+When opened from a game, player choices are remembered for that system.
+For example, choosing a Brawler64 for arcade games leaves your NES controller
+choice unchanged. Systems without a saved choice use your default players.
+
 Press a button to identify a connected controller. Generic names are common;
 **Rename** gives a pad a name you will recognize next time.
 
@@ -62,6 +66,10 @@ buttons as turbo where the emulator supports it, or as duplicates of the
 main pair. This is not limited to one controller brand. Hardware turbo buttons
 that merely repeat another input cannot be mapped as independent buttons.
 
+The mapping review labels these extra connections **Turbo A/B** or
+**A/B (duplicate)**. Hover a button to see its action. With the N30's independent
+X/Y layout and RetroArch FCEUmm, X is Turbo A and Y is Turbo B.
+
 See [Arcade controls](arcade.md#six-button-and-n64-style-pads) for six-button
 layouts on N64-style pads.
 
@@ -88,7 +96,8 @@ device is producing events before changing the game mapping.
 - Relaunch after changing a game mapping.
 
 A saved controller that is disconnected can remain in your preferences.
-Choose a connected replacement rather than deleting all your mappings.
+Lunchpail asks you to reconnect it or choose a replacement instead of silently
+giving its player slot to another pad. You do not need to delete your mappings.
 
 ## Navigating Lunchpail
 
@@ -98,4 +107,3 @@ their beginning or end.
 
 Navigation pauses during button recording and while a game owns input.
 Native file pickers and text entry may still need a keyboard or mouse.
-

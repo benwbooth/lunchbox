@@ -121,24 +121,9 @@ T.ComboBox {
                 z: 20
                 policy: C.ScrollBar.AsNeeded
             }
-            MouseArea {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: parent.width - (popupScroll.visible ? popupScroll.width + 4 : 0)
-                z: 10
-                preventStealing: false
-                onWheel: function(wheel) { wheel.accepted = false }
-                onClicked: function(mouse) {
-                    const index = popupList.indexAt(mouse.x,
-                                                    mouse.y + popupList.contentY)
-                    if (index < 0)
-                        return
-                    control.currentIndex = index
-                    control.activated(index)
-                    control.popup.close()
-                }
-            }
+            // Let ComboBox handle its ItemDelegate activation. Assigning
+            // currentIndex from JavaScript destroys the caller's binding,
+            // so a model refresh during save used to reset the selection.
         }
     }
 }

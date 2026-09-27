@@ -56,6 +56,17 @@ TestCase {
         }
     }
 
+    function test_turbo_routes_have_explicit_labels_and_tooltips() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        host.mapping.twinRoutes = [{physical_id:"b", target_id:"x", target_label:"Turbo A",
+            output:"RetroPad X", reason:"Hold for rapid fire"}]
+        compare(host.mapping.secondaryRows[0].target,"Turbo A")
+        const tip = host.mapping.controlTooltip(0,host.mapping.sourceLayout.controls[1]).plain
+        verify(tip.indexOf("Turbo A") >= 0)
+        verify(tip.indexOf("Hold for rapid fire") >= 0)
+        verify(tip.indexOf("shares one input") < 0)
+    }
+
     function test_diagram_selects_connections_without_any_list() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)

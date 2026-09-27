@@ -147,7 +147,7 @@ ColumnLayout {
             const to = paint(row.target, DEST)
             let line = side === 0 ? from + " also drives " + to : to + " also driven by " + from
             if (row.output) line += " <font color=\"" + DIM + "\">[emulator: " + escTooltip(row.output) + "]</font>"
-            return line + " <font color=\"" + DIM + "\">· shares one input</font>"
+            return line + " <font color=\"" + DIM + "\">· " + escTooltip(row.reason) + "</font>"
         })
         const rich = lines.concat(twinLines).join("<br>") + tail + repeat
         return { rich: rich, plain: plain(rich).replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") }
@@ -161,9 +161,9 @@ ColumnLayout {
         target_id: twin.target_id,
         physical_id: twin.physical_id,
         physical: layoutLabel(sourceLayout, twin.physical_id),
-        target: layoutLabel(destinationLayout, twin.target_id),
+        target: twin.target_label || layoutLabel(destinationLayout, twin.target_id),
         output: twin.output || "",
-        reason: "Shares its input with another control",
+        reason: twin.reason || "shares one input with another control",
         twin: true
     }))
     function targetLabel(row) {

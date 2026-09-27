@@ -1430,6 +1430,54 @@ fn spare_face_pair(
     )
 }
 
+/// Supplemental preview connections use the same spare-button selection as
+/// the launch writer; they must not become ordinary editable target rows.
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct SpareFaceRoute {
+    target_id: String,
+    physical_id: String,
+    target_label: String,
+    output: String,
+    reason: String,
+}
+
+pub(crate) fn spare_face_routes(
+    calibration: &Calibration,
+    profile: &EmulatorProfile,
+    plan: &crate::controller_catalog::MappingPlan,
+) -> Vec<SpareFaceRoute> {
+    if calibration.os != "linux"
+        || profile.transport != "retropad"
+        || profile.retroarch_launch.is_none()
+    {
+        return Vec::new();
+    }
+    let Some((spare_b, spare_a)) = spare_face_pair(calibration, profile, plan) else {
+        return Vec::new();
+    };
+    let turbo = retropad_turbo_outputs(profile);
+    let (output_b, output_a) = turbo.unwrap_or(("y", "x"));
+    [("b", spare_b, output_b), ("a", spare_a, output_a)]
+        .into_iter()
+        .map(|(target, physical, output)| SpareFaceRoute {
+            target_id: target.into(),
+            physical_id: physical,
+            target_label: if turbo.is_some() {
+                format!("Turbo {}", target.to_uppercase())
+            } else {
+                format!("{} (duplicate)", target.to_uppercase())
+            },
+            output: format!("RetroPad {}", output.to_uppercase()),
+            reason: if turbo.is_some() {
+                "Hold for rapid fire"
+            } else {
+                "Same action as the main button; this core has no separate turbo input"
+            }
+            .into(),
+        })
+        .collect()
+}
+
 fn repeats_spare_face_pair(calibration: &Calibration, profile: &EmulatorProfile) -> Result<bool> {
     if retropad_turbo_outputs(profile).is_some() {
         return Ok(false);
@@ -5603,6 +5651,19 @@ fn append_argument(arguments: &mut Vec<OsString>, path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn require_selected_devices<'a>(
+    mapping: &crate::settings::ControllerMappingSettings,
+    devices: &'a [ControllerDevice],
+) -> Result<Vec<&'a ControllerDevice>> {
+    mapping.player_mappings.iter().enumerate().map(|(index, player)| {
+        let id = player.controller_id.as_deref().context("Choose a controller for each player")?;
+        devices.iter().find(|device| device.stable_id == id).with_context(|| {
+            let name = mapping.device_names.get(id).map(String::as_str).unwrap_or(id);
+            format!("Player {} controller ({name}) is disconnected. Reconnect it or choose another controller in Controller setup.", index + 1)
+        })
+    }).collect()
+}
+
 fn selected_devices<'a>(
     settings: &AppSettings,
     devices: &'a [ControllerDevice],
@@ -5610,8 +5671,8 @@ fn selected_devices<'a>(
 ) -> Vec<&'a ControllerDevice> {
     let mapping = &settings.controller_mapping;
     if mapping.explicit_player_selection {
-        // Preserve the chosen order exactly. Missing players are stood in for
-        // by the launch guard below, rather than silently promoting P2 to P1.
+        // The launch guard below rejects missing players instead of silently
+        // substituting a different pad or promoting P2 to P1.
         return mapping
             .player_mappings
             .iter()
@@ -5922,7 +5983,7 @@ pub fn prepare_for_game_with_cancellation(
     } else {
         None
     };
-    let scoped = if let Some(profile) = selected_profile.or(inferred_profile) {
+    let mut scoped = if let Some(profile) = selected_profile.or(inferred_profile) {
         let scope = crate::controller_target::Scope::for_option(option, platform)?;
         let resolved: Vec<_> = mapping
             .calibrations
@@ -5967,6 +6028,14 @@ pub fn prepare_for_game_with_cancellation(
     } else {
         None
     };
+    if let Some(players) = mapping
+        .system_player_mappings
+        .get(&platform.trim().to_ascii_lowercase())
+    {
+        let scoped = scoped.get_or_insert_with(|| settings.clone());
+        scoped.controller_mapping.player_mappings = players.clone();
+        scoped.controller_mapping.explicit_player_selection = true;
+    }
     let settings = scoped.as_ref().unwrap_or(settings);
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     if let Some(session) =
@@ -10545,53 +10614,7 @@ pub fn prepare_for_game_with_cancellation(
     }
     let mut devices = selected_devices(settings, &inventory, platform);
     if settings.controller_mapping.explicit_player_selection {
-        // Each hand-picked player keeps their controller when it is connected.
-        // A disconnected pick is stood in for, in its exact player slot, by
-        // another connected calibrated pad so swapping controllers never
-        // blocks a launch; only a genuinely empty inventory fails.
-        let mapping = &settings.controller_mapping;
-        let mut resolved: Vec<&ControllerDevice> = Vec::new();
-        let mut claimed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
-        for player in &mapping.player_mappings {
-            if let Some(device) = inventory
-                .iter()
-                .find(|device| Some(device.stable_id.as_str()) == player.controller_id.as_deref())
-            {
-                claimed.insert(device.stable_id.as_str());
-                resolved.push(device);
-            }
-        }
-        for player in &mapping.player_mappings {
-            let connected = player
-                .controller_id
-                .as_deref()
-                .is_some_and(|picked| claimed.contains(picked));
-            if connected {
-                continue;
-            }
-            // Standalone runtimes consume no Lunchpail calibration, so any
-            // connected pad may stand in; RetroArch launches still require a
-            // calibrated pad because the generic layer reads it directly.
-            let stand_in = inventory.iter().find(|device| {
-                !claimed.contains(device.stable_id.as_str())
-                    && !mapping.hidden_controller_ids.contains(&device.stable_id)
-                    && (option.runtime_kind == EmulatorRuntimeKind::Standalone
-                        || mapping.calibrations.contains_key(&device.stable_id))
-                    && !mapping
-                        .player_mappings
-                        .iter()
-                        .any(|picked| picked.controller_id.as_deref() == Some(&device.stable_id))
-            });
-            if let Some(device) = stand_in {
-                claimed.insert(device.stable_id.as_str());
-                resolved.push(device);
-            } else if option.runtime_kind != EmulatorRuntimeKind::Standalone {
-                bail!(
-                    "A selected player's controller is disconnected. Reconnect it or change the players in Controller setup."
-                );
-            }
-        }
-        devices = resolved;
+        devices = require_selected_devices(&settings.controller_mapping, &inventory)?;
         for (index, device) in devices.iter().enumerate() {
             if option.runtime_kind == EmulatorRuntimeKind::Standalone {
                 continue;
@@ -13658,6 +13681,16 @@ mod tests {
                 .find(|profile| profile.id == profile_id)
                 .unwrap();
             let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            let routes = spare_face_routes(
+                &calibration,
+                profile,
+                &calibration.plan_profile(profile).unwrap(),
+            );
+            assert_eq!(routes.len(), 2, "{profile_id}");
+            assert_eq!(routes[0].physical_id, "y");
+            assert_eq!(routes[0].target_label, "Turbo B");
+            assert_eq!(routes[1].physical_id, "x");
+            assert_eq!(routes[1].target_label, "Turbo A");
             for (source, output) in [("y", "y"), ("x", "x")] {
                 let (suffix, value) = numbering
                     .binding(calibration.bindings[source].native.as_ref().unwrap())
@@ -13709,6 +13742,13 @@ mod tests {
             assert!(config.contains(&format!("input_player1_{output}_{suffix} = \"{value}\"")));
         }
         assert!(repeats_spare_face_pair(&calibration, gamegear).unwrap());
+        let routes = spare_face_routes(
+            &calibration,
+            gamegear,
+            &calibration.plan_profile(gamegear).unwrap(),
+        );
+        assert_eq!(routes[0].target_label, "B (duplicate)");
+        assert_eq!(routes[1].target_label, "A (duplicate)");
         let directory = tempfile::tempdir().unwrap();
         let mut session = "input_libretro_device_p1 = \"1\"\n".to_string();
         stage_spare_face_repeat_remap(
@@ -14327,6 +14367,46 @@ mod tests {
         assert_eq!(
             selected_devices(&settings, &devices, "Nintendo 64")[0].stable_id,
             "pad-a"
+        );
+    }
+    #[test]
+    fn selected_players_never_silently_substitute_another_controller() {
+        let devices: Vec<_> = ["brawler", "n30"]
+            .into_iter()
+            .map(|id| ControllerDevice {
+                stable_id: id.into(),
+                name: id.into(),
+                device_path: format!("/dev/input/{id}").into(),
+                event_paths: vec![],
+                vendor_id: None,
+                product_id: None,
+                version: None,
+                bus_type: None,
+                physical_path: None,
+                unique_id: None,
+                is_virtual: false,
+            })
+            .collect();
+        let mut mapping = crate::settings::ControllerMappingSettings::default();
+        let player = |id: &str| crate::settings::ControllerPlayerMapping {
+            controller_id: Some(id.into()),
+            ..Default::default()
+        };
+        mapping.player_mappings = vec![player("n30"), player("brawler")];
+        let selected = require_selected_devices(&mapping, &devices).unwrap();
+        assert_eq!(selected[0].stable_id, "n30");
+        assert_eq!(selected[1].stable_id, "brawler");
+        assert!(
+            require_selected_devices(&mapping, &devices[..1])
+                .unwrap_err()
+                .to_string()
+                .contains("Player 1")
+        );
+        assert!(
+            require_selected_devices(&mapping, &devices[1..])
+                .unwrap_err()
+                .to_string()
+                .contains("Player 2")
         );
     }
     fn nes() -> Calibration {

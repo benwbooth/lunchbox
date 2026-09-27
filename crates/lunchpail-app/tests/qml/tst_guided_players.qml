@@ -19,6 +19,7 @@ TestCase {
             property string controller_status: ""
             property var ids: ["sc2", "brawler", "unknown", "steam-virtual"]
             property var order: []
+            property var systemOrders: ({})
             property var calibrations: ({})
             property var models: ({})
             property int automaticCalls: 0
@@ -39,8 +40,15 @@ TestCase {
             }
             function complete() { return {layout:"nes",os:"linux",bindings:{b:{code:1},a:{code:2}}} }
             function controller_calibration_json(id) { return JSON.stringify(calibrations[id] || {}) }
-            function controller_player_order_json() { return JSON.stringify(order) }
-            function save_controller_player_order(json) { if (failure) return failure; order=JSON.parse(json); return "" }
+            function controller_player_order_json(platform) { return JSON.stringify(systemOrders[platform] || order) }
+            function save_controller_player_order(json, platform) {
+                if (failure) return failure
+                if (platform) { const next=Object.assign({},systemOrders); next[platform]=JSON.parse(json); systemOrders=next }
+                else order=JSON.parse(json)
+                // The real backend refreshes the dropdown synchronously during save.
+                controller_revision++
+                return ""
+            }
             function controller_model_review(id, query) {
                 return JSON.stringify({native_sdl3:id === "sc2",steam_virtual:id === "steam-virtual",device_name:id,
                     selected:models[id] || null,detected:id === "sc2" ? {id:"native",name:"Steam Controller 2"} : null,
@@ -130,7 +138,7 @@ TestCase {
         appWindow.height=900
         workflow.dirty=false; workflow.stage=0; workflow.setupResults=({})
         settings.ids=["sc2","brawler","unknown","steam-virtual"]
-        settings.order=[]; settings.calibrations={brawler:settings.complete()}; settings.models=({})
+        settings.order=[]; settings.systemOrders=({}); settings.calibrations={brawler:settings.complete()}; settings.models=({})
         settings.guidedMappings=({})
         settings.automaticCalls=0; settings.failure=""; settings.controller_revision++
         workflow.startForGame("", "", "")
@@ -197,6 +205,33 @@ TestCase {
         tryCompare(combo, "currentIndex", 1)
         compare(guided.playerDevices[0], "sc2")
         verify(!combo.popup.visible)
+        settings.refresh_controllers()
+        tryCompare(combo, "currentIndex", 1)
+        // Choose a different row once, then refresh and reopen the dialog.
+        mouseClick(combo, combo.width - 12, combo.height / 2)
+        tryVerify(function() { return combo.popup.visible })
+        tryVerify(function() { return combo.popup.contentItem.itemAtIndex(2) !== null })
+        const brawler = combo.popup.contentItem.itemAtIndex(2)
+        verify(brawler)
+        mouseClick(brawler, brawler.width / 2, brawler.height / 2)
+        tryCompare(combo, "currentIndex", 2)
+        compare(guided.playerDevices[0], "brawler")
+        settings.refresh_controllers()
+        tryCompare(combo, "currentIndex", 2)
+        explorer.close()
+        explorer.openForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)", "metroid-id")
+        tryCompare(findChild(findChild(explorer, "controllerSetupWorkflow"), "playerController0"), "currentText", "Brawler64")
+    }
+    function test_system_player_choices_survive_other_system_selection() {
+        workflow.startForGame("NES game", "Nintendo Entertainment System", "RetroArch (fceumm)")
+        workflow.assignPlayer(0,"sc2")
+        workflow.startForGame("Arcade game", "Arcade", "RetroArch (mame)")
+        workflow.assignPlayer(0,"brawler")
+        workflow.startForGame("Another NES game", "Nintendo Entertainment System", "RetroArch (fceumm)")
+        compare(workflow.playerDevices.join(","),"sc2")
+        workflow.startForGame("Another arcade game", "Arcade", "RetroArch (mame)")
+        compare(workflow.playerDevices.join(","),"brawler")
+        compare(settings.order.length,0)
     }
     function test_disconnected_saved_player_does_not_hide_connected_choices() {
         settings.order = ["n30"]

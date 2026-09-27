@@ -509,6 +509,9 @@ pub struct ControllerMappingSettings {
     pub profile_controller_ids: Vec<String>,
     #[serde(default)]
     pub player_mappings: Vec<ControllerPlayerMapping>,
+    /// Physical player assignments for each system, independent of button mappings.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub system_player_mappings: HashMap<String, Vec<ControllerPlayerMapping>>,
     /// The guided player picker selects exactly these players, not a preference
     /// order followed by every other connected controller.
     #[serde(default)]
@@ -521,6 +524,29 @@ pub struct ControllerMappingSettings {
     pub hidden_controller_ids: Vec<String>,
     #[serde(default)]
     pub custom_profiles: Vec<ControllerCustomProfile>,
+}
+
+impl ControllerMappingSettings {
+    pub(crate) fn players_for_system(&self, platform: &str) -> &[ControllerPlayerMapping] {
+        self.system_player_mappings
+            .get(&platform.trim().to_ascii_lowercase())
+            .map(Vec::as_slice)
+            .unwrap_or(&self.player_mappings)
+    }
+
+    pub(crate) fn set_player_order(
+        &mut self,
+        platform: &str,
+        players: Vec<ControllerPlayerMapping>,
+    ) {
+        let key = platform.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            self.player_mappings = players;
+            self.explicit_player_selection = true;
+        } else {
+            self.system_player_mappings.insert(key, players);
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -637,6 +663,7 @@ impl Default for ControllerMappingSettings {
             default_profile_id: None,
             profile_controller_ids: Vec::new(),
             player_mappings: Vec::new(),
+            system_player_mappings: HashMap::new(),
             explicit_player_selection: false,
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
@@ -3017,6 +3044,7 @@ impl SettingsStore {
     /// Persist player order without saving unrelated settings drafts.
     pub(crate) fn save_controller_player_order(
         &self,
+        platform: &str,
         players: &[ControllerPlayerMapping],
     ) -> Result<()> {
         let mut connection = self.connection()?;
@@ -3028,8 +3056,7 @@ impl SettingsStore {
             |row| row.get(0),
         )?;
         let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
-        mapping.player_mappings = players.to_vec();
-        mapping.explicit_player_selection = true;
+        mapping.set_player_order(platform, players.to_vec());
         transaction.execute(
             "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
             [serde_json::to_string(&mapping)?],
@@ -9438,7 +9465,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        store.save_controller_player_order(&players).unwrap();
+        store.save_controller_player_order("", &players).unwrap();
         let saved = store.load().unwrap();
         assert_eq!(saved.controller_mapping.player_mappings, players);
         assert!(saved.controller_mapping.explicit_player_selection);
@@ -9447,6 +9474,40 @@ mod tests {
             original.controller_mapping.device_names
         );
         assert_eq!(saved.qbittorrent_host, original.qbittorrent_host);
+    }
+
+    #[test]
+    fn player_order_save_keeps_system_choices_independent() {
+        let (_directory, store) = store();
+        store.save(&AppSettings::default()).unwrap();
+        let player = |id: &str| {
+            vec![ControllerPlayerMapping {
+                controller_id: Some(id.into()),
+                ..Default::default()
+            }]
+        };
+        store
+            .save_controller_player_order("", &player("default"))
+            .unwrap();
+        store
+            .save_controller_player_order("Nintendo Entertainment System", &player("n30"))
+            .unwrap();
+        store
+            .save_controller_player_order("Arcade", &player("brawler"))
+            .unwrap();
+        let saved = store.load().unwrap().controller_mapping;
+        assert_eq!(
+            saved.players_for_system(" Nintendo Entertainment System "),
+            player("n30")
+        );
+        assert_eq!(saved.players_for_system("ARCADE"), player("brawler"));
+        assert_eq!(saved.players_for_system("Other system"), player("default"));
+        assert_eq!(saved.player_mappings, player("default"));
+        let legacy: ControllerMappingSettings = serde_json::from_value(serde_json::json!({
+            "player_mappings": player("legacy"), "explicit_player_selection": true
+        }))
+        .unwrap();
+        assert_eq!(legacy.players_for_system("NES"), player("legacy"));
     }
 
     #[test]
