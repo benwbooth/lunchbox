@@ -5706,7 +5706,7 @@ impl qobject::GameDetailsModel {
         .unwrap_or_default();
         let labels = display_value_labels(option, &resolved, &self.platform().to_string());
         format!(
-            "Effective: CRT {} · Bezel {} · States {} · Fullscreen {}",
+            "Effective: Display shader {} · Bezel {} · States {} · Fullscreen {}",
             labels.shader, labels.bezel, labels.states, labels.fullscreen
         )
     }

@@ -38,7 +38,7 @@ Column {
             Repeater {
                 model: [
                     {key: "fullscreen", title: "Fullscreen", current: tools.details.display_fullscreen, supported: tools.details.display_fullscreen_supported, inherited: tools.details.display_inherited_fullscreen_label},
-                    {key: "shader", title: "CRT shader", current: tools.details.display_shader, supported: tools.details.display_shader_supported, inherited: tools.details.display_inherited_shader_label},
+                    {key: "shader", title: "Display shader", current: tools.details.display_shader, supported: tools.details.display_shader_supported, inherited: tools.details.display_inherited_shader_label},
                     {key: "bezel", title: "Bezel artwork", current: tools.details.display_bezel, supported: tools.details.display_bezel_supported, inherited: tools.details.display_inherited_bezel_label},
                     {key: "save_states", title: "Save states", current: tools.details.display_save_states, supported: tools.details.display_save_states_supported, inherited: tools.details.display_inherited_save_states_label}
                 ]

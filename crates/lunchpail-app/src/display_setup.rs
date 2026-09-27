@@ -1,4 +1,4 @@
-//! Per-adapter display capabilities: fullscreen, CRT shader presets, and
+//! Per-adapter display capabilities: fullscreen, CRT/LCD display shaders, and
 //! system bezels.
 //!
 //! RetroArch settings are applied through a private `--appendconfig` file
@@ -35,8 +35,11 @@ pub struct ShaderPresetChoice {
     pub generated: bool,
 }
 
-/// The curated CRT list, best first. Koko-AIO's configured Base preset is the
-/// "RetroTube TV" look; its raw engine preset leaves the CRT effects disabled.
+/// Curated display shaders, shared by game details, Couch Mode, and profiles.
+/// Keep stored IDs stable when adding looks. LCD presets are borderless so
+/// artwork and dual-screen layout remain independent of the shader choice.
+/// Koko-AIO's configured Base preset is the "RetroTube TV" look; its raw
+/// engine preset leaves the CRT effects disabled.
 pub const RETROARCH_SHADER_PRESETS: &[ShaderPresetChoice] = &[
     ShaderPresetChoice {
         id: "retrotube-tv",
@@ -76,6 +79,66 @@ pub const RETROARCH_SHADER_PRESETS: &[ShaderPresetChoice] = &[
         label: "RetroTube aperture warp · geometry only",
         relative_paths: &[],
         generated: true,
+    },
+    ShaderPresetChoice {
+        id: "lcd-grid",
+        label: "LCD grid · general handheld",
+        relative_paths: &["handheld/lcd-grid-v2.slangp"],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-gameboy",
+        label: "LCD · Game Boy (green)",
+        relative_paths: &["handheld/gameboy.slangp"],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-gameboy-pocket",
+        label: "LCD · Game Boy Pocket (gray)",
+        relative_paths: &["handheld/gameboy-pocket.slangp"],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-gameboy-color",
+        label: "LCD · Game Boy Color",
+        relative_paths: &[
+            "presets/handheld-plus-color-mod/lcd-grid-v2-gbc-color.slangp",
+            "handheld/lcd-grid-v2-gbc-color.slangp",
+        ],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-gameboy-advance",
+        label: "LCD · Game Boy Advance",
+        relative_paths: &[
+            "presets/handheld-plus-color-mod/lcd-grid-v2-gba-color.slangp",
+            "handheld/lcd-grid-v2-gba-color.slangp",
+        ],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-nds",
+        label: "LCD · Nintendo DS",
+        relative_paths: &[
+            "presets/handheld-plus-color-mod/lcd-grid-v2-nds-color.slangp",
+            "handheld/lcd-grid-v2-nds-color.slangp",
+        ],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-3ds",
+        label: "LCD · Nintendo 3DS",
+        relative_paths: &["handheld/3ds-lcd-grid-v2.slangp"],
+        generated: false,
+    },
+    ShaderPresetChoice {
+        id: "lcd-psp",
+        label: "LCD · PSP",
+        relative_paths: &[
+            "presets/handheld-plus-color-mod/lcd-grid-v2-psp-color.slangp",
+            "handheld/lcd-grid-v2-psp-color.slangp",
+        ],
+        generated: false,
     },
 ];
 
@@ -911,6 +974,48 @@ fn prune_stale_launch_display_configs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lcd_presets_resolve_in_managed_and_legacy_shader_packs() {
+        let lcd_choices: Vec<_> = shader_preset_choices()
+            .iter()
+            .filter(|choice| choice.id.starts_with("lcd-"))
+            .collect();
+        assert_eq!(lcd_choices.len(), 8);
+        for choice in lcd_choices {
+            assert!(!choice.generated, "LCD must not use the generated CRT warp");
+            assert!(!choice.relative_paths.is_empty());
+            for relative in choice.relative_paths {
+                for pack_directory in ["shaders_slang", ""] {
+                    let temporary = tempfile::tempdir().unwrap();
+                    let root = temporary.path();
+                    assert_eq!(probe_preset(root, choice.relative_paths), None);
+                    let path = root.join(pack_directory).join(relative);
+                    fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    fs::write(&path, "shaders = 1\n").unwrap();
+                    assert_eq!(probe_preset(root, choice.relative_paths), Some(path));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn display_shader_ids_are_unique_and_keep_existing_crt_choices() {
+        let mut ids = std::collections::HashSet::new();
+        for choice in shader_preset_choices() {
+            assert!(ids.insert(choice.id), "duplicate shader ID: {}", choice.id);
+        }
+        for id in [
+            "retrotube-tv",
+            "crt-guest-advanced",
+            "crt-royale-fast",
+            "crt-easymode",
+            "zfast-crt",
+            "retrotube-aperture-warp",
+        ] {
+            assert!(ids.contains(id), "existing shader ID removed: {id}");
+        }
+    }
 
     #[test]
     fn reflective_bezel_replaces_overlay_and_aspect_without_duplicate_keys() {

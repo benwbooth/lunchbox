@@ -1,6 +1,6 @@
 //! Duimon's Orionsangel console artwork and native 21:9 Potato artwork.
 //! Only unmodified transparent PNGs are fetched at runtime and used as
-//! RetroArch overlays, leaving the selected CRT shader independent. The
+//! RetroArch overlays, leaving the selected display shader independent. The
 //! 21:9 pack is CC BY-NC-ND 4.0; no artwork is vendored or transformed.
 
 use std::fs;

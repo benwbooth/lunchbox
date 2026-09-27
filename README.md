@@ -24,7 +24,7 @@ set up controllers, and launch games from one place—at your desk or on the cou
   per system or game, and configure controller mappings for supported emulators.
 - **Pick up where you left off.** Automatic save-state resume and save backups
   for supported emulators, including a local folder managed by your sync app.
-- **Make it look right.** CRT shaders and system or game-specific bezels,
+- **Make it look right.** CRT and handheld LCD display shaders, plus system or game-specific bezels,
   with aspect-ratio-preserving artwork on ultrawide displays.
 - **Try translations and mods.** Find community patches inside Lunchpail or
   import your own; patched copies leave the original ROM or disc image untouched.

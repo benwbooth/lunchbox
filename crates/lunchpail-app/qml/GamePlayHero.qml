@@ -440,7 +440,8 @@ Rectangle {
                     spacing: 2
                     visible: hero.displayShaderSupported
                     Text {
-                        text: "CRT"
+                        objectName: "displayShaderLabel"
+                        text: "Display shader"
                         color: hero.muted
                         font.pixelSize: 8
                         font.weight: Font.Bold

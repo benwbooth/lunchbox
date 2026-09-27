@@ -11778,6 +11778,38 @@ identity"
     }
 
     #[test]
+    fn lcd_display_shader_choices_round_trip_through_launch_profiles() {
+        let (_directory, store) = store();
+        for choice in crate::display_setup::shader_preset_choices()
+            .iter()
+            .filter(|choice| choice.id.starts_with("lcd-"))
+        {
+            store
+                .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                    scope_kind: "platform".into(),
+                    scope_key: "Nintendo DS".into(),
+                    emulator_id: "desmume-id".into(),
+                    runtime_kind: "retroarch".into(),
+                    core_name: "desmume".into(),
+                    display_shader: choice.id.into(),
+                    ..EmulatorLaunchProfile::default()
+                })
+                .unwrap();
+            let resolved = store
+                .resolve_launch_customization(
+                    "ds-game",
+                    "Nintendo DS",
+                    "desmume-id",
+                    "retroarch",
+                    "desmume",
+                )
+                .unwrap();
+            assert_eq!(resolved.display_shader, choice.id);
+            assert_eq!(resolved.display_scope, "platform");
+        }
+    }
+
+    #[test]
     fn launch_profiles_resolve_display_settings_with_scope_precedence() {
         let (_directory, store) = store();
         store

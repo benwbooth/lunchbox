@@ -83,6 +83,30 @@ TestCase {
         }
     }
 
+    function test_display_shader_picker_supports_lcd_and_preserves_stored_crt() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            settingsExpanded: true,
+            displayExpanded: true,
+            displayShader: "retrotube-tv",
+            displayShaderPresetCount: function() { return 3 },
+            displayShaderPresetIdAt: function(i) { return ["retrotube-tv", "lcd-nds", "lcd-grid"][i] },
+            displayShaderPresetLabelAt: function(i) { return ["RetroTube TV", "LCD · Nintendo DS", "LCD grid · general handheld"][i] }
+        })
+        verify(hero)
+        const combo = findChild(hero, "displayShaderCombo")
+        compare(findChild(hero, "displayShaderLabel").text, "Display shader")
+        compare(combo.count, 4)
+        compare(combo.currentValue, "retrotube-tv")
+        hero.displayShader = "lcd-nds"
+        hero.displayRevision++
+        compare(combo.currentValue, "lcd-nds")
+        compare(combo.displayText, "LCD · Nintendo DS")
+        hero.displayShader = ""
+        hero.displayRevision++
+        compare(combo.currentIndex, 0)
+        compare(combo.displayText, hero.displayInheritedShaderLabel)
+    }
+
     function test_installed_game_exposes_prominent_play_state() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
@@ -343,12 +367,12 @@ TestCase {
 
     function test_display_effective_summary_names_what_inherit_resolves() {
         const hero = createTemporaryObject(heroComponent, testCase, {
-            displayEffectiveSummary: "Effective: CRT RetroTube TV · Bezel System pack · States Save + resume"
+            displayEffectiveSummary: "Effective: Display shader RetroTube TV · Bezel System pack · States Save + resume"
         })
         verify(hero)
         const summary = findChild(hero, "displayEffectiveSummary")
         verify(summary)
-        compare(summary.text, "Effective: CRT RetroTube TV · Bezel System pack · States Save + resume")
+        compare(summary.text, "Effective: Display shader RetroTube TV · Bezel System pack · States Save + resume")
     }
 
     function test_display_effective_summary_empty_when_nothing_set() {

@@ -17,7 +17,7 @@ New here? Start with [installation](installing.md), then
 
 - [Emulators and launching games](playing.md) — choose an emulator, supply firmware, and fix launch problems.
 - [Controllers](controllers.md) — choose players, record buttons, and save mappings.
-- [Display and bezels](display.md) — CRT effects, artwork, fullscreen, and ultrawide screens.
+- [Display shaders and bezels](display.md) — CRT and handheld LCD effects, artwork, fullscreen, and ultrawide screens.
 - [Saves and backups](saves.md) — find your files, enable backups, and resolve conflicts.
 - [Arcade games](arcade.md) — ROM sets, six-button layouts, and supported blood settings.
 
@@ -40,4 +40,3 @@ include every feature shown here; its [release notes](https://github.com/benwboo
 are the best place to check.
 
 Games and BIOS files are not included. Use content you have the right to use.
-

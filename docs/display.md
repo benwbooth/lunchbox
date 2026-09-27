@@ -1,4 +1,4 @@
-# Display, CRT effects, and bezels
+# Display shaders and bezels
 
 Open a game's **Settings & mappings → Display** to change its presentation.
 Use broader defaults for your usual setup and a game override for exceptions.
@@ -6,12 +6,35 @@ Changes apply on the next launch.
 
 ## Choose the look
 
-A shader changes the game image: for example, scanlines and CRT curvature.
+A shader changes the game image: for example, a handheld LCD pixel grid or
+scanlines and CRT curvature.
 A bezel is artwork around that image. You can use either one without the other.
 
-RetroArch display profiles can use CRT presets and artwork from The Bezel
+RetroArch display profiles can use CRT or LCD presets and artwork from The Bezel
 Project, Orionsangel, and Duimon. Available choices depend on the system,
-game, and installed artwork.
+game, and installed artwork. Choose a look under **Display shader** in game
+details, Couch Mode, or a launch profile. Existing choices stay unchanged.
+
+## Handheld LCD screens
+
+Choose the LCD preset named for your handheld: **Game Boy (green)**,
+**Game Boy Pocket (gray)**, **Game Boy Color**, **Game Boy Advance**,
+**Nintendo DS**, **Nintendo 3DS**, or **PSP**. For other color handhelds,
+start with **LCD grid · general handheld**.
+
+These use [Libretro's handheld shaders](https://github.com/libretro/slang-shaders/tree/master/handheld),
+not a curved TV screen. The GBC, GBA, DS and PSP choices include system-specific
+color correction; use the general grid if your emulator core already corrects
+colors and you don't want to apply that effect twice. Game Boy and 3DS presets
+also simulate LCD response; use the general grid if you prefer no ghosting.
+
+Shaders do not choose your DS/3DS screen layout or add a handheld border.
+Set the screen layout in RetroArch's core options, and choose bezel artwork
+separately. Use **Whole system** to keep your LCD choice for that platform,
+or **This game** for an individual override. These presets require RetroArch;
+standalone emulators keep their own display settings.
+
+## CRT screens and reflections
 
 **RetroTube TV** reflects the picture onto the dark inner lip beside the screen,
 not over the printed outer artwork. Both the dark bezel beside a full-screen

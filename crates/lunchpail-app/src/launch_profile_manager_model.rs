@@ -205,9 +205,9 @@ impl LaunchProfileRow {
                 .iter()
                 .find(|choice| choice.id == profile.display_shader)
             {
-                parts.push(choice.label.split(" ·").next().unwrap_or(choice.label));
+                parts.push(choice.label);
             } else {
-                parts.push("Custom CRT");
+                parts.push("Custom display shader");
             }
         }
         if !profile.display_bezel.is_empty() && profile.display_bezel != "off" {

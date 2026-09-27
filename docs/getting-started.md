@@ -52,6 +52,5 @@ that confirmation.
 “Inherit” means use the broader setting shown beside the option. Change the
 game override only when you want this game to behave differently.
 
-Once the game launches, you can add [CRT effects](display.md),
+Once the game launches, you can add [display shaders](display.md),
 [save backups](saves.md), or [translation patches](patches.md).
-

@@ -25,7 +25,7 @@ Rectangle {
     property int toolIndex: 0
     readonly property var tabs: ["Overview", "Play & setup", "Media", "Activity"]
     readonly property var tools: tabIndex === 1 ? [
-        { label: "Display & save states", hint: "CRT, bezels and automatic resume", key: "display" },
+        { label: "Display & save states", hint: "Display shaders, bezels and automatic resume", key: "display" },
         { label: "Controllers", hint: "Players and button mappings", key: "controllers" },
         { label: "Translations & mods", hint: "Community patches and cheats", key: "mods" },
         { label: "RetroAchievements", hint: "Achievement mode and account", key: "achievements" },
