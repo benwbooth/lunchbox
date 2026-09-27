@@ -21,7 +21,7 @@
     },
     {
       "kind": "contract",
-      "path": "docs/MAGNAVOX_ODYSSEY_DS_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAGNAVOX_ODYSSEY_DS_CONTROLLER_BOUNDARY.md",
       "role": "Nintendo DS-only controller and persistence boundary"
     }
   ],

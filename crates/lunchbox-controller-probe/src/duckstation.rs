@@ -3,7 +3,8 @@
 //! Input indices must already be resolved in the *target SDL runtime*. This is
 //! not evdev-to-SDL conversion, player assignment, or an emulator launch adapter.
 //! Protocol checked against DuckStation 0a53bc47c and SDL 3.2.20; no upstream
-//! implementation is embedded. See docs/DUCKSTATION_CONTROLLERS.md.
+//! implementation is embedded. The original notes are archived at
+//! https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DUCKSTATION_CONTROLLERS.md.
 use crate::bindings::{Binding, Input, Output, ResolvedGamepad};
 use anyhow::{Result, ensure};
 

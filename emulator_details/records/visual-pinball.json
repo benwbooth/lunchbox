@@ -4,7 +4,7 @@
   "emulator": "Visual Pinball",
   "sources": [
     { "kind": "source", "repo": "https://github.com/vpinball/vpinball", "url": "https://github.com/vpinball/vpinball", "commit": "93d93d9653d7fdc295967cb5f30fff33b734e1fa", "role": "standalone source for platform, paths, input mapping, table persistence and NVRAM" },
-    { "kind": "contract", "path": "docs/VISUAL_PINBALL_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VISUAL_PINBALL_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
   ],
   "platforms": {
     "linux": {
@@ -41,6 +41,6 @@
   "platform_gaps": {
     "linux-flatpak": { "status": "unresolved", "reason": "No verified Visual Pinball Flatpak package or sandbox runtime.", "evidence": ["source:vpinball@93d93d9"] }
   },
-  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize Visual Pinball mappings: runtime SDL device identity, compound InputAction expressions, and table-specific actions require frontend resolution.", "contract": "docs/VISUAL_PINBALL_CONTROLLER_BOUNDARY.md" },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize Visual Pinball mappings: runtime SDL device identity, compound InputAction expressions, and table-specific actions require frontend resolution.", "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VISUAL_PINBALL_CONTROLLER_BOUNDARY.md" },
   "notes": "Source-backed path and persistence capture is complete for standalone Linux, Windows and macOS. The Flatpak package/runtime is not verified; controller writing remains fail-closed."
 }

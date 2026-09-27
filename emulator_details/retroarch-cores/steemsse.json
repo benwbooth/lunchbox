@@ -26,7 +26,7 @@
         "checksums": [],
         "evidence": [
           "https://sourceforge.net/p/steemsse/code/1501/tree/trunk/steemsse/steem/libretro/libretro-core.cpp",
-          "docs/STEEMSSE_CONTROLLER_CONTRACT.md"
+          "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STEEMSSE_CONTROLLER_CONTRACT.md"
         ]
       }
     ],

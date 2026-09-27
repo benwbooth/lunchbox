@@ -8,7 +8,7 @@ set up controllers, and launch games from one place—at your desk or on the cou
 
 [Download Lunchbox](https://github.com/benwbooth/lunchbox/releases) ·
 [Report an issue](https://github.com/benwbooth/lunchbox/issues) ·
-[Detailed feature guide](docs/FEATURE_REFERENCE.md)
+[User guide](docs/README.md)
 
 ![Lunchbox desktop library with box art from multiple systems](docs/images/library.png)
 
@@ -36,13 +36,13 @@ set up controllers, and launch games from one place—at your desk or on the cou
 Experimental local AI translation is also available for supported RetroArch
 setups. It is opt-in per game, uses OCR and Ollama on a supported GPU, and has a
 guided setup wizard. GPU OCR is not yet included in the Linux AppImage or
-Flatpak packages. See [translation requirements](docs/FEATURE_REFERENCE.md#local-game-translation).
+Flatpak packages. See [translation requirements](docs/translation.md).
 
 ## Get started
 
 1. Choose a package from [Releases](https://github.com/benwbooth/lunchbox/releases):
    Windows MSI or portable ZIP, macOS Apple Silicon DMG, or Linux AppImage/Flatpak.
-   Nix builds are available too; see the [packaging guide](docs/PACKAGING.md).
+   Nix builds are available too; see the [installation guide](docs/installing.md).
 2. Open Lunchbox, choose your storage folders, and use **Library → Import ROMs**
    to add your games. Media accounts and qBittorrent downloads are optional.
 3. Select a game, choose an emulator, and press **Play**. Open
@@ -61,16 +61,15 @@ Browse the same collection with a gamepad, keyboard, or mouse.
 Screenshots show a configured library. Game artwork belongs to its respective
 rights holders; available media depends on your collection and connected providers.
 
-## Learn more or contribute
+## Learn more
 
-- [Feature and development reference](docs/FEATURE_REFERENCE.md) — integrations,
-  requirements, and advanced workflows.
-- [Controller mappings](docs/CONTROLLER_LAYOUT_RULES.md) ·
-  [Arcade settings](docs/ARCADE_SETTINGS.md) ·
-  [Couch Mode themes](docs/COUCH_MODE_THEMES.md).
-- [Build and packaging](docs/PACKAGING.md) ·
-  [Architecture](docs/FRONTEND_ARCHITECTURE.md) ·
-  [Roadmap](docs/FRONTEND_ROADMAP.md).
+- [Play your first game](docs/getting-started.md).
+- [Controllers](docs/controllers.md) · [Display and bezels](docs/display.md) ·
+  [Saves and backups](docs/saves.md).
+- [Translations, mods, and cheats](docs/patches.md) · [Couch Mode](docs/couch-mode.md).
+- [Troubleshooting](docs/troubleshooting.md) · [All guides](docs/README.md).
+
+## Contribute
 
 Built with Rust, Qt, and QML. For incremental development with Nix installed:
 
@@ -79,7 +78,7 @@ Built with Rust, Qt, and QML. For incremental development with Nix installed:
 ```
 
 The script enters the development environment when needed, rebuilds changes,
-and relaunches Lunchbox. See the [development workflow](docs/FEATURE_REFERENCE.md#native-qt-frontend)
-for other commands.
+and relaunches Lunchbox. See [Building from source](docs/building.md)
+for more options.
 
 Licensed under the [MIT License](LICENSE).

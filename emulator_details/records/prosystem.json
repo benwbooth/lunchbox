@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/gstanton/ProSystem1_3", "commit": "3040295934c68024ecf89b45b50107ea1c271e66", "role": "Windows standalone implementation, DirectInput mapping, INI configuration, BIOS and save-state code" },
     { "kind": "docs", "url": "https://github.com/gstanton/ProSystem1_3", "role": "official upstream README and HTML help" },
-    { "kind": "contract", "path": "docs/PROSYSTEM_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PROSYSTEM_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
   "platforms": {
     "windows": {

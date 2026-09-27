@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/libretro/libretro-uae", "url": "https://github.com/libretro/libretro-uae", "commit": "6536174a80d74e6c325aaa5390ff091fac8761d0", "role": "PUAE libretro core config-layer, input mapper, save and firmware source" },
     { "kind": "source", "repo": "https://github.com/libretro/RetroArch", "commit": "0dc3b26c7c560f0e48a7b15002997a8c0676105f", "role": "native RetroArch host config, save/state/system path source" },
-    { "kind": "contract", "path": "docs/PUAE_CONTROLLER_CONTRACT.md", "role": "native RetroArch PUAE launch and configuration boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PUAE_CONTROLLER_CONTRACT.md", "role": "native RetroArch PUAE launch and configuration boundary" }
   ],
   "platforms": {
     "linux": {
@@ -20,7 +20,7 @@
     },
     "linux-flatpak": {
       "paths": [
-        { "purpose": "config", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg; native PUAE guard currently rejects Flatpak namespace launches.", "naming": "RetroArch key = value syntax; PUAE custom layers use the same three .uae names in the effective save directory.", "status": "captured", "evidence": ["source:libretro/RetroArch@0dc3b26c XDG config resolution", "docs:docs/PUAE_CONTROLLER_CONTRACT.md Flatpak gap"] },
+        { "purpose": "config", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg; native PUAE guard currently rejects Flatpak namespace launches.", "naming": "RetroArch key = value syntax; PUAE custom layers use the same three .uae names in the effective save directory.", "status": "captured", "evidence": ["source:libretro/RetroArch@0dc3b26c XDG config resolution", "docs:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PUAE_CONTROLLER_CONTRACT.md Flatpak gap"] },
         { "purpose": "input", "path": "RetroArch/PUAE per-port input and autoconfig paths inside the Flatpak namespace.", "naming": "Same PUAE mapper device semantics; namespace translation is not yet implemented by the native Lunchbox guard.", "status": "captured", "evidence": ["source:libretro/libretro-uae@6536174 libretro-mapper.c", "source:libretro/RetroArch@0dc3b26c input config paths"] },
         { "purpose": "saves", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/saves/ by frontend default, or effective content directory.", "naming": "<content-basename>.srm and PUAE .uae layers; sorting options can add core/content subdirectories.", "status": "captured", "evidence": ["source:libretro/RetroArch@0dc3b26c XDG data/config resolution", "source:libretro/libretro-uae@6536174 libretro-core.c"] },
         { "purpose": "states", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/states/ by frontend default, or effective content directory.", "naming": "<content-basename>.state and .stateN (plus .auto/.entry frontend forms).", "status": "captured", "evidence": ["source:libretro/RetroArch@0dc3b26c XDG path resolution", "source:libretro/libretro-uae@6536174 puae_libretro.info"] },

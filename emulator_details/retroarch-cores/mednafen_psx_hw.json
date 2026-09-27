@@ -22,7 +22,7 @@
       "evidence": [
         "runtime:Flatpak org.libretro.RetroArch 1.22.2 Git 69a4f0ea1e commit 9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752",
         "runtime:external mednafen_psx_hw_libretro.so sha256 25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56; OpenGL Core 3.3 shared context; Mesa llvmpipe",
-        "docs/CONTROLLER_RETROARCH_ORACLE.md"
+        "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"
       ]
     },
     "macos": {

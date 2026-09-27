@@ -94,4 +94,4 @@ provide the reuse and redistribution grant this project would need. A public API
 file is not itself a data license.
 
 The complete reviewed provider registry is `sources/metadata-providers.json`; the rationale and
-integration order are in `docs/METADATA_BACKBONE.md`.
+integration notes are preserved in the [archived metadata reference](https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/METADATA_BACKBONE.md).

@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "atari800/atari800", "commit": "fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "role": "configuration, SDL2 joystick, state, ROM and image implementation (7.2.0)" },
     { "kind": "docs", "url": "https://github.com/atari800/atari800", "role": "official upstream distribution and platform identity" },
-    { "kind": "contract", "path": "docs/ATARI800_NATIVE_CONTROLLER_CONTRACT.md", "role": "conservative native input overlay boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ATARI800_NATIVE_CONTROLLER_CONTRACT.md", "role": "conservative native input overlay boundary" }
   ],
   "platforms": {
     "linux": {

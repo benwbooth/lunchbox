@@ -7,7 +7,7 @@
     { "kind": "docs", "url": "https://mednafen.github.io/releases/", "role": "platform support verification (Windows binaries + source; Linux/BSD compile; no official macOS builds)" },
     { "kind": "source", "repo": "libretro-mirrors/mednafen-git", "commit": "f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc", "role": "save/state filename construction, per-system save extensions, BIOS settings, base-directory logic" },
     { "kind": "source", "repo": "lunchbox crates/lunchbox-app/src/controller_mednafen + data/controllers/catalog.json", "role": "pinned setting-name and input-expression contract (mednafen-settings transport)" },
-    { "kind": "repo", "repo": "docs/MEDNAFEN_STANDALONE_PROGRESS.md", "role": "lunchbox pinned Mednafen standalone adapter progress and private-config staging contract" }
+    { "kind": "repo", "repo": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MEDNAFEN_STANDALONE_PROGRESS.md", "role": "lunchbox pinned Mednafen standalone adapter progress and private-config staging contract" }
   ],
   "platforms": {
     "linux": {
@@ -23,7 +23,7 @@
             "repo:controller_mednafen/discovery.rs + paths.rs (mednafen.cfg, <system>.cfg, pgconfig/<FileBase>.<system>.cfg; legacy header rejected)",
             "repo:controller_mednafen/profiles.rs + psx.rs + saturn.rs + nes.rs (<system>.input.portN.gamepad.<key>, device none, pport/sport multitap)",
             "repo:controller_catalog.rs mednafen-settings transport + data/controllers/catalog.json mednafen:standalone-* profiles",
-            "repo:docs/MEDNAFEN_STANDALONE_PROGRESS.md (pinned input contracts)"
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MEDNAFEN_STANDALONE_PROGRESS.md (pinned input contracts)"
           ]
         },
         {
@@ -62,7 +62,7 @@
           "evidence": [
             "source:general.cpp MDFNMKF_FIRMWARE resolution via filesys.path_firmware @ f0ee9d5",
             "source:psx.cpp psx.bios_* with SHA-256, ss.cpp ss.bios_*, pce.cpp pce.cdbios/pce.gecdbios, gba/GBA.cpp gba.bios, nes/fds.cpp disksys.rom @ f0ee9d5",
-            "repo:docs/MEDNAFEN_STANDALONE_PROGRESS.md (FDS disksys.rom firmware must pre-exist; Saturn/PSX native BIOS still required, firmware identity unverified)",
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MEDNAFEN_STANDALONE_PROGRESS.md (FDS disksys.rom firmware must pre-exist; Saturn/PSX native BIOS still required, firmware identity unverified)",
             "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules (only retroarch beetle_psx/beetle_psx_hw PS1 BIOS packs); the pinned gb module exposes no BIOS setting"
           ]
         },
@@ -74,7 +74,7 @@
           "evidence": ["source:libretro-mirrors/mednafen-git @f0ee9d5 (standalone modules expose firmware settings but no cryptographic-key file)"]
         }
       ],
-      "notes": "Lunchbox pins deep Mednafen contracts (docs/MEDNAFEN_STANDALONE_PROGRESS.md; controller_catalog mednafen-settings transport) and launches with a child-only MEDNAFEN_HOME private base, staged private config layers and bubblewrap mounts; only configuration files are replaced, native save/state locations are retained (controller_mednafen/native_command.rs, discovery.rs, isolation). Native 128-bit joystick IDs come from joydev/evdev inventory, never SDL GUIDs."
+      "notes": "Lunchbox pins deep Mednafen contracts (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MEDNAFEN_STANDALONE_PROGRESS.md; controller_catalog mednafen-settings transport) and launches with a child-only MEDNAFEN_HOME private base, staged private config layers and bubblewrap mounts; only configuration files are replaced, native save/state locations are retained (controller_mednafen/native_command.rs, discovery.rs, isolation). Native 128-bit joystick IDs come from joydev/evdev inventory, never SDL GUIDs."
     },
     "windows": {
       "paths": [

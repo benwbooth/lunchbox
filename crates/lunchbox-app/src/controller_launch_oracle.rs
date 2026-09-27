@@ -297,31 +297,31 @@ fn private_display_rejects_desktop_aliases_and_missing_desktop() {
 }
 
 #[test]
-#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and trusted mGBA core; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and trusted mGBA core; see https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
     brawler64_hardware_oracle(OracleTarget::Gba, false)
 }
 
 #[test]
-#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and the reviewed Nestopia core; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and the reviewed Nestopia core; see https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_nes_hardware_through_nestopia() -> Result<()> {
     brawler64_hardware_oracle(OracleTarget::Nes, false)
 }
 
 #[test]
-#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_psx_hardware_through_retroarch() -> Result<()> {
     brawler64_hardware_oracle(OracleTarget::Psx, false)
 }
 
 #[test]
-#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX HW core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX HW core and local BIOS; see https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_psx_hw_hardware_through_retroarch() -> Result<()> {
     brawler64_hardware_oracle(OracleTarget::PsxHw, false)
 }
 
 #[test]
-#[ignore = "requires writable uinput, isolated X display and trusted mGBA; creates two Steam-compatible virtual pads; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+#[ignore = "requires writable uinput, isolated X display and trusted mGBA; creates two Steam-compatible virtual pads; see https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch() -> Result<()> {
     brawler64_hardware_oracle(OracleTarget::Gba, true)
 }

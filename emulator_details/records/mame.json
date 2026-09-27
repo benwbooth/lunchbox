@@ -25,8 +25,8 @@
             "docs:ctrlr_config (ctrlr folder samples, -ctrlr selection, version 10)",
             "source:mamedev/mame src/emu/config.cpp (loads default.cfg as DEFAULT and basename()+\".cfg\" as SYSTEM from cfg_directory; controller file \"<ctrlr>.cfg\")",
             "source:mamedev/mame src/frontend/mame/clifront.cpp (-createconfig writes mame.ini, ui.ini, plugin.ini)",
-            "contract: docs/MAME_STANDALONE_PROGRESS.md (owned default.cfg and machine-basename cfg copies matching pinned config.cpp load order)",
-            "contract: docs/MAME_CONTROLLER_CONTRACT.md (version-10 controller XML writer; inspection launch routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree with INI load/write disabled)"
+            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (owned default.cfg and machine-basename cfg copies matching pinned config.cpp load order)",
+            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_CONTROLLER_CONTRACT.md (version-10 controller XML writer; inspection launch routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree with INI load/write disabled)"
           ]
         },
         {
@@ -78,7 +78,7 @@
           "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
-      "notes": "Lunchbox standalone-MAME launch uses explicit -cfg_directory/-ctrlrpath routing with private default.cfg, <shortname>.cfg and controller-profile copies; originals are never written and runtime cfg changes stay session-local (docs/MAME_STANDALONE_PROGRESS.md). The libretro-core contract (docs/MAME_CONTROLLER_CONTRACT.md) instead routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree and disables INI loading/writing."
+      "notes": "Lunchbox standalone-MAME launch uses explicit -cfg_directory/-ctrlrpath routing with private default.cfg, <shortname>.cfg and controller-profile copies; originals are never written and runtime cfg changes stay session-local (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md). The libretro-core contract (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_CONTROLLER_CONTRACT.md) instead routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree and disables INI loading/writing."
     },
     "linux-flatpak": {
       "paths": [
@@ -144,7 +144,7 @@
           "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
-      "notes": "The Flatpak keeps every writable MAME folder inside the persisted $HOME/.mame sandbox tree; the lunchbox probes have launched this Flatpak with an exact collection/runtime -rompath list (docs/FRONTEND_ARCHITECTURE.md arcade-launch-probe)."
+      "notes": "The Flatpak keeps every writable MAME folder inside the persisted $HOME/.mame sandbox tree; the lunchbox probes have launched this Flatpak with an exact collection/runtime -rompath list (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/FRONTEND_ARCHITECTURE.md arcade-launch-probe)."
     },
     "windows": {
       "paths": [
@@ -157,7 +157,7 @@
             "docs:commandline-all (inipath \".;ini;ini/presets\", cfg_directory/ctrlrpath defaults)",
             "docs:multiconfig (ini layering order)",
             "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
-            "contract: docs/MAME_STANDALONE_PROGRESS.md (private default.cfg and machine-basename cfg copies)"
+            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (private default.cfg and machine-basename cfg copies)"
           ]
         },
         {
@@ -221,7 +221,7 @@
             "docs:commandline-all (macOS inipath includes $HOME/Library/Application Support/mame and $HOME/.mame;.;ini; cfg/ctrlrpath defaults)",
             "docs:multiconfig (ini layering, saves to first inipath entry)",
             "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
-            "contract: docs/MAME_STANDALONE_PROGRESS.md (private cfg copies and controller profile)"
+            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (private cfg copies and controller profile)"
           ]
         },
         {

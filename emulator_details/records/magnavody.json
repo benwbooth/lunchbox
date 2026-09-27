@@ -28,7 +28,7 @@
     },
     {
       "kind": "contract",
-      "path": "docs/MAGNAVODY_STANDALONE_CONTROLLER_CONTRACT.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAGNAVODY_STANDALONE_CONTROLLER_CONTRACT.md",
       "role": "standalone native controller boundary"
     }
   ],

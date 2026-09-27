@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/7800-devtools/a7800", "commit": "7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "role": "standalone A7800/MAME-derived target, input devices, optional BIOS and save support" },
     { "kind": "docs", "url": "https://github.com/7800-devtools/a7800", "role": "official upstream README and source distribution" },
-    { "kind": "contract", "path": "docs/A7800_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/A7800_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
   "platforms": {
     "linux": {

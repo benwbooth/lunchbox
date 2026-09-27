@@ -405,7 +405,7 @@ macOS audit directory is also retained on that host at
 This is a core-level input diagnostic, not a test of every game's compatibility
 rules or of physical-controller discovery and launch-time configuration. The
 application's prepared-disc compatibility checks and RetroArch launch oracle
-cover different boundaries; see [the launch oracle](../../docs/CONTROLLER_RETROARCH_ORACLE.md).
+cover different boundaries; see [the launch oracle](https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md).
 
 ## Game Boy / Gambatte, mGBA, SameBoy, SkyEmu, and VBA-M
 
@@ -465,7 +465,7 @@ This checks ordinary Game Boy emulated input, not SGB multiplayer, Game Boy Link
 all model variants, RetroArch's generated configuration processing, physical
 controller calibration, or the desktop launch action. Save RAM, states, optional
 boot-ROM acceptance, and synchronization remain separate tests. The application
-has separate [SameBoy option-dependent topology tests](../../docs/SAMEBOY_CONTROLLERS.md).
+has separate [SameBoy option-dependent topology tests](https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SAMEBOY_CONTROLLERS.md).
 
 Reports additionally include the latest `input_descriptors` notification from
 the core: port, device, index, id and copied UTF-8 description. Capture requires

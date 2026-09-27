@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/visualboyadvance-m/visualboyadvance-m", "commit": "fd13034143c128c8b68133a7a18bc785178ec4e4", "role": "Qt/wx native configuration, SDL input, saves, states and optional BIOS" },
     { "kind": "docs", "url": "https://visualboyadvance-m.org/", "role": "official project and release documentation" },
-    { "kind": "contract", "path": "docs/VBA_M_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VBA_M_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
   "platforms": {
     "linux": { "paths": [

@@ -31,7 +31,7 @@
     },
     {
       "kind": "docs",
-      "url": "repo:docs/FLYCAST_STANDALONE_PROGRESS.md",
+      "url": "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/FLYCAST_STANDALONE_PROGRESS.md",
       "role": "Lunchbox pinned Flycast contracts: XDG_CONFIG_HOME/flycast/emu.cfg private config, [input] maple_sdl_joystick_ID player ports, [config] Dreamcast.MappingsPath grammar, version-3 mapping writer (pin fb286f777ce690ef8acf3359a75ab84b61566ad9)"
     }
   ],
@@ -50,7 +50,7 @@
             "source:core/sdl/sdl_gamepad.cpp _unique_id = \"sdl_joystick_\" + std::to_string(sdl_joystick_instance)",
             "source:core/input/mapping.cpp InputMapping::save (MappingsPath[0] or get_writable_config_path(\"mappings/\"), [emulator]/[combo] sections), mapping.h CURRENT_FILE_VERSION = 4",
             "source:core/cfg/option.h Settings::load(gameSpecific) keys per-game options off hasSection(gameId) in emu.cfg",
-            "repo:docs/FLYCAST_STANDALONE_PROGRESS.md (pinned core/linux-dist/main.cpp + find_user_config_dir, [input] maple_sdl_joystick_ID, [config] Dreamcast.MappingsPath grammar, pinned core/cfg/ini.cpp INI quote handling)"
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/FLYCAST_STANDALONE_PROGRESS.md (pinned core/linux-dist/main.cpp + find_user_config_dir, [input] maple_sdl_joystick_ID, [config] Dreamcast.MappingsPath grammar, pinned core/cfg/ini.cpp INI quote handling)"
           ]
         },
         {
@@ -111,7 +111,7 @@
           "naming": "Dreamcast/Naomi/Atomiswave need no keys; reviewed config surface defines no key files."
         }
       ],
-      "notes": "Lunchbox launches Flycast with a private XDG_CONFIG_HOME pointing at a session-owned flycast/emu.cfg (docs/FLYCAST_STANDALONE_PROGRESS.md 'Native Linux config selection' + 'Private config preparation'); user config is never overwritten and private writes stay session-local. Native VMU/nvmem/savestate files keep their data-dir locations."
+      "notes": "Lunchbox launches Flycast with a private XDG_CONFIG_HOME pointing at a session-owned flycast/emu.cfg (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/FLYCAST_STANDALONE_PROGRESS.md 'Native Linux config selection' + 'Private config preparation'); user config is never overwritten and private writes stay session-local. Native VMU/nvmem/savestate files keep their data-dir locations."
     },
     "linux-flatpak": {
       "paths": [

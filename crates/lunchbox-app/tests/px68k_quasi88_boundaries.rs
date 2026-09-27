@@ -65,7 +65,7 @@ fn puae_retroarch_keeps_the_shared_native_boundary() {
             .contains("second PUAE writer")
     );
     assert_eq!(
-        value["sources"][2]["path"],
-        "docs/PUAE_CONTROLLER_CONTRACT.md"
+        value["sources"][2]["url"],
+        "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PUAE_CONTROLLER_CONTRACT.md"
     );
 }

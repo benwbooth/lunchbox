@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/aduros/wasm4", "url": "https://github.com/aduros/wasm4", "commit": "9d6c962785cfe3719d0245fd279ecbe98a4dbb63", "role": "native runtime keyboard, disk persistence and libretro backend source" },
     { "kind": "docs", "url": "https://wasm4.org/docs/guides/saving-data/", "role": "official native/web save-data contract" },
-    { "kind": "contract", "path": "docs/WASM4_CONTROLLER_BOUNDARY.md", "role": "fail-closed native controller ownership boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WASM4_CONTROLLER_BOUNDARY.md", "role": "fail-closed native controller ownership boundary" }
   ],
   "platforms": {
     "linux": {
@@ -42,6 +42,6 @@
   "platform_gaps": {
     "linux-flatpak": { "status": "unresolved", "reason": "No verified WASM-4 Flatpak package or sandbox runtime.", "evidence": ["source:wasm4@9d6c962"] }
   },
-  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize a native WASM-4 profile: fixed keyboard backends and libretro/frontend-owned callbacks do not define a portable host mapping file.", "contract": "docs/WASM4_CONTROLLER_BOUNDARY.md" },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize a native WASM-4 profile: fixed keyboard backends and libretro/frontend-owned callbacks do not define a portable host mapping file.", "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WASM4_CONTROLLER_BOUNDARY.md" },
   "notes": "Native Linux, Windows and macOS disk/input boundaries are captured. Web localStorage and libretro serialization are separate runtime contracts; no verified Linux Flatpak package is recorded."
 }

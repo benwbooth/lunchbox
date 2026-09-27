@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/WallyZambotti/OVCC", "commit": "cc936b25be3da2c03b21a9bf1cc2ff4a494a5f09", "url": "https://github.com/WallyZambotti/OVCC/tree/cc936b25be3da2c03b21a9bf1cc2ff4a494a5f09", "role": "native SDL/AGAR input, INI, ROM and disk-image source" },
     { "kind": "docs", "url": "https://github.com/WallyZambotti/OVCC/blob/cc936b25be3da2c03b21a9bf1cc2ff4a494a5f09/README.md", "role": "official build, layout and persistence documentation" },
-    { "kind": "contract", "path": "docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
   ],
   "platforms": {
     "linux": { "paths": [

@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://www.6809.org.uk/git/xroar.git", "url": "https://www.6809.org.uk/git/xroar.git/commit/?id=0229f97a636c3c80d51fd27e7d145d792f0a8932", "commit": "0229f97a636c3c80d51fd27e7d145d792f0a8932", "role": "joystick profile parser/printer, SDL3 physical-device grammar, config and snapshot implementation" },
     { "kind": "docs", "url": "https://www.6809.org.uk/xroar/doc/xroar.shtml", "role": "official XRoar platform paths, firmware, media, joystick and snapshot documentation" },
-    { "kind": "contract", "path": "docs/ORICUTRON_XROAR_ZESARUX_NATIVE_CONTROLLER_CONTRACT.md", "role": "source-pinned native controller writer boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ORICUTRON_XROAR_ZESARUX_NATIVE_CONTROLLER_CONTRACT.md", "role": "source-pinned native controller writer boundary" }
   ],
   "platforms": {
     "linux": {
@@ -47,7 +47,7 @@
     "profile_id": "xroar:native-sdl3-joystick-v1",
     "writer": "crates/lunchbox-app/src/controller_xroar_native.rs",
     "refusal": "The writer appends only source-defined joy/joy-axis/joy-button/joy-right/joy-left declarations and requires a same-launch SDL enumeration index; it must not claim stable device identity or runtime-verified controller behavior.",
-    "contract": "docs/ORICUTRON_XROAR_ZESARUX_NATIVE_CONTROLLER_CONTRACT.md"
+    "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ORICUTRON_XROAR_ZESARUX_NATIVE_CONTROLLER_CONTRACT.md"
   },
   "notes": "XRoar's native writer is source-shaped but writer-only: ROM, media and snapshot paths remain caller-owned, and SDL device order remains a runtime boundary."
 }

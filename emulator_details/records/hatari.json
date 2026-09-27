@@ -16,7 +16,7 @@
     },
     {
       "kind": "contract",
-      "path": "docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md",
       "role": "controller contract"
     },
     {
@@ -37,7 +37,7 @@
             "source:src/paths.c HATARI_HOME_DIR \".config/hatari\" with legacy ~/.hatari fallback",
             "source:src/configuration.c sConfigFileName=\"hatari.cfg\"",
             "docs:manual Configuration options precedence",
-            "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md"
           ]
         },
         {
@@ -66,7 +66,7 @@
           "evidence": [
             "docs:manual Installation of a TOS ROM (rename to tos.img or use --tos)",
             "source:src/configuration.c [ROM] szTosImageFileName",
-            "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md (TOS selection, existence-checked at launch)"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md (TOS selection, existence-checked at launch)"
           ]
         },
         {

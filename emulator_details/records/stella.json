@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "docs", "url": "https://stella-emu.github.io/docs/index.html", "role": "settings database, EEPROM/nvram, basedir, slots and Time Machine" },
     { "kind": "source", "repo": "stella-emu/stella", "commit": "c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "role": "state file naming, state dir, per-OS base dirs (7.x line pinned by the contract)" },
-    { "kind": "contract", "path": "docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
     { "kind": "flatpak", "id": "io.github.stella_emu.Stella", "url": "https://flathub.org/apps/io.github.stella_emu.Stella", "role": "flatpak existence" }
   ],
   "platforms": {
@@ -14,13 +14,13 @@
         {
           "purpose": "config",
           "path": "~/.config/stella/stella.sqlite3 (plus stella.sqlite3-wal); SQLite settings store in the XDG config dir honored via XDG_CONFIG_HOME; -basedir <dir> relocates every configuration file",
-          "evidence": ["docs:index 'The database file is named stella.sqlite3 ... Linux/Unix $HOME/.config/stella/'", "source:src/os/unix/OSystemUNIX.cxx getBaseDirectories -> XDGPaths::instance().configDir(\"stella\")", "source:src/emucore/OSystemStandalone.cxx SQLite settings repository", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md (-basedir, settings(setting,value) table)"]
+          "evidence": ["docs:index 'The database file is named stella.sqlite3 ... Linux/Unix $HOME/.config/stella/'", "source:src/os/unix/OSystemUNIX.cxx getBaseDirectories -> XDGPaths::instance().configDir(\"stella\")", "source:src/emucore/OSystemStandalone.cxx SQLite settings repository", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md (-basedir, settings(setting,value) table)"]
         },
         {
           "purpose": "input",
           "path": "~/.config/stella/stella.sqlite3 (or the -basedir root's stella.sqlite3)",
           "naming": "SQLite settings table row joymap contains a JSON array of per-joystick objects with name, port (Left/Right/Auto), six kMenuMode/kJoystickMode/kPaddlesMode/kKeyboardMode/kDrivingMode/kCommonMode arrays, and event_ver=9; entries use button, axis x/y/z/a3..a7 plus direction, or hat plus direction",
-          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -55,7 +55,7 @@
           "purpose": "input",
           "path": "~/.var/app/io.github.stella_emu.Stella/.config/stella/stella.sqlite3",
           "naming": "Same SQLite joymap JSON grammar and event_ver=9 as native: per-joystick name/port, six mode arrays, button/axis/hat event fields",
-          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md", "flathub:io.github.stella_emu.Stella"]
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md", "flathub:io.github.stella_emu.Stella"]
         },
         {
           "purpose": "saves",
@@ -90,7 +90,7 @@
           "purpose": "input",
           "path": "%APPDATA%\\Stella\\stella.sqlite3 (or the -baseinappdir base directory)",
           "naming": "Same SQLite joymap JSON grammar and event_ver=9: joystick name/port, six mode arrays and button/axis/hat event fields",
-          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -124,7 +124,7 @@
           "purpose": "input",
           "path": "~/Library/Application Support/Stella/stella.sqlite3",
           "naming": "Same SQLite joymap JSON grammar and event_ver=9: joystick name/port, six mode arrays and button/axis/hat event fields",
-          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",

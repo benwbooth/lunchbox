@@ -18,7 +18,7 @@
     },
     {
       "kind": "contract",
-      "path": "docs/XM7_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XM7_CONTROLLER_BOUNDARY.md",
       "role": "fail-closed controller ownership boundary"
     }
   ],
@@ -163,7 +163,7 @@
   "controller_boundary": {
     "native_writer": "not_implemented",
     "refusal": "Do not synthesize an XM7 controller profile or overwrite XM7.INI: its joystick values are guest options while the SDL port selects physical devices by unstable enumeration index and hard-codes axis/button semantics.",
-    "contract": "docs/XM7_CONTROLLER_BOUNDARY.md"
+    "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XM7_CONTROLLER_BOUNDARY.md"
   },
   "notes": "XM7's source-backed Linux and Windows paths are captured separately from the unresolved native controller identity boundary."
 }

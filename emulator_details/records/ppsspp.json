@@ -3,7 +3,7 @@
   "slug": "ppsspp",
   "emulator": "PPSSPP",
   "sources": [
-    { "kind": "source", "repo": "hrydgard/ppsspp", "commit": "e49c0bd8836a8a8f678565357773386f1174d3f5", "role": "controller contract + memstick roots, folder and file naming (tag v1.19.3, same pin as docs/PPSSPP_STANDALONE_PROGRESS.md)" },
+    { "kind": "source", "repo": "hrydgard/ppsspp", "commit": "e49c0bd8836a8a8f678565357773386f1174d3f5", "role": "controller contract + memstick roots, folder and file naming (tag v1.19.3, same pin as https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md)" },
     { "kind": "docs", "url": "https://www.ppsspp.org/docs/faq/", "role": "memstick layout: PSP/SAVEDATA and PSP/PPSSPP_STATE; platform roots" },
     { "kind": "docs", "url": "https://www.ppsspp.org/docs/reference/mac/", "role": "macOS data in ~/.config/ppsspp with PSP/SYSTEM/ppsspp.ini and PSP/PPSSPP_STATE/" },
     { "kind": "docs", "url": "https://www.ppsspp.org/docs/getting-started/save-data-and-storage-windows/", "role": "Windows memstick selection (memstick next to exe, installed.txt, Documents fallback)" },
@@ -24,7 +24,7 @@
             "source:ppsspp/Core/System.cpp GetSysDirectory: DIRECTORY_SYSTEM = <memstick>/PSP/SYSTEM",
             "source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni ([ControlMapping], psp_button_names) and MultiInputMapping::FromConfigString/ToConfigString",
             "source:ppsspp/Common/Input/InputState.cpp InputMapping::ToConfigString \"%d-%d\"; Common/Input/InputState.h DEVICE_ID_KEYBOARD = 1, DEVICE_ID_PAD_0 = 10",
-            "repo:docs/PPSSPP_STANDALONE_PROGRESS.md (pinned source contracts SDL/SDLJoystick.cpp, Common/Input/InputState.h/.cpp, Common/Input/KeyCodes.h, Core/KeyMap.cpp; SDL backend uses device index plus ten; requires all sixteen PSP gameplay inputs)",
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md (pinned source contracts SDL/SDLJoystick.cpp, Common/Input/InputState.h/.cpp, Common/Input/KeyCodes.h, Core/KeyMap.cpp; SDL backend uses device index plus ten; requires all sixteen PSP gameplay inputs)",
             "repo:crates/lunchbox-app/src/controller_ppsspp/configuration.rs (prepares ppsspp.ini, controls.ini and <game_id>_ppsspp.ini under PSP/SYSTEM; never invents platform defaults)"
           ]
         },
@@ -32,7 +32,7 @@
           "purpose": "input",
           "path": "~/.config/ppsspp/PSP/SYSTEM/controls.ini (same PSP/SYSTEM root as ppsspp.ini)",
           "naming": "Single [ControlMapping] section keyed by PSP button names; values are comma-separated <deviceId>-<keyCode> mappings with colon-joined multi-mappings. Keyboard device id is 1; SDL joypads are 10..19. Per-game overrides are <GAMEID>_ppsspp.ini",
-          "evidence": ["source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni and Common/Input/InputState.cpp ToConfigString @e49c0bd8836a8a8f678565357773386f1174d3f5", "repo:docs/PPSSPP_STANDALONE_PROGRESS.md"]
+          "evidence": ["source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni and Common/Input/InputState.cpp ToConfigString @e49c0bd8836a8a8f678565357773386f1174d3f5", "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md"]
         },
         {
           "purpose": "saves",
@@ -149,7 +149,7 @@
             "docs:https://www.ppsspp.org/docs/getting-started/save-data-and-storage-windows/ (\"No installed.txt: Memory Stick is in a subfolder called memstick right next to the EXE file. installed.txt is empty: %userprofile%\\Documents\\PPSSPP. installed.txt contains a path: Memory Stick is in that path\")",
             "docs:https://www.ppsspp.org/docs/faq/ (\"Windows: Either in the directory memstick in PPSSPP, or in your documents directory\")",
             "source:ppsspp/Core/KeyMap.cpp XInput default mapping selection (SetDefaultKeyMap(DEFAULT_MAPPING_XINPUT) for Xbox-named pads on Windows)",
-            "repo:docs/PPSSPP_STANDALONE_PROGRESS.md (pinned controls.ini writer preserves existing hotkeys and unrelated INI sections)"
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md (pinned controls.ini writer preserves existing hotkeys and unrelated INI sections)"
           ]
         },
         {

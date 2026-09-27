@@ -6,7 +6,7 @@
     { "kind": "source", "repo": "melonDS-emu/melonDS", "commit": "906e9ebb27da8c6a715cd7abab4abfe8a8d29427", "role": "config/save/state/bios paths and TOML keys; same pin as the Lunchbox controller contract" },
     { "kind": "docs", "url": "https://melonds.kuribo64.net/faq.php", "role": "BIOS/firmware filenames and sizes, DSi-mode dumps, savestate slots alongside ROM" },
     { "kind": "docs", "url": "https://flathub.org/apps/net.kuribo64.melonDS", "role": "Flatpak app id is net.kuribo64.melonDS" },
-    { "kind": "contract", "url": "docs/MELONDS_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned contract: melonDS.toml Instance0.Joystick buttons and JoystickID" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MELONDS_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned contract: melonDS.toml Instance0.Joystick buttons and JoystickID" }
   ],
   "platforms": {
     "linux": {
@@ -19,7 +19,7 @@
             "source:melonDS src/frontend/qt_sdl/Config.cpp kConfigFile=\"melonDS.toml\" / kLegacyConfigFile=\"melonDS.ini\" @906e9eb",
             "source:melonDS src/frontend/qt_sdl/main.cpp pathInit (QStandardPaths::ConfigLocation + mkdir \"melonDS\"; 'portable' dir check) @906e9eb",
             "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* keys @906e9eb",
-            "contract:docs/MELONDS_STANDALONE_PROGRESS.md (pin 906e9ebb27da8c6a715cd7abab4abfe8a8d29427, EmuInstanceInput.cpp + Config.cpp)"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MELONDS_STANDALONE_PROGRESS.md (pin 906e9ebb27da8c6a715cd7abab4abfe8a8d29427, EmuInstanceInput.cpp + Config.cpp)"
           ]
         },
         {
@@ -29,7 +29,7 @@
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* keys @906e9eb",
             "source:melonDS src/frontend/qt_sdl/main.cpp pathInit config and portable-directory selection @906e9eb",
-            "repo:docs/MELONDS_STANDALONE_PROGRESS.md (pinned controller contract)"
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MELONDS_STANDALONE_PROGRESS.md (pinned controller contract)"
           ]
         },
         {

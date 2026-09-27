@@ -7,16 +7,16 @@
       "kind": "source",
       "repo": "dolphin-emu/dolphin",
       "commit": "6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
-      "role": "pinned Dolphin 2606 source (matches docs/DOLPHIN_STANDALONE_PROGRESS.md pin) for all path and naming facts"
+      "role": "pinned Dolphin 2606 source (matches https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DOLPHIN_STANDALONE_PROGRESS.md pin) for all path and naming facts"
     },
     {
       "kind": "contract",
-      "url": "docs/DOLPHIN_CONTROLLER_CONTRACT.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DOLPHIN_CONTROLLER_CONTRACT.md",
       "role": "controller contract: GCPadNew.ini, Config/Profiles/GCPad, PadProfileN game-INI selection"
     },
     {
       "kind": "docs",
-      "url": "docs/DOLPHIN_STANDALONE_PROGRESS.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DOLPHIN_STANDALONE_PROGRESS.md",
       "role": "standalone GCPadNew.ini writer and profile staging notes"
     },
     {
@@ -37,7 +37,7 @@
             "source:CommonPaths.h CONFIG_DIR, DOLPHIN_CONFIG, GCPAD_CONFIG=GCPadNew.ini, WIIPAD_CONFIG=WiimoteNew.ini @6094cfcf",
             "source:InputConfig.cpp GetUserProfileDirectoryPath = Config/Profiles/<name>/ and GetProfileKey PadProfileN/WiimoteProfileN game-INI keys @6094cfcf",
             "controller syntax: pad sections [GCPad1..4]/[Wiimote1..4] and profile [Profile] sections serialize Device = <backend>/<index>/<devicename> plus group/control keys Buttons/A, D-Pad/Up, Main Stick/Up, C-Stick/Up, Triggers/L, Triggers/L-Analog with optional <key>/Range \u2014 ControllerEmu.cpp 'Device' key, ControlGroup/ControlGroup.cpp expression/Range keys, HW/GCPadEmu.h group names @6094cfcf",
-            "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md"
+            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DOLPHIN_CONTROLLER_CONTRACT.md"
           ]
         },
         {
@@ -159,7 +159,7 @@
             "source:UICommon.cpp SetUserDirectory Windows cases 1-6 (portable.txt, LocalUserConfig, UserConfigPath, Documents user directory and compatibility cases) @6094cfcf",
             "source:CommonPaths.h NORMAL_USER_DIR='Dolphin Emulator', PORTABLE_USER_DIR='User', GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf",
             "controller syntax: same Device/Buttons/A/Triggers/L-Analog group-control keys as Linux, in [GCPad1..4]/[Wiimote1..4] or Config/Profiles/GCPad|Wiimote [Profile] files \u2014 ControllerEmu.cpp, ControlGroup/ControlGroup.cpp, HW/GCPadEmu.h @6094cfcf",
-            "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md",
+            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DOLPHIN_CONTROLLER_CONTRACT.md",
             "app:crates/lunchbox-app/src/firmware.rs Windows adapter roots new installs at Documents/Dolphin Emulator"
           ]
         },

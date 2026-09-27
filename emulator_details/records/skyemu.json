@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/skylersaleh/SkyEmu", "commit": "01516d6798e3652b583e6a366085bb51c43b528d", "role": "native SDL controller persistence, preference root, save/state and BIOS implementation" },
     { "kind": "docs", "url": "https://github.com/skylersaleh/SkyEmu#readme", "role": "official feature and native-build documentation" },
-    { "kind": "contract", "path": "docs/SKYEMU_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SKYEMU_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
   "platforms": {
     "linux": { "paths": [

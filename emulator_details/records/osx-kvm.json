@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/kholia/OSX-KVM", "commit": "4c378a4b5e0b219783683012bec680325eb40719", "url": "https://github.com/kholia/OSX-KVM/tree/4c378a4b5e0b219783683012bec680325eb40719", "role": "QEMU boot scripts, OpenCore image and OVMF firmware source" },
     { "kind": "docs", "url": "https://github.com/kholia/OSX-KVM/blob/4c378a4b5e0b219783683012bec680325eb40719/README.md", "role": "official installation, image and host requirements" },
-    { "kind": "contract", "path": "docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
   ],
   "platforms": {
     "linux": { "paths": [

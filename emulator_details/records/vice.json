@@ -7,7 +7,7 @@
     { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_9.html", "role": "snapshot usage and .vsf format" },
     { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_3.html", "role": "system ROM file names and Directory search path" },
     { "kind": "source", "repo": "VICE-Team/svn-mirror", "commit": "d322f7a8d6c269b97162c74e73214c58eaad9a71", "role": "config-path resolution, vicerc naming and quicksnap filenames (trunk r46226 per contract; cross-checked against the vice-3.10 release tarball)" },
-    { "kind": "contract", "path": "docs/VICE_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VICE_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
     { "kind": "flatpak", "id": "net.sf.VICE", "url": "https://flathub.org/apps/net.sf.VICE", "role": "flatpak existence" }
   ],
   "platforms": {
@@ -16,13 +16,13 @@
         {
           "purpose": "config",
           "path": "~/.config/vice/vicerc (GTK builds; SDL2 builds use sdl-vicerc in the same dir), INI-style sections per emulator ([C64], [VIC20], ...) with ResourceName=ResourceValue lines; a legacy ~/.vicerc in $HOME is used when present; -config <file> selects a private config",
-          "evidence": ["docs:vice_6 section 6 intro 'on unix systems the resource file is called vicerc and is stored in the users config directory according to the XDG specification (usually ~/.config/vice/)'", "source:src/arch/shared/archdep_user_config_path.c (XDG_CONFIG_HOME + '/vice')", "source:src/arch/shared/archdep_defs.h ARCHDEP_VICERC_NAME vicerc/sdl-vicerc", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md (-config <file>, ResourceName=ResourceValue)"]
+          "evidence": ["docs:vice_6 section 6 intro 'on unix systems the resource file is called vicerc and is stored in the users config directory according to the XDG specification (usually ~/.config/vice/)'", "source:src/arch/shared/archdep_user_config_path.c (XDG_CONFIG_HOME + '/vice')", "source:src/arch/shared/archdep_defs.h ARCHDEP_VICERC_NAME vicerc/sdl-vicerc", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VICE_NATIVE_CONTROLLER_CONTRACT.md (-config <file>, ResourceName=ResourceValue)"]
         },
         {
           "purpose": "input",
           "path": "~/.config/vice/vicerc (SDL2 sdl-vicerc; private -joymap <file> may be supplied)",
           "naming": "Joystick maps are .vjm text with # comments, !CLEAR and <device> <inputtype> <inputindex> <action> <params>; inputtype 0 axis/1 button/2 hat, action 1 joystick pin mask. Resource bindings are JoyDevice1/JoyDevice2=4+host-device-index",
-          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VICE_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -57,7 +57,7 @@
           "purpose": "input",
           "path": "~/.var/app/net.sf.VICE/.config/vice/vicerc (SDL2 sdl-vicerc; native -joymap support is separate)",
           "naming": "Same .vjm grammar (#, !CLEAR, device/inputtype/inputindex/action/params) and JoyDevice1/JoyDevice2 resource bindings as native VICE",
-          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md", "flatpak:net.sf.VICE"]
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VICE_NATIVE_CONTROLLER_CONTRACT.md", "flatpak:net.sf.VICE"]
         },
         {
           "purpose": "saves",
@@ -126,7 +126,7 @@
           "purpose": "input",
           "path": "~/.config/vice/vicerc (SDL2 sdl-vicerc; private -joymap <file> may be supplied)",
           "naming": "Same .vjm grammar (#, !CLEAR, device/inputtype/inputindex/action/params) and JoyDevice1/JoyDevice2 resource bindings as native VICE",
-          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VICE_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",

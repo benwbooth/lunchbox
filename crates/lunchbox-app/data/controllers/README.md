@@ -63,7 +63,7 @@ The PlayStation digital and dual-stick analog gameplay contracts are available
 for preview using `duckstation-settings`. This transport contains DuckStation
 setting keys rather than RetroPad outputs; it cannot opt into the RetroArch writer. DuckStation automatic
 launch remains unavailable pending verified SDL identity/binding resolution and
-configuration isolation. See `docs/DUCKSTATION_CONTROLLERS.md` for pinned evidence
+configuration isolation. See `https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DUCKSTATION_CONTROLLERS.md` for pinned evidence
 and the remaining adapter requirements. Mapping rows expose stable control IDs
 separately from display labels.
 
@@ -197,7 +197,7 @@ per run on both cores, in both individual and bitmask callback modes: DualShock
 on both ports plus a mixed digital/DualShock configuration. A separate real
 RetroArch oracle verifies the generated Brawler64 digital mapping, including
 all fourteen controls, releases and simultaneous buttons, through Linux joydev
-and emulated PlayStation RAM. See [the oracle guide](../../../../docs/CONTROLLER_RETROARCH_ORACLE.md)
+and emulated PlayStation RAM. See [the oracle guide](https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md)
 for prerequisites and the remaining verification boundaries.
 
 Functional driver/configuration facts checked against RetroArch's

@@ -6,7 +6,7 @@
     { "kind": "source", "repo": "https://github.com/libretro/px68k-libretro", "url": "https://github.com/libretro/px68k-libretro/tree/0ad84d7058a12b7db4f7f7a906e87fad4e2f26f6", "commit": "0ad84d7058a12b7db4f7f7a906e87fad4e2f26f6", "role": "libretro core paths, controller callbacks, options, SRAM and serialization source" },
     { "kind": "docs", "url": "https://docs.libretro.com/library/px68k/", "role": "official PX68k BIOS, directories, features and controller documentation" },
     { "kind": "source", "repo": "https://github.com/libretro/RetroArch", "commit": "0dc3b26c7c560f0e48a7b15002997a8c0676105f", "role": "RetroArch host config, input, save/state and system-directory defaults" },
-    { "kind": "contract", "path": "docs/PX68K_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PX68K_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
   ],
   "platforms": {
     "linux": {
@@ -53,7 +53,7 @@
   "controller_boundary": {
     "native_writer": "not_implemented",
     "refusal": "Do not write PX68k system/keropi/config or RetroArch input profiles: the core file is media/browser persistence and controller mapping is frontend/core-option owned.",
-    "contract": "docs/PX68K_CONTROLLER_BOUNDARY.md"
+    "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PX68K_CONTROLLER_BOUNDARY.md"
   },
   "notes": "PX68k is a libretro core. Direct disk/SRAM persistence and the unsupported filesystem state feature are recorded independently of controller ownership."
 }

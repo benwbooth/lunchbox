@@ -21,7 +21,7 @@
     },
     {
       "kind": "contract",
-      "path": "docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
       "role": "controller contract"
     },
     {
@@ -43,7 +43,7 @@
             "source:config.c load_overrideable_config(\"blastem.cfg\", \"default.cfg\")",
             "README:Configuration \"$HOME/.config/blastem/blastem.cfg ... Otherwise it is read from default.cfg from the same directory as the BlastEm executable\"",
             "docs:retrodev.com \"copy it to ~/.config/blastem/blastem.cfg\"",
-            "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md"
           ]
         },
         {
@@ -73,7 +73,7 @@
           "path": "None required \u2014 BlastEm boots cartridge ROMs directly (the ROM is a bare argument) with no firmware step; the pinned contract and upstream docs list no BIOS",
           "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": [
-            "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md (\"blastem.c main takes the ROM as a bare argument\")",
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md (\"blastem.c main takes the ROM as a bare argument\")",
             "docs:retrodev.com (no BIOS/firmware requirement listed)"
           ]
         },
@@ -133,7 +133,7 @@
           "path": "None required",
           "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": [
-            "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
             "docs:retrodev.com"
           ]
         },
@@ -191,7 +191,7 @@
           "path": "None required",
           "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": [
-            "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
             "docs:retrodev.com"
           ]
         },
@@ -250,7 +250,7 @@
           "path": "None required",
           "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": [
-            "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md",
             "docs:retrodev.com"
           ]
         },

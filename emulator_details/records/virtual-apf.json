@@ -6,7 +6,7 @@
     { "kind": "release", "url": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html", "role": "official Virtual APF distribution page" },
     { "kind": "release", "url": "https://orphanedgames.com/APF/apf_emulation/VAPF_20100509.zip", "version": "0.40", "sha256": "a2a4b5a2781e3858251deb0aea6d6d07b48099b61870a405539d8a590bd933ee", "role": "official Windows archive" },
     { "kind": "docs", "url": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html", "role": "official readme and archive documentation" },
-    { "kind": "contract", "path": "docs/VIRTUAL_APF_CONTROLLER_BOUNDARY.md", "role": "standalone controller refusal" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VIRTUAL_APF_CONTROLLER_BOUNDARY.md", "role": "standalone controller refusal" }
   ],
   "platforms": {
     "windows": {
@@ -28,7 +28,7 @@
   "controller_boundary": {
     "native_writer": "not_implemented",
     "refusal": "Do not synthesize Virtual APF keyboard or joystick mappings: the standalone binary's dialog-owned state and opaque legacy INI format have no portable source-backed serializer.",
-    "contract": "docs/VIRTUAL_APF_CONTROLLER_BOUNDARY.md"
+    "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VIRTUAL_APF_CONTROLLER_BOUNDARY.md"
   },
   "notes": "Windows archive and guest-media behavior are captured; runtime launch and effective controller input remain unverified."
 }

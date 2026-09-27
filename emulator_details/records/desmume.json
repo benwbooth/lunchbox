@@ -7,11 +7,11 @@
       "kind": "source",
       "repo": "TASEmulators/desmume",
       "commit": "b3915949700be824253a35affa7f7b8248e84e46",
-      "role": "pinned posix-frontends commit (matches docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md pin); all path and naming facts below were verified identical at this commit for the core, posix, windows and cocoa frontends"
+      "role": "pinned posix-frontends commit (matches https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md pin); all path and naming facts below were verified identical at this commit for the core, posix, windows and cocoa frontends"
     },
     {
       "kind": "contract",
-      "url": "docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md",
+      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md",
       "role": "controller contract: GLib keyfile [JOYKEYS] at $XDG_CONFIG_HOME/desmume/config, joypad key encoding, private XDG_CONFIG_HOME launch"
     },
     {
@@ -40,7 +40,7 @@
           "evidence": [
             "source:frontend/posix/shared/desmume_config.cpp:25-26 dir 'desmume' + file 'config', :36 g_build_filename(g_get_user_config_dir(), ...), :107 g_key_file_set_integer(keyfile, \"JOYKEYS\", key_names[i], joypad_cfg[i]), :135-139 JOYKEYS group read @b3915949",
             "source:frontend/posix/shared/ctrlssdl.cpp joypad key-code encoding and 16384 axis threshold @b3915949",
-            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md (JOYKEYS keyfile + private XDG_CONFIG_HOME isolation)",
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md (JOYKEYS keyfile + private XDG_CONFIG_HOME isolation)",
             "db:firmware_rules \u2014 no desmume entries (sources/firmware-rules.json has no runtime_kind desmume; no BIOS/firmware package is modeled)"
           ]
         },
@@ -94,7 +94,7 @@
           "naming": "DS needs no keys; optional external BIOS/firmware belong to the bios purpose."
         }
       ],
-      "notes": "Lunchbox's desmume native launch pins the controller contract and isolates the whole config dir through a private XDG_CONFIG_HOME (docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md), which also relocates the default battery/state-slot directory."
+      "notes": "Lunchbox's desmume native launch pins the controller contract and isolates the whole config dir through a private XDG_CONFIG_HOME (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md), which also relocates the default battery/state-slot directory."
     },
     "linux-flatpak": {
       "paths": [
@@ -105,7 +105,7 @@
           "evidence": [
             "flathub:org.desmume.DeSmuME \u2014 appstream API lists id/name/developer 'DeSmuME Team' GPL-2.0-or-later with release 0.9.11 timestamped 2015; manifest raw org.desmume.DeSmuME.json (last commits 2024-09-26) pins commit 91196788, finish-args have no --filesystem so all reads/writes stay inside the sandbox",
             "source:frontend/posix/shared/desmume_config.cpp:36 config path derives from g_get_user_config_dir() @b3915949",
-            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md"
           ]
         },
         {
@@ -163,7 +163,7 @@
           "evidence": [
             "source:frontend/windows/winutil.cpp:36-90 GetINIPath \u2014 GetModuleFileName dir + \\desmume.ini, temp-dir fallback to CSIDL_LOCAL_APPDATA\\DeSmuME + SetCurrentDirectoryW, BOM creation @b3915949",
             "source:path.h:76-95 SECTION PathSettings and its key names, :285-289 GetPrivateProfileString(SECTION,...,IniName) @b3915949",
-            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md \u2014 'hotkeys, the SDL1/cli frontend and the Windows/Cocoa frontends are not covered'"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md \u2014 'hotkeys, the SDL1/cli frontend and the Windows/Cocoa frontends are not covered'"
           ]
         },
         {
@@ -225,7 +225,7 @@
           "evidence": [
             "source:frontend/cocoa/Info.plist:240-241 CFBundleIdentifier org.desmume.DeSmuME @b3915949",
             "source:frontend/cocoa (NSUserDefaults standardUserDefaults usage throughout, e.g. cocoa_firmware.mm:177-191, cocoa_rom.mm:274) @b3915949",
-            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md \u2014 Windows/Cocoa frontends not covered"
+            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md \u2014 Windows/Cocoa frontends not covered"
           ]
         },
         {

@@ -20,7 +20,7 @@
             "source:pcsx2/SIO/Pad/Pad.cpp GetConfigSection returns fmt::format(\"Pad{}\", pad_index + 1)",
             "source:pcsx2/Input/InputManager.cpp reads hotkey bindings from the \"Hotkeys\" settings section",
             "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs (InputSources/Pad/Pad1-Pad8 section ownership)",
-            "repo:docs/PCSX2_STANDALONE_PROGRESS.md (pinned commit and -datapath launch plan)"
+            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PCSX2_STANDALONE_PROGRESS.md (pinned commit and -datapath launch plan)"
           ]
         },
         {
