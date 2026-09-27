@@ -30,21 +30,53 @@ pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool)
         // outputs. External artwork must instead always fit its own aspect.
         "get_scaled_coords_aspect(vBg_img_coords, global.FinalViewportSize, image_aspect, false)",
     );
+    let fragment = "layout(location = 0)     out vec4 FragColor;";
+    let content = "vec2 co_content = vTexCoord;";
+    let reuse = "if (vDeltaRenderOk > 0.0 && content_mask > 1.0 - eps ){";
+    ensure!(
+        source.matches(content).count() == 1
+            && source.matches(fragment).count() == 1
+            && source.matches(reuse).count() == 1,
+        "Unsupported Koko inner lip interface"
+    );
+    // The padding itself never changes, but the picture reflected in it does.
+    // Reusing those black source pixels would freeze the inner-lip reflection.
+    // Repaint the whole possible lip band, including when padding disappears
+    // during a fade to black, so a previous reflection cannot remain there.
+    adapted = adapted.replace(reuse, "if (vDeltaRenderOk > 0.0 && content_mask > 1.0 - eps && is_first_inside_rect(co_content, vec4(0.08, 0.08, 0.92, 0.92))) {");
+    adapted = adapted.replace(
+        fragment,
+        &format!(
+            "layout(set = 0, binding = 14) uniform sampler2D lunchpail_picture_bounds;\n{fragment}"
+        ),
+    );
+    adapted = adapted.replace(
+        content,
+        &format!("vec4 lunchpailPictureBounds = texelFetch(lunchpail_picture_bounds, ivec2(2), 0);\n{content}"),
+    );
     adapted = adapted.replace(
         light,
-        &format!(
-            "float lunchpailArtMask = step(0.0, image_coords.x) * step(image_coords.x, 1.0)\n\
-         * step(0.0, image_coords.y) * step(image_coords.y, 1.0) * pixel_fg_image.a;\n\
-         {light}\nlight *= lunchpailArtMask;\n\
-         // Reflect the picture onto the artwork's inner rim. Ambient glow alone\n\
-         // barely lights dark plastic; Koko normally draws this reflection only\n\
-         // on its built-in bezel, which must remain hidden for external artwork.\n\
-         vec2 lunchpailOutside = max(abs(co_content - 0.5) - 0.5, vec2(0.0));\n\
+        "// Keep the printed outer artwork unlit. Reflect into the transparent\n\
+         // inner lip, including native blank margins, never over game pixels.\n\
+         vec3 light = vec3(0.0);\n\
+         float lunchpailArtBounds = step(0.0, image_coords.x) * step(image_coords.x, 1.0)\n\
+         * step(0.0, image_coords.y) * step(image_coords.y, 1.0);\n\
+         vec2 lunchpailEdge = clamp(co_content, lunchpailPictureBounds.xy, lunchpailPictureBounds.zw);\n\
+         vec2 lunchpailOutside = abs(co_content - lunchpailEdge);\n\
          lunchpailOutside.x *= vIn_aspect;\n\
-         float lunchpailRim = 1.0 - smoothstep(0.0, 0.065, length(lunchpailOutside));\n\
-         vec3 lunchpailReflection = texture(reflected_blurred_pass, co_mirror).rgb;\n\
-         pixel_out += lunchpailReflection * lunchpailRim * lunchpailArtMask;"
-        ),
+         float lunchpailDistance = length(lunchpailOutside);\n\
+         float lunchpailLip = step(0.00001, lunchpailDistance)\n\
+         * (1.0 - smoothstep(0.0, 0.10, lunchpailDistance))\n\
+         * (1.0 - pixel_fg_image.a) * lunchpailArtBounds;\n\
+         if (lunchpailLip > 0.0) {\n\
+             vec2 lunchpailMirror = 2.0 * lunchpailEdge - co_content;\n\
+             vec2 lunchpailBlur = 1.5 / vec2(textureSize(in_glow_pass, 0));\n\
+             vec3 lunchpailReflection = texture(in_glow_pass, lunchpailMirror).rgb * 0.5\n\
+                 + texture(in_glow_pass, lunchpailMirror + lunchpailBlur).rgb * 0.25\n\
+                 + texture(in_glow_pass, lunchpailMirror - lunchpailBlur).rgb * 0.25;\n\
+             lunchpailReflection = pow(max(lunchpailReflection, vec3(0.0)), vec3(GAMMA_OUT));\n\
+             pixel_out += lunchpailReflection * lunchpailLip * 0.55;\n\
+         }",
     );
     for include in ["config.inc", "includes/functions.include.slang"] {
         let directive = format!("#include \"{include}\"");
@@ -68,32 +100,6 @@ pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool)
         adapted = adapted.replace(coordinates, &fit);
     }
     Ok(adapted)
-}
-
-fn reflection_pass(source: &str, directory: &Path) -> Result<String> {
-    let disabled = "if (DO_BEZEL == 0.0) return;";
-    ensure!(
-        source.matches(disabled).count() == 1,
-        "Unsupported Koko reflection gate"
-    );
-    // Keep calculating the existing low-resolution reflection buffers, without
-    // enabling a second bezel or changing the CRT's geometry.
-    let mut source = source.replace(
-        disabled,
-        "// Lunchpail: external artwork also receives reflections.",
-    );
-    for include in [
-        "config.inc",
-        "includes/functions.include.slang",
-        "includes/blooms.include.slang",
-    ] {
-        let absolute = directory.join(include).to_string_lossy().replace('\\', "/");
-        source = source.replace(
-            &format!("#include \"{include}\""),
-            &format!("#include \"{absolute}\""),
-        );
-    }
-    Ok(source)
 }
 
 fn opening_fit(coordinates: &str, aspect: &str, rotated: &str) -> String {
@@ -131,23 +137,41 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
     // Materialize the chain before replacing the final compositor. Keep every
     // upstream pass and resolve its paths relative to the file that defined it.
     let mut settings = read_preset(preset, 0)?;
-    for (index, name) in [
-        (8, "reflection_blur_pre.slang"),
-        (9, "reflection_blur.slang"),
+    // Insert a tiny analysis pass before the final compositor. RetroArch
+    // forbids vertex texture reads; scanning in the fullscreen fragment pass
+    // would repeat the work millions of times. Aliases keep feedback intact.
+    for prefix in [
+        "shader",
+        "alias",
+        "filter_linear",
+        "wrap_mode",
+        "mipmap_input",
+        "float_framebuffer",
+        "srgb_framebuffer",
+        "scale_type",
+        "scale_type_x",
+        "scale_type_y",
+        "scale",
+        "scale_x",
+        "scale_y",
+        "frame_count_mod",
     ] {
-        let key = format!("shader{index}");
-        ensure!(
-            settings
-                .get(&key)
-                .is_some_and(|path| path.ends_with(&format!("/{name}"))),
-            "Unsupported Koko reflection pass index"
-        );
-        let source = fs::read_to_string(directory.join(name))?;
-        let source = reflection_pass(&source, &directory)?;
-        let path = preset.with_extension(name);
-        fs::write(&path, source)?;
-        settings.insert(key, path.to_string_lossy().replace('\\', "/"));
+        if let Some(value) = settings.remove(&format!("{prefix}16")) {
+            settings.insert(format!("{prefix}17"), value);
+        }
     }
+    let bounds_path = preset.with_extension("inner-lip.slang");
+    fs::write(&bounds_path, include_str!("retrotube_inner_lip.slang"))?;
+    settings.insert("shaders".into(), "18".into());
+    settings.insert(
+        "shader16".into(),
+        bounds_path.to_string_lossy().replace('\\', "/"),
+    );
+    settings.insert("alias16".into(), "lunchpail_picture_bounds".into());
+    settings.insert("scale_type16".into(), "absolute".into());
+    settings.insert("scale16".into(), "4".into());
+    settings.insert("float_framebuffer16".into(), "true".into());
+    settings.insert("filter_linear16".into(), "false".into());
     if ultrawide {
         let source = fs::read_to_string(directory.join("ambi_temporal_pass.slang"))?;
         let anchor = "    if (bNeed_NO_integer_scale) {";
@@ -183,7 +207,7 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
     let shader = shader_path.to_string_lossy().replace('\\', "/");
     let overrides = format!(
         "\n# Artwork participates in CRT lighting instead of hiding it.\n\
-         shader16 = \"{shader}\"\n\
+         shader17 = \"{shader}\"\n\
          bg_over = \"{image}\"\n\
          DO_BEZEL = \"0.0\"\n\
          DO_BG_IMAGE = \"1.0\"\n\
@@ -191,6 +215,7 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
          BG_IMAGE_ROTATION = \"1.0\"\n\
          BG_IMAGE_ZOOM = \"1.0\"\n\
          BG_IMAGE_WRAP_MODE = \"1.0\"\n\
+         BG_IMAGE_NIGHTIFY = \"0.0\"\n\
          DO_AMBILIGHT = \"1.0\"\n\
          AMBI_BG_IMAGE_BLEND_MODE = \"1.0\"\n\
          AMBI_BG_IMAGE_FORCE = \"0.65\"\n\
@@ -261,7 +286,7 @@ fn read_preset(path: &Path, depth: usize) -> Result<BTreeMap<String, String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const SOURCE: &str = "#include \"config.inc\"\n#include \"includes/functions.include.slang\"\n    vOutputCoord = antiburn_TexCoord ;\nimage_coords = get_scaled_coords_aspect_fgbg(vBg_img_coords, global.FinalViewportSize, image_aspect, rotated_bg, vIsRotated, vIn_aspect);\nvec3 light = pixel_ambi.rgb * (ambi_mask) * (1- fg_image_alpha_adapted);";
+    const SOURCE: &str = "#include \"config.inc\"\n#include \"includes/functions.include.slang\"\nlayout(location = 0)     out vec4 FragColor;\nvec2 co_content = vTexCoord;\nif (vDeltaRenderOk > 0.0 && content_mask > 1.0 - eps ){\n    vOutputCoord = antiburn_TexCoord ;\nimage_coords = get_scaled_coords_aspect_fgbg(vBg_img_coords, global.FinalViewportSize, image_aspect, rotated_bg, vIsRotated, vIn_aspect);\nvec3 light = pixel_ambi.rgb * (ambi_mask) * (1- fg_image_alpha_adapted);";
 
     #[test]
     fn artwork_fit_does_not_stretch_or_change_regular_game_geometry() {
@@ -269,10 +294,13 @@ mod tests {
         assert!(adapted.contains("get_scaled_coords_aspect(vBg_img_coords"));
         assert!(!adapted.contains("lunchpailOpening"));
         assert!(adapted.contains("#include \"/shaders/koko/config.inc\""));
-        assert!(adapted.contains("light *= lunchpailArtMask"));
-        assert!(adapted.contains("* pixel_fg_image.a"));
-        assert!(adapted.contains("texture(reflected_blurred_pass, co_mirror)"));
-        assert!(adapted.contains("lunchpailReflection * lunchpailRim * lunchpailArtMask"));
+        assert!(adapted.contains("vec3 light = vec3(0.0)"));
+        assert!(adapted.contains("* (1.0 - pixel_fg_image.a) * lunchpailArtBounds"));
+        assert!(adapted.contains("texture(in_glow_pass, lunchpailMirror)"));
+        assert!(adapted.contains("lunchpailReflection * lunchpailLip"));
+        assert!(adapted.contains("texelFetch(lunchpail_picture_bounds, ivec2(2), 0)"));
+        assert!(adapted.contains("is_first_inside_rect(co_content, vec4(0.08, 0.08, 0.92, 0.92))"));
+        assert!(!adapted.contains("lunchpailArtMask"));
     }
 
     #[test]
@@ -289,13 +317,13 @@ mod tests {
     }
 
     #[test]
-    fn reflection_buffers_run_without_enabling_the_builtin_bezel() {
-        let source = "#include \"config.inc\"\n#include \"includes/blooms.include.slang\"\nif (DO_BEZEL == 0.0) return;\npixel_out *= BEZEL_REFL_STRENGTH;";
-        let adapted = reflection_pass(source, Path::new("/koko/shaders-ng")).unwrap();
-        assert!(!adapted.contains("if (DO_BEZEL == 0.0) return;"));
-        assert!(adapted.contains("pixel_out *= BEZEL_REFL_STRENGTH"));
-        assert!(adapted.contains("#include \"/koko/shaders-ng/includes/blooms.include.slang\""));
-        assert!(reflection_pass("unknown shader", Path::new("/koko")).is_err());
+    fn padding_analysis_is_bounded_and_never_zooms_the_game() {
+        let shader = include_str!("retrotube_inner_lip.slang");
+        assert!(shader.starts_with("#version 450"));
+        assert!(shader.contains("cross < height"));
+        assert!(shader.contains("texelFetch(Original, p, 0)"));
+        assert!(shader.contains("max(size.x, size.y) > 1024"));
+        assert!(!shader.contains("zoom"));
     }
 
     #[test]
@@ -333,21 +361,25 @@ mod tests {
         assert_eq!(settings.matches("DO_BEZEL =").count(), 1);
         assert!(settings.contains("GLOBAL_ZOOM = \"1.0\""));
         assert!(settings.contains("BG_IMAGE_WRAP_MODE = \"1.0\""));
-        assert!(settings.contains("shaders = \"17\""));
+        assert!(settings.contains("BG_IMAGE_NIGHTIFY = \"0.0\""));
+        assert!(settings.contains("shaders = \"18\""));
+        assert!(settings.contains("alias16 = \"lunchpail_picture_bounds\""));
+        assert!(settings.contains("scale_type16 = \"absolute\""));
+        assert!(settings.contains("scale16 = \"4\""));
         assert!(settings.contains("DO_PIXELGRID = \"1.0\""));
         assert!(!settings.contains("#reference"));
         assert!(settings.contains("bg_over = \"/art/bezel.png\""));
         for name in ["reflection_blur_pre.slang", "reflection_blur.slang"] {
-            let path = preset.with_extension(name);
+            let path = root.join("shaders-ng").join(name);
             assert!(settings.contains(&path.to_string_lossy().replace('\\', "/")));
             assert!(
-                !fs::read_to_string(path)
+                fs::read_to_string(path)
                     .unwrap()
                     .contains("if (DO_BEZEL == 0.0) return;")
             );
         }
         assert!(settings.contains(&format!(
-            "shader16 = \"{}\"",
+            "shader17 = \"{}\"",
             root.join("lighting.slang").to_string_lossy().replace('\\', "/")
         )));
     }
