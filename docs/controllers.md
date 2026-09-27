@@ -13,6 +13,7 @@ A pad can work in the library before its emulator mapping is configured.
 When opened from a game, player choices are remembered for that system.
 For example, choosing a Brawler64 for arcade games leaves your NES controller
 choice unchanged. Systems without a saved choice use your default players.
+In Settings, switching the target system recalls that system's saved players.
 
 Press a button to identify a connected controller. Generic names are common;
 **Rename** gives a pad a name you will recognize next time.
@@ -53,6 +54,8 @@ to the broader choice.
 Player assignments and controller setup save as you go. Edited button mappings
 have their own **Save Player…** button; changing that editor is not the same as
 saving it.
+Saving a **System** mapping also remembers that system's players, so changing
+your default controller later does not replace them.
 
 ## D-pad, sticks, and extra buttons
 

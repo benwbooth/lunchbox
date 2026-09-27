@@ -10425,11 +10425,18 @@ impl qobject::SettingsModel {
                         .any(|control| control.id == row.target_id && control.optional)),
                 "Some required controls are missing. Record them or choose another controller"
             );
-            SettingsStore::open_default()?.save_guided_mapping_override(&key, &choices)?;
-            Ok((key, choices))
+            let players =
+                SettingsStore::open_default()?.save_guided_mapping_override(&key, &choices)?;
+            Ok((key, choices, players))
         })();
         match result {
-            Ok((key, choices)) => {
+            Ok((key, choices, players)) => {
+                if let Some(players) = players {
+                    self.as_mut()
+                        .rust_mut()
+                        .controller_mapping
+                        .set_player_order(&platform.to_string(), players);
+                }
                 self.as_mut()
                     .rust_mut()
                     .controller_mapping

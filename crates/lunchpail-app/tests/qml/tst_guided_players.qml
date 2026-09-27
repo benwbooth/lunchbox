@@ -101,6 +101,11 @@ TestCase {
             function save_scoped_guided_mapping(id, profile, choices, expected, level, gameUid, platform, emulator) {
                 if (failure) return failure
                 if (controller_calibration_json(id) !== expected) return "Controller setup changed"
+                if (level === "system") {
+                    const orders=Object.assign({},systemOrders)
+                    orders[platform]=(orders[platform] || order).slice()
+                    systemOrders=orders
+                }
                 const next=Object.assign({},guidedMappings)
                 next[scopedKey(id,profile,level,gameUid,platform,emulator)]=JSON.parse(choices)
                 guidedMappings=next; controller_revision++
@@ -232,6 +237,40 @@ TestCase {
         workflow.startForGame("Another arcade game", "Arcade", "RetroArch (mame)")
         compare(workflow.playerDevices.join(","),"brawler")
         compare(settings.order.length,0)
+    }
+    function test_settings_target_switch_restores_players_without_writing() {
+        settings.order=["unknown"]
+        settings.systemOrders={"Nintendo Entertainment System":["sc2"], "Arcade":["brawler"]}
+        workflow.startForGame("", "Nintendo Entertainment System", "RetroArch (fceumm)")
+        compare(workflow.playerDevices.join(","),"sc2")
+        workflow.chooseSystem("Arcade")
+        compare(workflow.playerDevices.join(","),"brawler")
+        compare(workflow.selectedDevice,"brawler")
+        workflow.chooseSystem("Nintendo Entertainment System")
+        compare(workflow.playerDevices.join(","),"sc2")
+        workflow.chooseSystem("")
+        compare(workflow.playerDevices.join(","),"unknown")
+        compare(settings.order.join(","),"unknown")
+        compare(Object.keys(settings.systemOrders).length,2)
+    }
+    function test_system_save_remembers_inherited_players_after_default_changes() {
+        workflow.assignPlayer(0,"brawler")
+        workflow.gameEmulator="RetroArch (fceumm)"
+        workflow.chooseSystem("Nintendo Entertainment System")
+        compare(settings.systemOrders[workflow.gamePlatform],undefined)
+        workflow.stage=2
+        findChild(workflow,"savePlayerMapping").clicked()
+        compare(settings.systemOrders[workflow.gamePlatform].join(","),"brawler")
+        workflow.chooseSystem("")
+        workflow.assignPlayer(0,"sc2")
+        workflow.chooseSystem("Nintendo Entertainment System")
+        compare(workflow.playerDevices.join(","),"brawler")
+        compare(settings.order.join(","),"sc2")
+        explorer.openForGame("Another game", "Nintendo Entertainment System", "RetroArch (fceumm)", "another-game-id")
+        const guided=findChild(explorer,"controllerSetupWorkflow")
+        compare(guided.playerDevices.join(","),"brawler")
+        settings.refresh_controllers()
+        compare(guided.playerDevices.join(","),"brawler")
     }
     function test_disconnected_saved_player_does_not_hide_connected_choices() {
         settings.order = ["n30"]

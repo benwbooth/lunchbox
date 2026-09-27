@@ -171,6 +171,13 @@ ColumnLayout {
             : (applicableTargets.length === 1 ? applicableTargets[0].id : (arcadeDefault ? arcadeDefault.id : ""))
         loadMapping()
     }
+    function chooseSystem(platform) {
+        gamePlatform = platform
+        chooseTarget()
+        // The Settings workflow can change systems without reopening this
+        // pane. Never carry the previous system's player list into the review.
+        restorePlayers()
+    }
     function saveTarget(id) {
         const error = settingsModel.save_controller_target_profile(gameEmulator, gamePlatform, id)
         if (error) { status = error; return false }
@@ -397,8 +404,7 @@ ColumnLayout {
                 onActivated: {
                     setup.gameEmulator = currentText
                     const systems = targetFilter.systems(setup.catalog.emulator_profiles, currentText, setup.catalog.emulator_identities, setup.catalog.emulator_aliases)
-                    setup.gamePlatform = systems.length === 1 ? systems[0] : ""
-                    setup.chooseTarget()
+                    setup.chooseSystem(systems.length === 1 ? systems[0] : "")
                 }
             }
             Label { text: "System" }
@@ -407,7 +413,7 @@ ColumnLayout {
                 currentIndex: model.indexOf(setup.gamePlatform)
                 displayText: currentIndex < 0 ? "Choose a system" : currentText
                 enabled: model.length > 0
-                onActivated: { setup.gamePlatform = currentText; setup.chooseTarget() }
+                onActivated: setup.chooseSystem(currentText)
             }
         }
         Label { text: "Target controller"; visible: setup.applicableTargets.length > 0 }

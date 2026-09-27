@@ -2994,7 +2994,7 @@ impl SettingsStore {
         &self,
         key: &str,
         choices: &BTreeMap<String, String>,
-    ) -> Result<()> {
+    ) -> Result<Option<Vec<ControllerPlayerMapping>>> {
         crate::controller_target::validate_mapping_key(key)?;
         let mut connection = self.connection()?;
         let transaction =
@@ -3005,6 +3005,25 @@ impl SettingsStore {
             |row| row.get(0),
         )?;
         let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        // Saving "Player N for system" must remember the actual players too.
+        // In Settings, players are chosen before the target system; until this
+        // point an unsaved system can still inherit the global player list.
+        // Freeze it in the same transaction as the buttons, so a later default
+        // controller change cannot silently change this system's controller.
+        let [level, identity, device, _]: [String; 4] = serde_json::from_str(key)?;
+        let players = if level == "system" {
+            let players = mapping.players_for_system(&identity).to_vec();
+            ensure!(
+                players
+                    .iter()
+                    .any(|player| player.controller_id.as_deref() == Some(device.as_str())),
+                "The selected controller changed. Reopen controller setup before saving."
+            );
+            mapping.set_player_order(&identity, players.clone());
+            Some(players)
+        } else {
+            None
+        };
         ensure!(
             mapping.guided_mapping_overrides.len() < 4096
                 || mapping.guided_mapping_overrides.contains_key(key),
@@ -3018,7 +3037,7 @@ impl SettingsStore {
             [serde_json::to_string(&mapping)?],
         )?;
         transaction.commit()?;
-        Ok(())
+        Ok(players)
     }
 
     pub(crate) fn clear_guided_mapping_override(&self, key: &str) -> Result<()> {
@@ -9508,6 +9527,170 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(legacy.players_for_system("NES"), player("legacy"));
+    }
+
+    #[test]
+    fn system_mapping_save_remembers_players_when_defaults_change() {
+        let (directory, store) = store();
+        let mut original = AppSettings::default();
+        let players = vec![
+            ControllerPlayerMapping {
+                controller_id: Some("brawler".into()),
+                profile_id: Some("saved-profile".into()),
+                ..Default::default()
+            },
+            ControllerPlayerMapping {
+                controller_id: Some("second-pad".into()),
+                ..Default::default()
+            },
+        ];
+        let nes_players = vec![ControllerPlayerMapping {
+            controller_id: Some("n30".into()),
+            ..Default::default()
+        }];
+        original
+            .controller_mapping
+            .set_player_order("", players.clone());
+        original
+            .controller_mapping
+            .set_player_order("Nintendo Entertainment System", nes_players.clone());
+        store.save(&original).unwrap();
+        let scope =
+            crate::controller_target::Scope::from_label("RetroArch (mame)", "Arcade").unwrap();
+        let key = crate::controller_target::mapping_key(
+            "system",
+            "",
+            &scope,
+            "brawler",
+            "arcade-six-button",
+        )
+        .unwrap();
+        let choices = BTreeMap::from([("b1".to_owned(), "b".to_owned())]);
+        assert_eq!(
+            store.save_guided_mapping_override(&key, &choices).unwrap(),
+            Some(players.clone())
+        );
+        store
+            .save_controller_player_order("", &nes_players)
+            .unwrap();
+
+        let reopened = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let saved = reopened.load().unwrap().controller_mapping;
+        assert_eq!(saved.players_for_system("Arcade"), players);
+        assert_eq!(
+            saved.players_for_system("Nintendo Entertainment System"),
+            nes_players
+        );
+        assert_eq!(saved.player_mappings, nes_players);
+        assert_eq!(saved.guided_mapping_overrides[&key], choices);
+
+        // Removing only the button override must not undo the player selection.
+        reopened.clear_guided_mapping_override(&key).unwrap();
+        assert_eq!(
+            reopened
+                .load()
+                .unwrap()
+                .controller_mapping
+                .players_for_system("Arcade"),
+            players
+        );
+    }
+
+    #[test]
+    fn system_mapping_save_rejects_stale_controller_without_changing_players() {
+        let (_directory, store) = store();
+        let mut original = AppSettings::default();
+        original.controller_mapping.set_player_order(
+            "",
+            vec![ControllerPlayerMapping {
+                controller_id: Some("n30".into()),
+                ..Default::default()
+            }],
+        );
+        let players = vec![ControllerPlayerMapping {
+            controller_id: Some("brawler".into()),
+            ..Default::default()
+        }];
+        original
+            .controller_mapping
+            .set_player_order("Arcade", players.clone());
+        store.save(&original).unwrap();
+        let scope =
+            crate::controller_target::Scope::from_label("RetroArch (mame)", "Arcade").unwrap();
+        let stale_key =
+            crate::controller_target::mapping_key("system", "", &scope, "n30", "arcade-six-button")
+                .unwrap();
+        assert!(
+            store
+                .save_guided_mapping_override(&stale_key, &BTreeMap::new())
+                .is_err()
+        );
+        assert_eq!(
+            store.load().unwrap().controller_mapping,
+            original.controller_mapping
+        );
+
+        // Saved players, including disconnected ones, win over the default list.
+        let key = crate::controller_target::mapping_key(
+            "system",
+            "",
+            &scope,
+            "brawler",
+            "arcade-six-button",
+        )
+        .unwrap();
+        assert_eq!(
+            store
+                .save_guided_mapping_override(&key, &BTreeMap::new())
+                .unwrap(),
+            Some(players.clone())
+        );
+        let saved = store.load().unwrap().controller_mapping;
+        assert_eq!(saved.players_for_system("Arcade"), players);
+        assert_eq!(
+            saved.player_mappings,
+            original.controller_mapping.player_mappings
+        );
+        assert!(!saved.guided_mapping_overrides.contains_key(&stale_key));
+    }
+
+    #[test]
+    fn scoped_mapping_save_does_not_assign_players_for_game_or_core() {
+        let (_directory, store) = store();
+        let mut original = AppSettings::default();
+        original.controller_mapping.set_player_order(
+            "",
+            vec![ControllerPlayerMapping {
+                controller_id: Some("default-pad".into()),
+                ..Default::default()
+            }],
+        );
+        store.save(&original).unwrap();
+        let scope =
+            crate::controller_target::Scope::from_label("RetroArch (mame)", "Arcade").unwrap();
+        for level in ["game", "core"] {
+            let key = crate::controller_target::mapping_key(
+                level,
+                "game-id",
+                &scope,
+                "brawler",
+                "arcade-six-button",
+            )
+            .unwrap();
+            assert_eq!(
+                store
+                    .save_guided_mapping_override(&key, &BTreeMap::new())
+                    .unwrap(),
+                None
+            );
+        }
+        let saved = store.load().unwrap().controller_mapping;
+        assert!(saved.system_player_mappings.is_empty());
+        assert_eq!(
+            saved.player_mappings,
+            original.controller_mapping.player_mappings
+        );
+        assert_eq!(saved.guided_mapping_overrides.len(), 2);
     }
 
     #[test]
