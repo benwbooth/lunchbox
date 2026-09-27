@@ -4,10 +4,11 @@ cask "lunchbox" do
 
   url "https://github.com/benwbooth/lunchbox/releases/download/v#{version}/Lunchbox-macos-arm64.dmg"
   name "Lunchbox"
-  desc "Native game library, acquisition browser, and emulator frontend"
+  desc "Retro game library and emulator frontend"
   homepage "https://github.com/benwbooth/lunchbox"
 
   depends_on arch: :arm64
+  depends_on macos: ">= :ventura"
 
   app "Lunchbox.app"
 
