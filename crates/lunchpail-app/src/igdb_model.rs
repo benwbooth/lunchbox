@@ -726,12 +726,21 @@ impl qobject::IgdbModel {
                 let result = effective_credentials(String::new(), String::new())
                     .and_then(|(client_id, client_secret)| Client::new(client_id, client_secret))
                     .and_then(|client| {
-                        client.download_and_publish(
-                            &candidate,
-                            &crate::media::requested_media_directory(),
-                            database_id,
-                            kind,
-                        )
+                        client
+                            .download_and_publish(
+                                &candidate,
+                                &crate::media::requested_media_directory(),
+                                database_id,
+                                kind,
+                            )
+                            .and_then(|path| {
+                                crate::media::prefer_reviewed_artwork(
+                                    &crate::media::requested_media_directory(),
+                                    database_id,
+                                    kind,
+                                    &path,
+                                )
+                            })
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {

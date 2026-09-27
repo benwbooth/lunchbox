@@ -385,6 +385,14 @@ impl qobject::WebArtworkModel {
                     kind,
                     &id,
                 )
+                .and_then(|path| {
+                    crate::media::prefer_reviewed_artwork(
+                        &crate::media::requested_media_directory(),
+                        database_id,
+                        kind,
+                        &path,
+                    )
+                })
                 .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_publish(generation, result);

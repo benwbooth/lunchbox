@@ -27,6 +27,7 @@ pub(crate) const DEFAULT_PROVIDER_PRIORITY: [&str; 9] = [
 
 pub(crate) fn provider_display_name(provider: &str) -> &'static str {
     match provider {
+        "selected" => "Your selection",
         "local" => "Local files",
         "launchbox" => "LaunchBox cache",
         "libretro" => "LibRetro Thumbnails",
@@ -320,7 +321,7 @@ impl ArtworkKind {
         self.libretro_path_segment().is_some() && libretro_platform_name(platform).is_some()
     }
 
-    fn from_file_stem(stem: &str) -> Option<Self> {
+    pub(crate) fn from_file_stem(stem: &str) -> Option<Self> {
         match stem {
             "box-front" => Some(Self::BoxFront),
             "box-back" => Some(Self::BoxBack),
@@ -1054,16 +1055,41 @@ fn scan_game_directory(
 }
 
 fn provider_rank(source: &str, provider_priority: &[String]) -> usize {
+    // An explicit per-game choice must beat automatic downloads, regardless of
+    // the global provider order. Keep the original providers as alternatives.
+    if source == "selected" {
+        return 0;
+    }
     if provider_priority.is_empty() {
         return DEFAULT_PROVIDER_PRIORITY
             .iter()
             .position(|candidate| *candidate == source)
-            .unwrap_or(DEFAULT_PROVIDER_PRIORITY.len());
+            .unwrap_or(DEFAULT_PROVIDER_PRIORITY.len())
+            + 1;
     }
     provider_priority
         .iter()
         .position(|candidate| candidate == source)
         .unwrap_or(provider_priority.len())
+        + 1
+}
+
+/// Pin only artwork the user explicitly chose, never an automatic fetch. A
+/// validated copy keeps later provider refreshes from replacing their choice.
+pub(crate) fn prefer_reviewed_artwork(
+    root: &Path,
+    database_id: i64,
+    kind: ArtworkKind,
+    source: &Path,
+) -> Result<PathBuf> {
+    crate::provider_image::copy_and_publish(
+        source,
+        root,
+        database_id,
+        "selected",
+        kind,
+        "user-choice",
+    )
 }
 
 fn image_format_rank(path: &Path) -> Option<usize> {
@@ -2893,6 +2919,68 @@ mod tests {
             index.exact(1019, ArtworkKind::Screenshot).unwrap().source,
             "libretro"
         );
+    }
+
+    #[test]
+    fn reviewed_artwork_choice_survives_automatic_refresh_and_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let downloaded = root.join("lb-1019/websearch/box-front.png");
+        fs::create_dir_all(downloaded.parent().unwrap()).unwrap();
+        let chosen_bytes = b"\x89PNG\r\n\x1a\nchosen artwork";
+        fs::write(&downloaded, chosen_bytes).unwrap();
+        touch(&root.join("lb-1019/local/box-front.png"));
+        touch(&root.join("lb-1019/libretro/box-front.png"));
+        touch(&root.join("lb-1020/libretro/box-front.png"));
+
+        let chosen =
+            prefer_reviewed_artwork(root, 1019, ArtworkKind::BoxFront, &downloaded).unwrap();
+        let mut priority = default_provider_priority();
+        priority.reverse();
+        let mut index = MediaIndex::scan_with_provider_priority(root.to_owned(), priority.clone());
+        assert_eq!(
+            index.exact(1019, ArtworkKind::BoxFront).unwrap().path,
+            chosen
+        );
+        assert!(downloaded.exists());
+        assert!(root.join("lb-1019/local/box-front.png").exists());
+        assert_eq!(
+            index.exact(1020, ArtworkKind::BoxFront).unwrap().source,
+            "libretro"
+        );
+
+        // An automatic refresh of the provider must not mutate the user's copy.
+        fs::write(&downloaded, b"\x89PNG\r\n\x1a\nautomatic replacement").unwrap();
+        index.insert_asset(1019, ArtworkKind::BoxFront, downloaded, "websearch");
+        assert_eq!(
+            index.exact(1019, ArtworkKind::BoxFront).unwrap().path,
+            chosen
+        );
+        assert_eq!(fs::read(&chosen).unwrap(), chosen_bytes);
+        let restarted = MediaIndex::scan_with_provider_priority(root.to_owned(), priority);
+        assert_eq!(
+            restarted.exact(1019, ArtworkKind::BoxFront).unwrap().path,
+            chosen
+        );
+    }
+
+    #[test]
+    fn reviewed_artwork_replacement_handles_new_formats_and_rejects_bad_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let source = root.join("candidate");
+        fs::write(&source, b"\x89PNG\r\n\x1a\nfirst").unwrap();
+        let first = prefer_reviewed_artwork(root, 42, ArtworkKind::BoxFront, &source).unwrap();
+        fs::write(&source, b"\xff\xd8\xffsecond").unwrap();
+        let second = prefer_reviewed_artwork(root, 42, ArtworkKind::BoxFront, &source).unwrap();
+        assert!(!first.exists());
+        assert_eq!(second.extension().unwrap(), "jpg");
+        fs::write(&source, b"not an image").unwrap();
+        assert!(prefer_reviewed_artwork(root, 42, ArtworkKind::BoxFront, &source).is_err());
+        assert_eq!(fs::read(&second).unwrap(), b"\xff\xd8\xffsecond");
+        let index = MediaIndex::scan(root.to_owned());
+        assert_eq!(index.candidate_count(42, ArtworkKind::BoxFront), 1);
+        assert_eq!(index.exact(42, ArtworkKind::BoxFront).unwrap().path, second);
     }
 
     #[test]

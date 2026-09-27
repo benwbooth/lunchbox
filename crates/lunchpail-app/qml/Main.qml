@@ -2245,6 +2245,12 @@ ApplicationWindow {
     function openFindArtwork(artworkType) {
         if (selectedDatabaseId <= 0)
             return
+        if (artworkProviderNeedsSetup(artworkProvider)) {
+            const providers = ["steamgriddb", "igdb", "screenscraper", "emumovies", "websearch"]
+            artworkProvider = providers.find(function(provider) {
+                return !root.artworkProviderNeedsSetup(provider)
+            })
+        }
         steamGridDbDialog.open()
         artworkProviderModel.begin_selection(selectedDatabaseId, gameDetails.title,
                                              gameDetails.platform, artworkType)
@@ -2253,12 +2259,18 @@ ApplicationWindow {
     function switchArtworkProvider(provider) {
         if (artworkProvider === provider)
             return
+        const previousKind = artworkProviderModel.artwork_type
         artworkProviderModel.cancel()
         artworkProvider = provider
-        const kind = provider === "igdb" && steamGridDbKind.currentValue === "clear-logo"
-                   ? "fanart" : steamGridDbKind.currentValue
+        const kind = provider === "igdb" && previousKind === "clear-logo"
+                   ? "fanart" : previousKind
         artworkProviderModel.begin_selection(selectedDatabaseId, gameDetails.title,
                                              gameDetails.platform, kind)
+    }
+
+    function refreshReviewedArtwork() {
+        selectedHeroArtworkIndex = 0
+        library.refresh_media()
     }
 
     FullscreenMediaView {
@@ -4229,7 +4241,7 @@ ApplicationWindow {
         function onPublished_revisionChanged() {
             if (steamGridDb.published_revision <= 0)
                 return
-            library.refresh_media()
+            root.refreshReviewedArtwork()
             if (root.steamGridDbUiProbe) {
                 console.warn("LUNCHPAIL_STEAMGRIDDB_UI_READY game="
                              + steamGridDb.selected_game_name + " artwork="
@@ -4264,7 +4276,7 @@ ApplicationWindow {
         function onPublished_revisionChanged() {
             if (igdb.published_revision <= 0)
                 return
-            library.refresh_media()
+            root.refreshReviewedArtwork()
             if (root.igdbUiProbe) {
                 console.warn("LUNCHPAIL_IGDB_UI_READY game="
                              + igdb.selected_game_name + " artwork="
@@ -4287,7 +4299,7 @@ ApplicationWindow {
         target: screenScraper
         function onPublished_revisionChanged() {
             if (screenScraper.published_revision > 0)
-                library.refresh_media()
+                root.refreshReviewedArtwork()
         }
     }
 
@@ -4303,7 +4315,7 @@ ApplicationWindow {
                              + root.screenshotOutput)
                 Qt.quit()
             }
-            library.refresh_media()
+            root.refreshReviewedArtwork()
         }
         function onArtwork_countChanged() {
             if (root.webArtworkUiProbe && webArtwork.artwork_count > 0)
@@ -4316,7 +4328,7 @@ ApplicationWindow {
         function onPublished_revisionChanged() {
             if (emuMovies.published_revision <= 0)
                 return
-            library.refresh_media()
+            root.refreshReviewedArtwork()
             if (gameDetails.panel_open && root.selectedGameId.length > 0)
                 gameDetails.refresh_media()
         }
@@ -13304,10 +13316,10 @@ ApplicationWindow {
                             visible: library.media_retrieval_enabled
                             text: "+"
                             font.pixelSize: 17
-                            Accessible.name: "Find reviewed artwork"
+                            Accessible.name: "Find better media"
                             onClicked: root.openFindArtwork("fanart")
                             ToolTip.visible: hovered
-                            ToolTip.text: "Find and explicitly review artwork from configured sources"
+                            ToolTip.text: "Find better media"
                         }
                     }
                 }
@@ -13850,6 +13862,15 @@ ApplicationWindow {
                                 }
                             }
 
+                            LbButton {
+                                objectName: "findBetterMediaButton"
+                                width: parent.width
+                                text: "Find better media"
+                                enabled: root.selectedDatabaseId > 0
+                                onClicked: root.openFindArtwork("box-front")
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Choose different cover art, backgrounds, screenshots, or logos for this game"
+                            }
 
                             Rectangle {
                                 id: detailVideoFrame
@@ -19606,7 +19627,7 @@ ApplicationWindow {
                 spacing: 3
                 Text {
                     width: parent.width
-                    text: "FIND ARTWORK"
+                    text: "Find better media"
                     color: root.ink
                     font.pixelSize: 16
                     font.weight: Font.Bold
@@ -19703,14 +19724,12 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 11
                     text: root.artworkProvider === "websearch"
-                          ? "Lunchpail never scrapes or silently chooses a web result. Open a focused browser search, then review one exact HTTPS image or local file before it can enter your cache."
+                          ? "Search for an image, then paste its image address or choose a local file. Preview it before using it."
                           : root.artworkProvider === "emumovies"
-                          ? "Legacy Lunchpail matches the selected catalog title and platform against EmuMovies' FTP archive packs. The matching and cache behavior is preserved in Rust and runs outside the Qt thread."
+                          ? "Download artwork for this game from your EmuMovies account. Choose the type of artwork below."
                           : root.artworkProvider === "screenscraper"
-                          ? "ScreenScraper is an optional source for authorized API integrations. Lunchpail never infers identity: choose the exact provider game first, then review one of its media files."
-                          : "Search results never establish identity automatically. Choose the exact "
-                            + root.artworkProviderName
-                            + " game, then choose one artwork file. Lunchpail stores a separate reviewed link for each source."
+                          ? "Choose the matching game, then pick the artwork you prefer. Your choice applies only to this game."
+                          : "Choose the matching game, then pick the artwork you prefer. Your current artwork stays until you choose a replacement."
                     color: "#9cc9e6"
                     font.pixelSize: 10
                     wrapMode: Text.WordWrap
@@ -20122,7 +20141,7 @@ ApplicationWindow {
                                 visible: webArtwork.candidate_ready
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "VALIDATED QUARANTINE PREVIEW"
+                                    text: "Preview — not saved yet"
                                     color: root.accentCool
                                     font.pixelSize: 9
                                     font.weight: Font.Bold
@@ -20138,7 +20157,7 @@ ApplicationWindow {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "BRING BACK ONE EXACT RESULT"
+                                text: "Choose an image"
                                 color: root.ink
                                 font.pixelSize: 13
                                 font.weight: Font.Bold

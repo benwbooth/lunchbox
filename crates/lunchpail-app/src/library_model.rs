@@ -3872,13 +3872,13 @@ impl qobject::LibraryModel {
 
     pub fn artwork_url(&self, media_id: i64, artwork_type: QString) -> QUrl {
         self.media_asset(media_id, &artwork_type.to_string(), false)
-            .map(media_asset_url)
+            .map(|asset| media_asset_url(asset, *self.media_revision()))
             .unwrap_or_default()
     }
 
     pub fn exact_artwork_url(&self, media_id: i64, artwork_type: QString) -> QUrl {
         self.media_asset(media_id, &artwork_type.to_string(), true)
-            .map(media_asset_url)
+            .map(|asset| media_asset_url(asset, *self.media_revision()))
             .unwrap_or_default()
     }
 
@@ -3896,7 +3896,7 @@ impl qobject::LibraryModel {
 
     pub fn artwork_candidate_url(&self, media_id: i64, artwork_type: QString, index: i32) -> QUrl {
         self.media_candidate(media_id, &artwork_type.to_string(), index)
-            .map(media_asset_url)
+            .map(|asset| media_asset_url(asset, *self.media_revision()))
             .unwrap_or_default()
     }
 
@@ -7331,8 +7331,14 @@ fn filtered_platform(model: &qobject::LibraryModel, index: i32) -> Option<&catal
     model.rust().catalog.platforms.get(*source_index)
 }
 
-fn media_asset_url(asset: &MediaAsset) -> QUrl {
-    QUrl::from_local_file(&qstring(asset.path.to_string_lossy()))
+fn media_asset_url(asset: &MediaAsset, revision: i32) -> QUrl {
+    let mut url = QUrl::from_local_file(&qstring(asset.path.to_string_lossy()));
+    if asset.source == "selected" {
+        // Choosing a second image can replace the same file. Give Qt a new
+        // cache key without making every automatically downloaded cover reload.
+        url.set_fragment(&qstring(format!("selection-{revision}")));
+    }
+    url
 }
 
 #[cfg(test)]

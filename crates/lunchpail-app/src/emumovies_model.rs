@@ -324,6 +324,17 @@ fn execute_download(
                 &game_directory,
                 progress,
             )?;
+            let kind = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .and_then(crate::media::ArtworkKind::from_file_stem)
+                .ok_or_else(|| anyhow::anyhow!("Unrecognized downloaded artwork type"))?;
+            let path = crate::media::prefer_reviewed_artwork(
+                &crate::media::requested_media_directory(),
+                database_id,
+                kind,
+                &path,
+            )?;
             Ok((path, "artwork"))
         }
         DownloadRequest::Supplemental {
