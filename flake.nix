@@ -53,9 +53,10 @@
           pkgs.kdePackages.qqc2-desktop-style
         ];
         qtEnv = pkgs.qt6.env "lunchbox-qt-env" qtModules;
+        workspaceVersion = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
         databaseTool = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox-db";
-          version = "0.1.1";
+          version = workspaceVersion;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           LUNCHBOX_7Z = "${pkgs.p7zip}/bin/7z";
@@ -67,7 +68,7 @@
         };
         controllerProbe = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox-controller-probe";
-          version = "0.1.1";
+          version = workspaceVersion;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           cargoBuildFlags = [ "--package" "lunchbox-controller-probe" ];
@@ -81,7 +82,7 @@
         };
         frontend = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox";
-          version = "0.1.1";
+          version = workspaceVersion;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [
