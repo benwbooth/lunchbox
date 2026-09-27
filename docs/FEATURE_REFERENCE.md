@@ -71,14 +71,31 @@ favorite changes, and download options route through the existing native
 services. Couch-native Details and
 Game Menu overlays keep
 browsing on the television while exposing full metadata, activity, launch and
-download state, favorite changes, and an explicit handoff to the complete
-desktop tools without losing the exact game. When a catalog title has multiple
+download state and favorite changes. **Game details & tools** opens the same
+complete game pane inside the fullscreen couch session: patches/translations,
+cheats, RetroAchievements, controllers, display and launch profiles, media,
+metadata, activity and save locations. Nested dialogs keep controller focus;
+Back returns to browsing without losing the exact game. **Library & settings**
+(keyboard **O**, or Game Menu) exposes settings, downloads, notifications,
+imports, collections, firmware, media and bulk editing. The full library
+workspace remains available for search, filtering, sorting and organization;
+its Back to Couch Mode button restores the couch presentation.
+
+Four saved browsing layouts share the same catalog and exact selected game:
+**Cover wall** uses a multi-row artwork grid, **Album** uses an animated 3D
+cover flow, **Animated wheel** uses a curved, scaling game-logo path with title
+fallbacks, and **Cover shelf** retains the original horizontal layout. Select
+one in Library & settings or Settings, or press **V** to cycle. Wall navigation
+moves by rows with up/down; wheel navigation is vertical; album/shelf navigation
+is horizontal. Only nearby items are instantiated in the animated views.
+
+When a catalog title has multiple
 regional or versioned records, the Game Menu opens an exact release picker with
 current/installed/Minerva availability and cached-media context; choosing a row
 routes the selected stable UUID through the same details and launch services.
 Starting a game from Couch Mode opens a controller-safe launch-status surface
 that follows real startup, active-process, emulator, and finalized-session
-state; it can be dismissed back to browsing or handed to Desktop Details at
+state; it can be dismissed back to browsing or opened in Game details & tools at
 any phase.
 Attract Mode can be started from
 Game Menu or automatically after a configurable idle delay; it rotates through

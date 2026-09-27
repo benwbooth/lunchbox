@@ -10,6 +10,11 @@ Item {
     property var overlayItem: null
     property var openCombo: null
     property var pendingSc2Actions: []
+    readonly property var popupScope: {
+        for (let item = applicationWindow.activeFocusItem; item; item = item.parent)
+            if (overlayItem && item.parent === overlayItem) return item
+        return null
+    }
     signal openGame(var item)
     signal backRequested()
     signal menuRequested()
@@ -27,14 +32,16 @@ Item {
         if (!item || item.width <= 0 || item.height <= 0) return null
         const root = applicationWindow.contentItem
         const p = item.mapToItem(root, 0, 0)
-        let r = { x: p.x, y: p.y, right: p.x + item.width, bottom: p.y + item.height }
+        const end = item.mapToItem(root, item.width, item.height)
+        let r = { x: p.x, y: p.y, right: end.x, bottom: end.y }
         for (let cursor = item; cursor; cursor = cursor.parent) {
             if (!cursor.visible || !cursor.enabled || cursor.opacity === 0) return null
             if (cursor.clip || cursor === root) {
                 const q = cursor.mapToItem(root, 0, 0)
+                const edge = cursor.mapToItem(root, cursor.width, cursor.height)
                 r.x = Math.max(r.x, q.x); r.y = Math.max(r.y, q.y)
-                r.right = Math.min(r.right, q.x + cursor.width)
-                r.bottom = Math.min(r.bottom, q.y + cursor.height)
+                r.right = Math.min(r.right, edge.x)
+                r.bottom = Math.min(r.bottom, edge.y)
             }
         }
         return r.right > r.x && r.bottom > r.y ? r : null
@@ -163,9 +170,36 @@ Item {
     }
 
     function currentScope() {
-        for (let item = applicationWindow.activeFocusItem; item; item = item.parent)
-            if (overlayItem && item.parent === overlayItem) return item
-        return focusScope
+        return popupScope || focusScope
+    }
+
+    function closeFocusedPopup() {
+        // QQuickPopup's visual item exposes its owner as parent on contentItem.
+        // Escape is also handled natively for keyboard users. Find the owner
+        // through the window's QObject children for controller Back.
+        const scope = popupScope
+        if (!scope) return false
+        function findPopup(object, depth) {
+            if (!object || depth > 12) return null
+            if (object.visible && object.contentItem && typeof object.close === "function"
+                    && within(object.contentItem, scope)) return object
+            // C++ models also expose a data() method. Only traverse QML's
+            // list-valued data property, never a model method or scalar.
+            const children = object.data
+            if (!children || typeof children !== "object"
+                    || typeof children.length !== "number") return null
+            for (let index = 0; index < children.length; ++index) {
+                const found = findPopup(children[index], depth + 1)
+                if (found) return found
+            }
+            return null
+        }
+        const popup = findPopup(applicationWindow.contentItem, 0)
+        if (!popup) return false
+        // Busy/unsaved workflows deliberately require their explicit buttons.
+        if ((popup.closePolicy & Popup.CloseOnEscape) === 0) return true
+        popup.close()
+        return true
     }
 
     function control(item) {

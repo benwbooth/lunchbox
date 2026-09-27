@@ -1406,7 +1406,10 @@ impl CouchModePreferences {
         if self.shelf != "platform" && !self.platform.is_empty() {
             bail!("Couch Mode platform must be empty outside the platform shelf");
         }
-        if !matches!(self.view_style.as_str(), "wheel" | "shelf") {
+        if !matches!(
+            self.view_style.as_str(),
+            "wheel" | "shelf" | "wall" | "album"
+        ) {
             bail!("unsupported Couch Mode view style {}", self.view_style);
         }
         crate::couch_theme::validate_theme_id(&self.theme_id)
@@ -6567,7 +6570,7 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
              view_style TEXT NOT NULL DEFAULT 'wheel' CHECK (
-                 view_style IN ('wheel', 'shelf')
+                 view_style IN ('wheel', 'shelf', 'wall', 'album')
              ),
              theme_id TEXT NOT NULL DEFAULT 'lunchbox-default' CHECK (
                  length(theme_id) BETWEEN 3 AND 64
@@ -8132,6 +8135,8 @@ fn couch_mode_preferences_schema_is_current(connection: &Connection) -> Result<b
     )?;
     Ok(schema.contains("collection:%")
         && schema.contains("view_style")
+        && schema.contains("'wall'")
+        && schema.contains("'album'")
         && schema.contains("background_music_enabled")
         && schema.contains("background_music_volume"))
 }
@@ -8148,7 +8153,7 @@ fn migrate_couch_mode_preferences_schema(connection: &Connection) -> Result<()> 
              ),
              platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
              view_style TEXT NOT NULL DEFAULT 'wheel' CHECK (
-                 view_style IN ('wheel', 'shelf')
+                 view_style IN ('wheel', 'shelf', 'wall', 'album')
              ),
              theme_id TEXT NOT NULL DEFAULT 'lunchbox-default' CHECK (
                  length(theme_id) BETWEEN 3 AND 64
@@ -10301,6 +10306,21 @@ name"
         reopened.save_couch_mode_preferences(&collection).unwrap();
         assert_eq!(reopened.load_couch_mode_preferences().unwrap(), collection);
 
+        for view_style in ["wall", "album", "wheel", "shelf"] {
+            let preferences = CouchModePreferences {
+                view_style: view_style.into(),
+                ..collection.clone()
+            };
+            reopened.save_couch_mode_preferences(&preferences).unwrap();
+            assert_eq!(
+                SettingsStore::at(store.path())
+                    .unwrap()
+                    .load_couch_mode_preferences()
+                    .unwrap(),
+                preferences
+            );
+        }
+
         for invalid in [
             CouchModePreferences {
                 shelf: "platform".into(),
@@ -10362,6 +10382,46 @@ identity"
             },
         ] {
             assert!(store.save_couch_mode_preferences(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn couch_mode_layout_migration_preserves_existing_preferences() {
+        let (_directory, store) = store();
+        let expected = CouchModePreferences {
+            shelf: "platform".into(),
+            platform: "Arcade".into(),
+            view_style: "shelf".into(),
+            theme_id: "midnight-blue".into(),
+            background_music_enabled: false,
+            background_music_volume: 17,
+            ..CouchModePreferences::default()
+        };
+        store.save_couch_mode_preferences(&expected).unwrap();
+        let connection = Connection::open(store.path()).unwrap();
+        let schema: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_schema WHERE name='couch_mode_preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let old_schema = schema.replace("'wheel', 'shelf', 'wall', 'album'", "'wheel', 'shelf'");
+        connection
+            .execute_batch("ALTER TABLE couch_mode_preferences RENAME TO old_couch_preferences;")
+            .unwrap();
+        connection.execute_batch(&old_schema).unwrap();
+        connection.execute_batch("INSERT INTO couch_mode_preferences SELECT * FROM old_couch_preferences; DROP TABLE old_couch_preferences;").unwrap();
+        drop(connection);
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(reopened.load_couch_mode_preferences().unwrap(), expected);
+        for style in ["wall", "album"] {
+            let preferences = CouchModePreferences {
+                view_style: style.into(),
+                ..expected.clone()
+            };
+            reopened.save_couch_mode_preferences(&preferences).unwrap();
+            assert_eq!(reopened.load_couch_mode_preferences().unwrap(), preferences);
         }
     }
 

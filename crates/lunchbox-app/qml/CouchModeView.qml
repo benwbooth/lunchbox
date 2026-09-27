@@ -10,6 +10,7 @@ Item {
     required property var gamepad
     required property var downloadQueue
     property bool active: false
+    property bool inputEnabled: true
     property var pendingSc2Actions: []
     property int navigationZone: 2
     property int categoryIndex: 0
@@ -55,15 +56,20 @@ Item {
     readonly property int cardRadius: library.couch_theme_card_radius
     readonly property real heroScrimOpacity: library.couch_theme_hero_scrim_percent / 100.0
     readonly property bool cinematicWheel: library.couch_view_style === "wheel"
+    readonly property bool wallView: library.couch_view_style === "wall"
+    readonly property bool albumView: library.couch_view_style === "album"
+    readonly property var viewStyles: ["wheel", "shelf", "wall", "album"]
+    readonly property var viewLabels: ["Animated wheel", "Cover shelf", "Cover wall", "Album"]
+    readonly property string viewLabel: viewLabels[Math.max(0, viewStyles.indexOf(library.couch_view_style))]
     readonly property int menuActionCount: 8
     readonly property var categories: [
-        { label: "ALL GAMES", key: "" },
-        { label: "PLATFORMS", key: "platform" },
-        { label: "COLLECTIONS", key: "collections" },
-        { label: "MY COLLECTION", key: "local" },
-        { label: "MINERVA", key: "downloadable" },
-        { label: "FAVORITES", key: "favorites" },
-        { label: "RECENT", key: "recent" }
+        { label: "All games", key: "" },
+        { label: "Platforms", key: "platform" },
+        { label: "Collections", key: "collections" },
+        { label: "My collection", key: "local" },
+        { label: "Minerva", key: "downloadable" },
+        { label: "Favorites", key: "favorites" },
+        { label: "Recent", key: "recent" }
     ]
     readonly property string currentCollectionId:
         currentFilterKey.indexOf("collection:") === 0
@@ -135,6 +141,7 @@ Item {
     signal detailsRequested(string gameId, int databaseId, string title,
                             string platform, bool local, bool downloadable)
     signal settingsRequested(string section)
+    signal toolsRequested()
     signal launchRequested()
     signal downloadsRequested()
     signal torrentImportRequested(string gameId, int databaseId, string title,
@@ -160,7 +167,7 @@ Item {
 
     function toggleViewStyle() {
         const selectedId = selectedGameId
-        const nextStyle = cinematicWheel ? "shelf" : "wheel"
+        const nextStyle = viewStyles[(viewStyles.indexOf(library.couch_view_style) + 1) % viewStyles.length]
         if (!library.save_couch_view_style(nextStyle))
             return false
         Qt.callLater(function() {
@@ -655,17 +662,17 @@ Item {
         if (index === 1)
             return favorite ? "Remove favorite" : "Add favorite"
         if (index === 2)
-            return "Desktop details"
+            return "Game details & tools"
         if (index === 3)
             return "Releases & media"
         if (index === 4)
             return "Start attract mode"
         if (index === 5)
-            return cinematicWheel ? "Use cover shelf" : "Use cinematic wheel"
+            return "Change view · " + viewLabel
         if (index === 6)
             return library.couch_music_enabled
                    ? "Mute background music" : "Enable background music"
-        return "Return to browsing"
+        return "Library & settings"
     }
 
     function menuActionDescription(index) {
@@ -684,20 +691,18 @@ Item {
             return favorite ? "Remove this exact game from Favorites."
                             : "Keep this exact game in Favorites."
         if (index === 2)
-            return "Open releases, media, firmware, launch profiles, and metadata tools."
+            return "All game information, patches, cheats, achievements, saves, controllers, display and launch settings."
         if (index === 3)
             return "Browse exact regional and version releases before choosing one."
         if (index === 4)
             return "Let Couch Mode rotate through games on the current shelf."
         if (index === 5)
-            return cinematicWheel
-                   ? "Switch to the horizontal cover shelf without changing this game."
-                   : "Switch to a vertical cinematic wheel without changing this game."
+            return "Cycle animated wheel, classic shelf, cover wall and album views."
         if (index === 6)
             return library.couch_music_enabled
                    ? "Stop automatic cached game music throughout Couch Mode."
                    : "Automatically play cached game music after selection settles."
-        return "Close this menu without changing the selected game."
+        return "Search, downloads, notifications, imports, collections and every setting."
     }
 
     function menuActionEnabled(index) {
@@ -739,11 +744,12 @@ Item {
                                               library.couch_music_volume)
         } else {
             closeOverlay()
+            toolsRequested()
         }
     }
 
     function handleNavigation(action) {
-        if (!active)
+        if (!active || !inputEnabled)
             return false
         // Desktop gives analog triggers Home/End; keep the established couch
         // paging shortcuts until this view's zone-specific navigation changes.
@@ -917,12 +923,16 @@ Item {
         if (action === "back") {
             exitRequested()
         } else if (action === "up") {
-            if (cinematicWheel && navigationZone === 2)
+            if (wallView && navigationZone === 2 && shelf.currentIndex >= shelf.columns)
+                moveShelf(-shelf.columns)
+            else if (cinematicWheel && navigationZone === 2)
                 moveShelf(-1)
             else
                 navigationZone = Math.max(0, navigationZone - 1)
         } else if (action === "down") {
-            if (cinematicWheel && navigationZone === 2)
+            if (wallView && navigationZone === 2)
+                moveShelf(shelf.columns)
+            else if (cinematicWheel && navigationZone === 2)
                 moveShelf(1)
             else
                 navigationZone = Math.min(2, navigationZone + 1)
@@ -1012,6 +1022,7 @@ Item {
     }
 
     onSelectedGameIdChanged: {
+        selectionReveal.restart()
         if (selectedGameId.length === 0 || !detailsCurrent) {
             downloadOverlayOpen = false
             launchStatusOverlayOpen = false
@@ -1066,6 +1077,7 @@ Item {
     }
 
     Keys.onPressed: event => {
+        if (!inputEnabled) return
         if (!active)
             return
         let action = ""
@@ -1119,6 +1131,10 @@ Item {
             action = "details"
         } else if (event.key === Qt.Key_M) {
             action = "menu"
+        } else if (event.key === Qt.Key_O) {
+            toolsRequested()
+            event.accepted = true
+            return
         } else if (event.key === Qt.Key_A) {
             if (attractOpen)
                 action = "back"
@@ -1236,7 +1252,8 @@ Item {
     Row {
         id: categoryRow
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.verticalCenter: brand.verticalCenter
+        anchors.top: brand.bottom
+        anchors.topMargin: 18
         spacing: 12
 
         Repeater {
@@ -1288,7 +1305,7 @@ Item {
         spacing: 10
 
         Rectangle {
-            visible: view.width >= 1500
+            visible: true
             width: visible ? viewStyleLabel.implicitWidth + 34 : 0
             height: 40
             radius: Math.max(8, view.cardRadius - 4)
@@ -1302,7 +1319,7 @@ Item {
             Text {
                 id: viewStyleLabel
                 anchors.centerIn: parent
-                text: view.cinematicWheel ? "▦  Cover shelf" : "☷  Cinematic wheel"
+                text: "▦  " + view.viewLabel
                 color: view.ink
                 font.pixelSize: 9
                 font.weight: Font.Bold
@@ -1316,13 +1333,11 @@ Item {
                 }
             }
             Accessible.role: Accessible.Button
-            Accessible.name: view.cinematicWheel
-                             ? "Use Couch Mode cover shelf"
-                             : "Use Couch Mode cinematic wheel"
+            Accessible.name: "Change Couch Mode view, " + view.viewLabel
         }
 
         Rectangle {
-            visible: view.gamepad.ready
+            visible: view.gamepad.ready && view.width >= 1800
             width: visible ? gamepadStatus.implicitWidth + 26 : 0
             height: 40
             radius: Math.max(8, view.cardRadius - 4)
@@ -1344,6 +1359,26 @@ Item {
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
             }
+        }
+
+        Rectangle {
+            width: toolsLabel.implicitWidth + 28
+            height: 40
+            radius: Math.max(8, view.cardRadius - 4)
+            color: toolsHover.hovered ? view.panelRaised : view.panel
+            border.color: view.muted
+            Text {
+                id: toolsLabel
+                anchors.centerIn: parent
+                text: "Library & settings"
+                color: view.ink
+                font.pixelSize: 12
+            }
+            HoverHandler { id: toolsHover }
+            TapHandler { onTapped: view.toolsRequested() }
+            Accessible.role: Accessible.Button
+            Accessible.name: "Library and settings"
+            Accessible.onPressAction: view.toolsRequested()
         }
 
         Rectangle {
@@ -1369,10 +1404,11 @@ Item {
         id: gameCopy
         anchors.left: parent.left
         anchors.leftMargin: 70
-        anchors.top: brand.bottom
-        anchors.topMargin: Math.max(42, parent.height * 0.055)
-        width: Math.min(760, parent.width * 0.49)
-        spacing: 14
+        anchors.top: categoryRow.bottom
+        anchors.topMargin: view.wallView || view.albumView ? 28 : Math.max(42, parent.height * 0.055)
+        width: view.wallView || view.albumView ? parent.width - 140 : Math.min(760, parent.width * 0.49)
+        spacing: view.wallView || view.albumView ? 8 : 14
+        transform: Translate { id: copyEntrance }
 
         Row {
             spacing: 9
@@ -1421,7 +1457,7 @@ Item {
             width: parent.width
             text: view.selectedTitle.length > 0 ? view.selectedTitle : "Choose a game"
             color: view.ink
-            font.pixelSize: Math.max(34, Math.min(54, view.width * 0.035))
+            font.pixelSize: view.wallView || view.albumView ? 32 : Math.max(34, Math.min(54, view.width * 0.035))
             font.weight: Font.Black
             lineHeight: 0.94
             wrapMode: Text.WordWrap
@@ -1431,7 +1467,7 @@ Item {
 
         Row {
             spacing: 18
-            visible: !view.details.loading && view.selectedGameId.length > 0
+            visible: !view.wallView && !view.albumView && !view.details.loading && view.selectedGameId.length > 0
             Text {
                 visible: view.details.release_date.length > 0
                 text: view.details.release_date
@@ -1472,6 +1508,7 @@ Item {
         Text {
             width: parent.width
             height: Math.min(implicitHeight, 112)
+            visible: !view.wallView && !view.albumView
             text: view.details.loading ? "Loading game details…"
                   : view.details.description.length > 0
                     ? view.details.description
@@ -1516,7 +1553,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: actionButton.index === 0 ? view.primaryAction
-                              : actionButton.index === 1 ? "DESKTOP DETAILS"
+                              : actionButton.index === 1 ? "Game details & tools"
                               : view.favoriteBusy ? "…" : view.favorite ? "★" : "☆"
                         color: actionButton.index === 0 ? view.background : view.ink
                         font.pixelSize: actionButton.index === 2 ? 22 : 11
@@ -1551,7 +1588,7 @@ Item {
 
     Rectangle {
         id: coverFrame
-        visible: !view.cinematicWheel
+        visible: !view.cinematicWheel && !view.wallView && !view.albumView
         anchors.right: parent.right
         anchors.rightMargin: Math.max(74, parent.width * 0.075)
         anchors.top: brand.bottom
@@ -1598,18 +1635,19 @@ Item {
 
     Item {
         id: shelfArea
-        x: view.cinematicWheel ? parent.width - width - 44 : 0
-        y: view.cinematicWheel ? brand.y + brand.height + 58
+        x: view.cinematicWheel ? parent.width - width - 44 : view.wallView ? 60 : 0
+        y: view.cinematicWheel ? categoryRow.y + categoryRow.height + 28
                                : footer.y - height
         width: view.cinematicWheel ? Math.min(650, parent.width * 0.42)
-                                   : parent.width
+                                   : view.wallView ? parent.width - 120 : parent.width
         height: view.cinematicWheel
-                ? Math.max(320, footer.y - y - 18)
+                ? Math.max(320, footer.y - categoryRow.y - categoryRow.height - 46)
+                : view.wallView || view.albumView ? Math.max(180, footer.y - gameCopy.y - gameCopy.height - 28)
                 : Math.max(250, parent.height * 0.265)
 
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: view.cinematicWheel ? 8 : 70
+            anchors.leftMargin: view.cinematicWheel || view.wallView ? 8 : 70
             anchors.top: parent.top
             text: view.library.filtering ? "UPDATING…"
                   : view.currentShelfLabel + "  ·  "
@@ -1620,17 +1658,13 @@ Item {
             font.letterSpacing: 1.4
         }
 
-        CouchGameShelf {
+        CouchGameBrowser {
             id: shelf
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 25
             anchors.bottom: parent.bottom
-            leftMargin: view.cinematicWheel ? 8 : 70
-            rightMargin: view.cinematicWheel ? 0 : 70
-            topMargin: view.cinematicWheel ? 8 : 0
-            bottomMargin: view.cinematicWheel ? 8 : 0
             library: view.library
             background: view.background
             panel: view.panel
@@ -1640,7 +1674,7 @@ Item {
             accent: view.accent
             accentCool: view.accentCool
             cardRadius: view.cardRadius
-            cinematic: view.cinematicWheel
+            viewStyle: view.library.couch_view_style
             navigationActive: view.navigationZone === 2
 
             onCurrentGameChanged: {
@@ -1656,6 +1690,12 @@ Item {
                 view.forceActiveFocus()
             }
         }
+    }
+
+    ParallelAnimation {
+        id: selectionReveal
+        NumberAnimation { target: gameCopy; property: "opacity"; from: 0.45; to: 1; duration: 240 }
+        NumberAnimation { target: copyEntrance; property: "x"; from: 22; to: 0; duration: 280; easing.type: Easing.OutCubic }
     }
 
     Row {
@@ -1738,7 +1778,7 @@ Item {
         details: view.details
         selectedGameId: view.selectedGameId
         active: view.active
-        blocked: view.launchStatusOverlayOpen
+        blocked: !view.inputEnabled || view.launchStatusOverlayOpen
                  || view.downloadOverlayOpen
                  || view.platformWheelOpen
                  || view.collectionWheelOpen
@@ -3659,7 +3699,7 @@ Item {
                   ? 350
                   : Math.max(30, view.library.couch_attract_idle_seconds) * 1000
         repeat: false
-        running: view.active
+        running: view.active && view.inputEnabled
                  && (view.library.couch_attract_enabled
                      || view.attractProbeEnabled)
                  && !view.attractOpen
@@ -3759,7 +3799,7 @@ Item {
     Connections {
         target: view.gamepad
         function onNavigation_revisionChanged() {
-            if (!view.active) return
+            if (!view.active || !view.inputEnabled) return
             const action = view.gamepad.navigation_action
             if (view.gamepad.active_device !== "Steam Controller 2 (2026)") {
                 view.handleNavigation(action)

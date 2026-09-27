@@ -104,6 +104,13 @@ ApplicationWindow {
     property int pendingThemeRemovalIndex: -1
     readonly property bool gridMode: library.view_mode !== "list"
     property bool couchModeActive: false
+    // Shared management panes stay in the fullscreen couch session. They are
+    // not reduced copies of desktop features and retain all nested dialogs.
+    property string couchWorkspace: ""
+    readonly property real couchUiScale: Math.max(1, root.height / 1000)
+    readonly property bool couchInputSuspended: couchModeActive
+        && (couchWorkspace.length > 0 || fullscreenMedia.opened
+            || desktopNavigation.popupScope !== null)
     property int couchModePreviousVisibility: Window.Windowed
     property bool couchModeProbeCaptured: false
     property bool couchLaunchProbeCaptured: false
@@ -507,7 +514,7 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
-        if (active && couchModeActive)
+        if (active && couchModeActive && !couchInputSuspended)
             couchModeView.forceActiveFocus()
     }
 
@@ -1093,6 +1100,7 @@ ApplicationWindow {
     function exitCouchMode() {
         if (!couchModeActive)
             return
+        couchWorkspace = ""
         couchModeActive = false
         if (!couchModeUiProbe) {
             if (couchModePreviousVisibility === Window.FullScreen)
@@ -1104,6 +1112,42 @@ ApplicationWindow {
         }
         if (gameViewLoader.item)
             gameViewLoader.item.forceActiveFocus()
+    }
+
+    function closeCouchWorkspace() {
+        couchWorkspace = ""
+        if (!couchModeView.focusGameById(selectedGameId)) {
+            couchModeView.loadedGameId = ""
+            couchModeView.loadCurrentGame()
+        }
+        couchModeView.forceActiveFocus()
+    }
+
+    function openCouchWorkspace(kind) {
+        couchWorkspace = kind
+        Qt.callLater(function() {
+            if (kind === "game") closeDetailsButton.forceActiveFocus()
+            else searchField.forceActiveFocus()
+        })
+    }
+
+    function couchTool(action) {
+        couchToolsDialog.close()
+        if (action === "details") openCouchWorkspace("game")
+        else if (action === "library") openCouchWorkspace("library")
+        else if (action === "settings") openSettingsFor("")
+        else if (action === "controllers") openSettingsFor("controllers")
+        else if (action === "downloads") downloadsDrawer.open()
+        else if (action === "notifications") notificationHistoryDialog.open()
+        else if (action === "import") openImportDialog()
+        else if (action === "torrent") openTorrentImport()
+        else if (action === "collections") manageCollectionsDialog.open()
+        else if (action === "new-collection") openNewCollectionDialog()
+        else if (action === "firmware") firmwareAuditDialog.openAndScan()
+        else if (action === "media") mediaAuditDialog.open()
+        else if (action === "audit") { libraryAuditDialog.open(); libraryAudit.start_audit() }
+        else if (action === "bulk") bulkLibraryEditor.openForScope()
+        else if (action === "attract") couchModeView.startAttractMode("manual")
     }
 
     function restoreCouchNavigation() {
@@ -2183,6 +2227,14 @@ ApplicationWindow {
 
     FullscreenMediaView {
         id: fullscreenMedia
+        anchors.fill: parent
+        z: 1200
+        onOpenedChanged: {
+            if (!opened && root.couchModeActive) {
+                if (root.couchWorkspace === "game") closeDetailsButton.forceActiveFocus()
+                else couchModeView.forceActiveFocus()
+            }
+        }
         onPreviousRequested: root.rotateSelectedHeroArtwork(-1)
         onNextRequested: root.rotateSelectedHeroArtwork(1)
     }
@@ -2251,21 +2303,32 @@ ApplicationWindow {
         id: gamepadInput
         navigation_enabled: (root.active || root.couchGamepadUiProbe)
                             && !root.controllerLearnActive
-                            && !(settingsDialog.visible && controllerAutomaticSetup.testInput)
+                            && !(settingsDialog.visible && controllerAutomaticSetup.testInput && !root.couchModeActive)
                             && !controllerAutomaticSetup.calibrationActive
                             && !gameControllerMapping.calibrationActive
-                            && !gameControllerMapping.visible
+                            && (!gameControllerMapping.visible || root.couchModeActive)
         onNavigation_enabledChanged: sync_navigation_enabled()
         Component.onCompleted: Qt.callLater(initialize)
     }
 
     DesktopGamepadNavigation {
+        id: desktopNavigation
         applicationWindow: root
         gamepad: gamepadInput
         libraryView: gameViewLoader.item
-        focusScope: settingsDialog.visible ? settingsDialog.contentItem : null
+        focusScope: fullscreenMedia.opened ? fullscreenMedia
+                    : settingsDialog.visible ? settingsDialog.contentItem
+                    : root.couchWorkspace === "game" ? detailsPane : null
         overlayItem: Overlay.overlay
-        enabled: !root.couchModeActive
+        enabled: !root.couchModeActive || root.couchInputSuspended
+        onPopupScopeChanged: {
+            if (!popupScope && root.couchModeActive && root.couchWorkspace.length === 0)
+                Qt.callLater(function() {
+                    if (!desktopNavigation.popupScope && root.couchModeActive
+                            && root.couchWorkspace.length === 0 && !fullscreenMedia.opened)
+                        couchModeView.forceActiveFocus()
+                })
+        }
         onNavigationStarted: {
             const view = gameViewLoader.item
             if (view && view.controllerInputStarted)
@@ -2277,11 +2340,17 @@ ApplicationWindow {
                               item.gamePlatform, item.gameLocal, item.gameDownloadable)
         }
         onBackRequested: {
-            if (settingsDialog.visible) settingsDialog.close()
+            if (fullscreenMedia.opened) { fullscreenMedia.close(); return }
+            if (desktopNavigation.closeFocusedPopup()) return
+            if (root.couchModeActive && root.couchWorkspace.length > 0) root.closeCouchWorkspace()
+            else if (settingsDialog.visible) settingsDialog.close()
             else if (gameDetails.panel_open) gameDetails.close_panel()
             else if (gameViewLoader.item) gameViewLoader.item.forceActiveFocus()
         }
-        onMenuRequested: root.openSettingsFor("controllers")
+        onMenuRequested: {
+            if (root.couchModeActive) couchToolsDialog.open()
+            else root.openSettingsFor("controllers")
+        }
     }
 
     Connections {
@@ -6345,18 +6414,102 @@ ApplicationWindow {
                 }
                 root.couchViewStyleProbeStage = 3
                 if (!couchModeView.toggleViewStyle()) {
-                    fail("switch back to wheel")
+                    fail("switch to wall")
                     return
                 }
                 restart()
                 return
             }
             if (root.couchViewStyleProbeStage === 3) {
+                if (library.couch_view_style !== "wall"
+                        || couchModeView.selectedGameId !== root.couchViewStyleProbeMovedGameId) {
+                    fail("wall identity")
+                    return
+                }
+                root.couchViewStyleProbeStage = 4
+                couchModeView.toggleViewStyle()
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 4) {
+                if (library.couch_view_style !== "album"
+                        || couchModeView.selectedGameId !== root.couchViewStyleProbeMovedGameId) {
+                    fail("album identity")
+                    return
+                }
+                root.couchViewStyleProbeStage = 5
+                couchModeView.toggleViewStyle()
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 5) {
                 if (library.couch_view_style !== "wheel"
                         || !couchModeView.cinematicWheel
                         || couchModeView.selectedGameId
                            !== root.couchViewStyleProbeMovedGameId) {
                     fail("wheel identity restored")
+                    return
+                }
+                root.couchViewStyleProbeStage = 6
+                root.openCouchWorkspace("game")
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 6) {
+                if (!root.couchInputSuspended || couchModeView.inputEnabled
+                        || detailsPane.parent !== couchDetailsHost
+                        || !detailsPane.visible || !closeDetailsButton.activeFocus
+                        || desktopNavigation.focusScope !== detailsPane) {
+                    fail("shared game tools focus")
+                    return
+                }
+                root.closeCouchWorkspace()
+                couchToolsDialog.open()
+                root.couchViewStyleProbeStage = 7
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 7) {
+                if (!couchToolsDialog.opened || !root.couchInputSuspended
+                        || !desktopNavigation.popupScope
+                        || !couchToolRepeater.itemAt(0).activeFocus) {
+                    fail("tools dialog focus")
+                    return
+                }
+                if (!desktopNavigation.closeFocusedPopup()) {
+                    fail("controller back from tools")
+                    return
+                }
+                root.couchViewStyleProbeStage = 8
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 8) {
+                if (couchToolsDialog.visible || root.couchInputSuspended
+                        || !couchModeView.activeFocus) {
+                    fail("tools return focus")
+                    return
+                }
+                root.openCouchWorkspace("library")
+                root.couchViewStyleProbeStage = 9
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 9) {
+                if (!root.couchModeActive || couchModeView.visible
+                        || !root.couchInputSuspended || !searchField.activeFocus) {
+                    fail("full library workspace")
+                    return
+                }
+                root.closeCouchWorkspace()
+                root.couchViewStyleProbeStage = 10
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 10) {
+                if (root.couchInputSuspended || !couchModeView.activeFocus
+                        || couchModeView.selectedGameId !== root.couchViewStyleProbeMovedGameId) {
+                    fail("workspace return selection")
                     return
                 }
                 finish(false)
@@ -11423,9 +11576,14 @@ ApplicationWindow {
 
     CouchModeView {
         id: couchModeView
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: root.width / root.couchUiScale
+        height: root.height / root.couchUiScale
+        scale: root.couchUiScale
         z: 1000
         active: root.couchModeActive
+        visible: active && root.couchWorkspace !== "library"
+        inputEnabled: !root.couchInputSuspended
         library: library
         details: gameDetails
         gamepad: gamepadInput
@@ -11452,22 +11610,160 @@ ApplicationWindow {
         }
         onDetailsRequested: function(gameId, databaseId, title, platform,
                                      local, downloadable) {
-            root.exitCouchMode()
             root.openGame(gameId, databaseId, title, platform,
                           local, downloadable)
+            root.openCouchWorkspace("game")
         }
         onSettingsRequested: function(section) {
-            root.exitCouchMode()
             root.openSettingsFor(section)
         }
+        onToolsRequested: couchToolsDialog.open()
         onLaunchRequested: root.requestGameLaunch()
         onDownloadsRequested: {
-            root.exitCouchMode()
             downloadsDrawer.open()
         }
         onTorrentImportRequested: function(gameId, databaseId, title, platform) {
-            root.exitCouchMode()
             root.openTorrentForGame(gameId, databaseId, title, platform)
+        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        z: 1001
+        visible: root.couchModeActive && root.couchWorkspace === "game"
+        color: "#d90a1019"
+        TapHandler { onTapped: root.closeCouchWorkspace() }
+    }
+
+    Item {
+        id: couchDetailsHost
+        anchors.centerIn: parent
+        width: root.width / root.couchUiScale
+        height: root.height / root.couchUiScale
+        scale: root.couchUiScale
+        z: 1002
+        visible: root.couchModeActive && root.couchWorkspace === "game"
+    }
+
+    LbButton {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 10
+        z: 1003
+        visible: root.couchModeActive && root.couchWorkspace === "library"
+        text: "Back to Couch Mode"
+        onClicked: root.closeCouchWorkspace()
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        enabled: root.couchModeActive && root.couchWorkspace.length > 0
+                 && !fullscreenMedia.opened
+                 && desktopNavigation.popupScope === null
+        onActivated: root.closeCouchWorkspace()
+    }
+
+    LbDialog {
+        id: couchToolsDialog
+        parent: Overlay.overlay
+        title: "Library & settings"
+        modal: true
+        width: Math.min(root.width - 64, 1120)
+        height: Math.min(root.height - 64, 790)
+        anchors.centerIn: parent
+        standardButtons: Dialog.Close
+        onOpened: couchToolRepeater.itemAt(0).forceActiveFocus()
+        contentItem: MomentumFlickable {
+            clip: true
+            contentHeight: couchToolColumn.implicitHeight
+            contentWidth: width
+            ScrollBar.vertical: LbScrollBar { policy: ScrollBar.AsNeeded }
+            ColumnLayout {
+                id: couchToolColumn
+                width: parent.width - 18
+                spacing: 20
+                Text {
+                    Layout.fillWidth: true
+                    text: "Every Lunchbox tool, without leaving Couch Mode. Use the D-pad to move, A to select, B to go back, and bumpers to scroll."
+                    color: root.muted
+                    font.pixelSize: 16
+                    wrapMode: Text.WordWrap
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: couchToolsDialog.width >= 850 ? 3 : 2
+                    columnSpacing: 12
+                    rowSpacing: 12
+                    Repeater {
+                        id: couchToolRepeater
+                        model: [
+                            { label: "Game details & tools", action: "details", hint: "Patches, cheats, saves, achievements, media and play settings" },
+                            { label: "Search & library", action: "library", hint: "Full library workspace: search, filters, sorting and organization" },
+                            { label: "Settings", action: "settings", hint: "All settings, themes, translation, services and accounts" },
+                            { label: "Controllers", action: "controllers", hint: "Players, button mapping, calibration and profiles" },
+                            { label: "Downloads", action: "downloads", hint: "Progress, queue controls and download recovery" },
+                            { label: "Notifications", action: "notifications", hint: "Save backups, activity and past notifications" },
+                            { label: "Import games", action: "import", hint: "Scan folders and add local ROMs and disc images" },
+                            { label: "Torrent sources", action: "torrent", hint: "Manage and import game download sources" },
+                            { label: "Collections", action: "collections", hint: "Edit, organize and manage your collections" },
+                            { label: "New collection", action: "new-collection", hint: "Create a curated or automatic collection" },
+                            { label: "BIOS & firmware", action: "firmware", hint: "Find and resolve emulator requirements" },
+                            { label: "Media library", action: "media", hint: "Artwork, videos and missing media" },
+                            { label: "Library health", action: "audit", hint: "Inspect missing files, duplicates and library issues" },
+                            { label: "Bulk editing", action: "bulk", hint: "Edit multiple games in the current library selection" },
+                            { label: "Attract mode", action: "attract", hint: "An animated tour of the current game collection" }
+                        ]
+                        delegate: LbButton {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 102
+                            text: modelData.label
+                            enabled: modelData.action !== "details" || root.selectedGameId.length > 0
+                            onClicked: root.couchTool(modelData.action)
+                            contentItem: Column {
+                                spacing: 8
+                                Text {
+                                    width: parent.width
+                                    text: parent.parent.text
+                                    color: root.ink
+                                    font.pixelSize: 17
+                                    font.weight: Font.DemiBold
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: parent.parent.modelData.hint
+                                    color: root.muted
+                                    font.pixelSize: 12
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Repeater {
+                        model: [ { label: "Cover wall", value: "wall" },
+                                 { label: "Album", value: "album" },
+                                 { label: "Animated wheel", value: "wheel" },
+                                 { label: "Cover shelf", value: "shelf" } ]
+                        delegate: LbButton {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 48
+                            text: modelData.label
+                            highlighted: library.couch_view_style === modelData.value
+                            onClicked: {
+                                library.save_couch_view_style(modelData.value)
+                                couchToolsDialog.close()
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -12091,7 +12387,8 @@ ApplicationWindow {
     Item {
         id: content
         anchors.left: sidebar.right
-        anchors.right: detailsPane.left
+        anchors.right: parent.right
+        anchors.rightMargin: root.couchWorkspace === "game" ? 0 : detailsPane.width
         anchors.top: header.bottom
         anchors.bottom: statusBar.top
         clip: true
@@ -12427,11 +12724,12 @@ ApplicationWindow {
 
     Item {
         id: detailsResizeHandle
-        anchors.right: detailsPane.left
+        anchors.right: parent.right
+        anchors.rightMargin: root.couchWorkspace === "game" ? 0 : detailsPane.width
         anchors.top: header.bottom
         anchors.bottom: statusBar.top
         width: 10
-        visible: gameDetails.panel_open
+        visible: gameDetails.panel_open && root.couchWorkspace !== "game"
         z: 80
         activeFocusOnTab: true
         Accessible.role: Accessible.Separator
@@ -12503,10 +12801,18 @@ ApplicationWindow {
 
     Rectangle {
         id: detailsPane
+        parent: root.couchModeActive && root.couchWorkspace === "game"
+                ? couchDetailsHost : root.contentItem
+        z: root.couchModeActive && root.couchWorkspace === "game" ? 1002 : 0
         anchors.right: parent.right
-        anchors.top: header.bottom
-        anchors.bottom: statusBar.top
-        width: gameDetails.panel_open
+        anchors.rightMargin: root.couchModeActive && root.couchWorkspace === "game"
+                            ? (parent.width - width) / 2 : 0
+        anchors.top: parent.top
+        anchors.topMargin: root.couchModeActive && root.couchWorkspace === "game" ? 28 : header.height
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.couchModeActive && root.couchWorkspace === "game" ? 28 : statusBar.height
+        width: root.couchModeActive && root.couchWorkspace === "game" ? Math.min(parent.width - 96, 900)
+               : gameDetails.panel_open
                ? root.clampDetailsPaneWidth(library.details_pane_width) : 0
         visible: width > 0
         clip: true
@@ -12611,6 +12917,10 @@ ApplicationWindow {
                 flat: true
                 font.pixelSize: 20
                 onClicked: {
+                    if (root.couchModeActive && root.couchWorkspace === "game") {
+                        root.closeCouchWorkspace()
+                        return
+                    }
                     root.selectedGameId = ""
                     root.selectedDatabaseId = 0
                     root.selectedMediaId = 0
@@ -20216,7 +20526,7 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Choose the living-room browsing layout. Cinematic wheel keeps the current game presentation visible beside a vertical game list; cover shelf provides the classic horizontal box-art row. The selection and active shelf are preserved when switching."
+                        text: "Browse a cover wall, flip through a 3D album, spin an animated game-logo wheel, or keep the classic cover shelf. The selected game and active collection are preserved when switching. Press V in Couch Mode to cycle layouts."
                         color: root.muted
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -20236,10 +20546,12 @@ ApplicationWindow {
                             textRole: "label"
                             valueRole: "value"
                             model: [
-                                { label: "Cinematic wheel", value: "wheel" },
-                                { label: "Cover shelf", value: "shelf" }
+                                { label: "Animated wheel", value: "wheel" },
+                                { label: "Cover shelf", value: "shelf" },
+                                { label: "Cover wall", value: "wall" },
+                                { label: "Album", value: "album" }
                             ]
-                            currentIndex: library.couch_view_style === "shelf" ? 1 : 0
+                            currentIndex: Math.max(0, ["wheel", "shelf", "wall", "album"].indexOf(library.couch_view_style))
                             onActivated: library.save_couch_view_style(currentValue)
                             Accessible.name: "Couch Mode browse presentation"
                         }
@@ -24968,7 +25280,8 @@ ApplicationWindow {
         edge: Qt.RightEdge
         width: Math.min(480, root.width * 0.42)
         height: root.height
-        modal: false
+        modal: root.couchModeActive
+        onOpened: if (root.couchModeActive) contentItem.forceActiveFocus()
         interactive: true
         padding: 0
 

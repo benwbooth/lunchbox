@@ -30,8 +30,8 @@ set up controllers, and launch games from one place—at your desk or on the cou
   import your own; patched copies leave the original ROM or disc image untouched.
 - **Add extras.** RetroArch cheats, RetroAchievements account setup, and
   per-game options such as supported arcade blood settings.
-- **Move to the couch.** Fullscreen, controller-friendly browsing with themes,
-  artwork, and an attract mode.
+- **Move to the couch.** Cover wall, 3D album, animated logo wheel and classic
+  shelf views, with themes, attract mode and access to all game and library tools.
 
 Experimental local AI translation is also available for supported RetroArch
 setups. It is opt-in per game, uses OCR and Ollama on a supported GPU, and has a

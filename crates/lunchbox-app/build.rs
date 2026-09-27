@@ -139,6 +139,8 @@ fn main() {
                 "qml/CouchBackgroundMusic.qml",
                 "qml/CouchDownloadScreen.qml",
                 "qml/CouchGameShelf.qml",
+                "qml/CouchGameBrowser.qml",
+                "qml/CouchGameCard.qml",
                 "qml/CouchLaunchScreen.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
