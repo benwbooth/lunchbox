@@ -13,8 +13,9 @@ RetroArch display profiles can use CRT presets and artwork from The Bezel
 Project, Orionsangel, and Duimon. Available choices depend on the system,
 game, and installed artwork.
 
-**RetroTube TV** also lights the bezel with the colors from the game. This
-works with external artwork as well as Koko's built-in TV frame. The artwork
+**RetroTube TV** reflects the picture onto the bezel's inner rim and adds a
+soft glow from the game. This works with external artwork as well as Koko's
+built-in TV frame. The artwork
 keeps its shape, unused sidebars stay black, and the game retains its curved
 screen opening. The effect applies on the next game launch.
 

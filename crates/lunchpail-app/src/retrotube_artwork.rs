@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result, ensure};
 
-/// Adapt only Koko's final composition pass. All CRT/curvature passes and the
+/// Adapt Koko's final composition pass. All CRT/curvature passes and the
 /// upstream files remain untouched. Reject unfamiliar layouts rather than
 /// silently loading a shader with broken screen geometry.
 pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool) -> Result<String> {
@@ -35,7 +35,15 @@ pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool)
         &format!(
             "float lunchpailArtMask = step(0.0, image_coords.x) * step(image_coords.x, 1.0)\n\
          * step(0.0, image_coords.y) * step(image_coords.y, 1.0) * pixel_fg_image.a;\n\
-         {light}\nlight *= lunchpailArtMask;"
+         {light}\nlight *= lunchpailArtMask;\n\
+         // Reflect the picture onto the artwork's inner rim. Ambient glow alone\n\
+         // barely lights dark plastic; Koko normally draws this reflection only\n\
+         // on its built-in bezel, which must remain hidden for external artwork.\n\
+         vec2 lunchpailOutside = max(abs(co_content - 0.5) - 0.5, vec2(0.0));\n\
+         lunchpailOutside.x *= vIn_aspect;\n\
+         float lunchpailRim = 1.0 - smoothstep(0.0, 0.065, length(lunchpailOutside));\n\
+         vec3 lunchpailReflection = texture(reflected_blurred_pass, co_mirror).rgb;\n\
+         pixel_out += lunchpailReflection * lunchpailRim * lunchpailArtMask;"
         ),
     );
     for include in ["config.inc", "includes/functions.include.slang"] {
@@ -60,6 +68,32 @@ pub(crate) fn final_pass(source: &str, shader_directory: &Path, ultrawide: bool)
         adapted = adapted.replace(coordinates, &fit);
     }
     Ok(adapted)
+}
+
+fn reflection_pass(source: &str, directory: &Path) -> Result<String> {
+    let disabled = "if (DO_BEZEL == 0.0) return;";
+    ensure!(
+        source.matches(disabled).count() == 1,
+        "Unsupported Koko reflection gate"
+    );
+    // Keep calculating the existing low-resolution reflection buffers, without
+    // enabling a second bezel or changing the CRT's geometry.
+    let mut source = source.replace(
+        disabled,
+        "// Lunchpail: external artwork also receives reflections.",
+    );
+    for include in [
+        "config.inc",
+        "includes/functions.include.slang",
+        "includes/blooms.include.slang",
+    ] {
+        let absolute = directory.join(include).to_string_lossy().replace('\\', "/");
+        source = source.replace(
+            &format!("#include \"{include}\""),
+            &format!("#include \"{absolute}\""),
+        );
+    }
+    Ok(source)
 }
 
 fn opening_fit(coordinates: &str, aspect: &str, rotated: &str) -> String {
@@ -97,6 +131,23 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
     // Materialize the chain before replacing the final compositor. Keep every
     // upstream pass and resolve its paths relative to the file that defined it.
     let mut settings = read_preset(preset, 0)?;
+    for (index, name) in [
+        (8, "reflection_blur_pre.slang"),
+        (9, "reflection_blur.slang"),
+    ] {
+        let key = format!("shader{index}");
+        ensure!(
+            settings
+                .get(&key)
+                .is_some_and(|path| path.ends_with(&format!("/{name}"))),
+            "Unsupported Koko reflection pass index"
+        );
+        let source = fs::read_to_string(directory.join(name))?;
+        let source = reflection_pass(&source, &directory)?;
+        let path = preset.with_extension(name);
+        fs::write(&path, source)?;
+        settings.insert(key, path.to_string_lossy().replace('\\', "/"));
+    }
     if ultrawide {
         let source = fs::read_to_string(directory.join("ambi_temporal_pass.slang"))?;
         let anchor = "    if (bNeed_NO_integer_scale) {";
@@ -220,6 +271,8 @@ mod tests {
         assert!(adapted.contains("#include \"/shaders/koko/config.inc\""));
         assert!(adapted.contains("light *= lunchpailArtMask"));
         assert!(adapted.contains("* pixel_fg_image.a"));
+        assert!(adapted.contains("texture(reflected_blurred_pass, co_mirror)"));
+        assert!(adapted.contains("lunchpailReflection * lunchpailRim * lunchpailArtMask"));
     }
 
     #[test]
@@ -236,12 +289,29 @@ mod tests {
     }
 
     #[test]
+    fn reflection_buffers_run_without_enabling_the_builtin_bezel() {
+        let source = "#include \"config.inc\"\n#include \"includes/blooms.include.slang\"\nif (DO_BEZEL == 0.0) return;\npixel_out *= BEZEL_REFL_STRENGTH;";
+        let adapted = reflection_pass(source, Path::new("/koko/shaders-ng")).unwrap();
+        assert!(!adapted.contains("if (DO_BEZEL == 0.0) return;"));
+        assert!(adapted.contains("pixel_out *= BEZEL_REFL_STRENGTH"));
+        assert!(adapted.contains("#include \"/koko/shaders-ng/includes/blooms.include.slang\""));
+        assert!(reflection_pass("unknown shader", Path::new("/koko")).is_err());
+    }
+
+    #[test]
     fn installation_replaces_disabled_lighting_without_duplicate_parameters() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         fs::create_dir_all(root.join("Presets-ng")).unwrap();
         fs::create_dir_all(root.join("shaders-ng")).unwrap();
-        fs::write(root.join("koko-aio-ng.slangp"), "shaders = 17\nshader16 = shaders-ng/final_pass.slang\ntextures = \"bg_over\"\nbg_over = \"textures/default.png\"\n").unwrap();
+        fs::write(root.join("koko-aio-ng.slangp"), "shaders = 17\nshader8 = shaders-ng/reflection_blur_pre.slang\nshader9 = shaders-ng/reflection_blur.slang\nshader16 = shaders-ng/final_pass.slang\ntextures = \"bg_over\"\nbg_over = \"textures/default.png\"\n").unwrap();
+        for name in ["reflection_blur_pre.slang", "reflection_blur.slang"] {
+            fs::write(
+                root.join("shaders-ng").join(name),
+                "if (DO_BEZEL == 0.0) return;",
+            )
+            .unwrap();
+        }
         fs::write(
             root.join("Base.slangp"),
             "#reference \"koko-aio-ng.slangp\"\nDO_PIXELGRID = \"1.0\"\n",
@@ -257,7 +327,7 @@ mod tests {
             false,
         )
         .unwrap();
-        let settings = fs::read_to_string(preset).unwrap();
+        let settings = fs::read_to_string(&preset).unwrap();
         assert_eq!(settings.matches("DO_AMBILIGHT =").count(), 1);
         assert!(settings.contains("DO_AMBILIGHT = \"1.0\""));
         assert_eq!(settings.matches("DO_BEZEL =").count(), 1);
@@ -267,6 +337,15 @@ mod tests {
         assert!(settings.contains("DO_PIXELGRID = \"1.0\""));
         assert!(!settings.contains("#reference"));
         assert!(settings.contains("bg_over = \"/art/bezel.png\""));
+        for name in ["reflection_blur_pre.slang", "reflection_blur.slang"] {
+            let path = preset.with_extension(name);
+            assert!(settings.contains(&path.to_string_lossy().replace('\\', "/")));
+            assert!(
+                !fs::read_to_string(path)
+                    .unwrap()
+                    .contains("if (DO_BEZEL == 0.0) return;")
+            );
+        }
         assert!(settings.contains(&format!(
             "shader16 = \"{}\"",
             root.join("lighting.slang").to_string_lossy().replace('\\', "/")
