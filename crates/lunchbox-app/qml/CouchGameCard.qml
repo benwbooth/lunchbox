@@ -40,10 +40,10 @@ Item {
     signal activated(int index)
 
     function requestArtwork() {
-        library.request_artwork(gameMediaId, gameCanonicalTitle, gamePlatform,
-                                wheel ? "clear-logo" : "box-front")
+        library.request_artwork_for_game(gameId, wheel ? "clear-logo" : "box-front")
     }
     Component.onCompleted: requestArtwork()
+    onGameIdChanged: requestArtwork()
     onGameMediaIdChanged: requestArtwork()
     onWheelChanged: requestArtwork()
 

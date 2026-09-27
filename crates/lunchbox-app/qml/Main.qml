@@ -10378,6 +10378,13 @@ ApplicationWindow {
 
     component GameGrid: MomentumGridView {
         id: grid
+        VisibleArtworkPriority {
+            libraryModel: library
+            view: grid
+            viewId: "desktop-grid"
+            enabled: !root.couchModeActive || root.couchWorkspace === "library"
+            artworkType: library.artwork_type
+        }
         GridHoverFocusState { id: hoverFocusState }
         defaultWheelMomentum: false
         function startupArtworkReady() {
@@ -11126,6 +11133,14 @@ ApplicationWindow {
 
     component GameList: MomentumListView {
         id: list
+        VisibleArtworkPriority {
+            libraryModel: library
+            view: list
+            viewId: "desktop-list"
+            enabled: !root.couchModeActive || root.couchWorkspace === "library"
+            artworkType: library.artwork_type
+            topInset: 46
+        }
         function startupArtworkReady() {
             let visibleRows = 0
             for (const item of contentItem.children) {

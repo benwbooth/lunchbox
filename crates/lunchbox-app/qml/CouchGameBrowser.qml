@@ -97,6 +97,11 @@ Item {
         id: wall
         MomentumGridView {
             id: grid
+            VisibleArtworkPriority {
+                libraryModel: browser.library
+                view: grid
+                viewId: "couch-wall"
+            }
             objectName: "couchWallGrid"
             readonly property int columnCount: Math.max(3, Math.floor(verticalContentWidth / 190))
             model: browser.library
@@ -124,6 +129,12 @@ Item {
         id: animatedPath
         PathView {
             id: carousel
+            VisibleArtworkPriority {
+                libraryModel: browser.library
+                view: carousel
+                viewId: "couch-path"
+                artworkType: carousel.wheel ? "clear-logo" : "box-front"
+            }
             readonly property bool wheel: browser.viewStyle === "wheel"
             model: browser.library
             clip: true

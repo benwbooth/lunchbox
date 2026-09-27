@@ -75,6 +75,7 @@ fn main() {
             .depend("QtMultimedia")
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
+                "qml/VisibleArtworkPriority.qml",
                 "qml/GameModsPane.qml",
                 "qml/CommunityPatchesPane.qml",
                 "qml/RetroAchievementsPane.qml",

@@ -404,6 +404,14 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn set_visible_artwork_games(
+            self: Pin<&mut LibraryModel>,
+            view_id: QString,
+            game_uids_json: QString,
+            artwork_type: QString,
+        );
+
+        #[qinvokable]
         fn request_game_video(self: Pin<&mut LibraryModel>, game_uid: QString);
 
         #[qinvokable]
@@ -1143,6 +1151,7 @@ pub struct LibraryModelRust {
     media_fetch_queue: Option<MediaFetchQueue>,
     exo_import_running: bool,
     media_requests: HashSet<(i64, ArtworkKind)>,
+    media_retry_after: HashMap<(i64, ArtworkKind), std::time::Instant>,
     emumovies_state_known: bool,
     emumovies_configured: bool,
     automatic_video_queue: VecDeque<AutomaticVideoRequest>,
@@ -1375,6 +1384,7 @@ impl Default for LibraryModelRust {
             media_fetch_queue: None,
             exo_import_running: false,
             media_requests: HashSet::new(),
+            media_retry_after: HashMap::new(),
             emumovies_state_known: false,
             emumovies_configured: false,
             automatic_video_queue: VecDeque::new(),
@@ -3964,6 +3974,37 @@ impl qobject::LibraryModel {
         Some((game.media_id, game.title.clone(), game.platform.clone()))
     }
 
+    pub fn set_visible_artwork_games(
+        mut self: Pin<&mut Self>,
+        view_id: QString,
+        game_uids_json: QString,
+        artwork_type: QString,
+    ) {
+        let Some(kind) = ArtworkKind::parse(&artwork_type.to_string()) else { return; };
+        let Ok(game_uids) = serde_json::from_str::<Vec<String>>(&game_uids_json.to_string()) else {
+            return;
+        };
+        // Resolve each identity together, never from partially reused delegate
+        // roles. The order is nearest-to-viewport-center first.
+        let identities: Vec<_> = game_uids.iter().take(512)
+            .filter_map(|uid| self.artwork_identity_for_game(&qstring(uid)))
+            .collect();
+        let removed = self.as_ref().rust().media_fetch_queue.as_ref()
+            .and_then(|queue| queue.set_visible_artwork(view_id.to_string(), identities.iter()
+                .map(|(media_id, _, _)| (*media_id, kind)).collect()).ok())
+            .unwrap_or_default();
+        if !removed.is_empty() {
+            for key in removed {
+                self.as_mut().rust_mut().media_requests.remove(&key);
+            }
+            self.as_mut().update_media_pending_count();
+        }
+        for (media_id, title, platform) in identities {
+            self.as_mut().queue_artwork_request(media_id, qstring(title), qstring(platform),
+                artwork_type.clone(), false, false);
+        }
+    }
+
     pub fn set_emumovies_configured(mut self: Pin<&mut Self>, configured: bool) {
         let was_known = self.as_ref().rust().emumovies_state_known;
         if was_known && self.as_ref().rust().emumovies_configured == configured {
@@ -3972,6 +4013,7 @@ impl qobject::LibraryModel {
         self.as_mut().rust_mut().emumovies_state_known = true;
         self.as_mut().rust_mut().emumovies_configured = configured;
         if configured {
+            self.as_mut().rust_mut().media_retry_after.clear();
             self.as_mut().rust_mut().automatic_video_terminal.clear();
             self.as_mut().rust_mut().automatic_video_unavailable.clear();
             self.as_mut().rust_mut().automatic_video_messages.clear();
@@ -4522,6 +4564,10 @@ impl qobject::LibraryModel {
             return;
         }
         let key = (database_id, kind);
+        if !force && self.as_ref().rust().media_retry_after.get(&key)
+            .is_some_and(|retry_after| *retry_after > std::time::Instant::now()) {
+            return;
+        }
         if self.as_ref().rust().media_requests.contains(&key) {
             if foreground {
                 let prioritized = self
@@ -6214,6 +6260,14 @@ impl qobject::LibraryModel {
             .rust_mut()
             .media_requests
             .remove(&(database_id, requested_kind));
+        // Every downloaded cover increments media_revision. Without a short
+        // per-request cooldown, every other tile immediately retries its miss
+        // (or its already-downloaded fallback), crowding out new visible games.
+        let retry_delay = if matches!(&outcome, MediaFetchOutcome::Failed { .. }) { 30 } else { 300 };
+        self.as_mut().rust_mut().media_retry_after.insert(
+            (database_id, requested_kind),
+            std::time::Instant::now() + std::time::Duration::from_secs(retry_delay),
+        );
         self.as_mut().update_media_pending_count();
 
         match outcome {

@@ -29,6 +29,11 @@ TestCase {
                 function artwork_url(id, kind) { return "" }
                 function exact_artwork_url(id, kind) { return "" }
                 function request_artwork(id, title, platform, kind) {}
+                function request_artwork_for_game(id, kind) {}
+                property var visibleArtwork: ({})
+                function set_visible_artwork_games(view, ids, kind) {
+                    visibleArtwork[view] = JSON.parse(ids)
+                }
                 Component.onCompleted: {
                     for (let i = 0; i < 36; ++i)
                         append({ gameId: "game-" + i, gameTitle: "Game " + i,
@@ -65,6 +70,24 @@ TestCase {
         browser.currentIndex = 35
         browser.positionViewAtEnd()
         tryVerify(function() { return browser.currentItem && browser.currentItem.gameId === "game-35" })
+    }
+    function test_all_views_report_visible_media_and_clear_old_view() {
+        const browser = createTemporaryObject(browserComponent, this)
+        tryCompare(browser, "count", 36)
+        browser.currentIndex = 17
+        for (const style of ["wheel", "shelf", "wall", "album"]) {
+            browser.viewStyle = style
+            browser.positionViewAtIndex(17, ListView.Center)
+            const key = style === "shelf" ? "couch-shelf"
+                        : style === "wall" ? "couch-wall" : "couch-path"
+            tryVerify(() => (browser.library.visibleArtwork[key] || []).includes("game-17"),
+                      1500, style + " should prioritize its displayed selection")
+            for (const other of ["couch-shelf", "couch-wall", "couch-path"]) {
+                if (other !== key)
+                    compare((browser.library.visibleArtwork[other] || []).length, 0,
+                            "Destroyed " + other + " must release its priority")
+            }
+        }
     }
     SignalSpy { id: activation; signalName: "cardActivated" }
     function test_wall_wheel_keeps_gliding_and_reserves_slim_scrollbar() {

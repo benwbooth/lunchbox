@@ -87,8 +87,11 @@ pub(crate) fn effective_provider_priority(priority: &[String]) -> Vec<String> {
 
 const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
 const MEDIA_DOWNLOAD_WORKERS: usize = 8;
-const FOREGROUND_MEDIA_WORKERS: usize = 3;
+// Leave at most two workers occupied by offscreen prefetches. All eight can
+// service visible covers; hover/detail requests still go ahead of the viewport.
+const FOREGROUND_MEDIA_WORKERS: usize = 6;
 const MEDIA_DOWNLOAD_QUEUE_CAPACITY: usize = 512;
+const OFFSCREEN_PREFETCH_LIMIT: usize = 128;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const PROVIDER_FAILURE_BACKOFF: Duration = Duration::from_secs(2 * 60);
@@ -1119,6 +1122,10 @@ pub struct MediaFetchQueue {
 struct MediaFetchState {
     foreground_requests: VecDeque<MediaFetchRequest>,
     requests: VecDeque<MediaFetchRequest>,
+    visible_views: HashMap<String, Vec<(i64, ArtworkKind)>>,
+    visible_rank: HashMap<(i64, ArtworkKind), usize>,
+    active_requests: HashSet<(i64, ArtworkKind)>,
+    active_foreground: HashSet<(i64, ArtworkKind)>,
     shutdown: bool,
 }
 
@@ -1130,7 +1137,7 @@ impl MediaFetchState {
     }
 
     fn push(&mut self, request: MediaFetchRequest, foreground: bool) {
-        if foreground {
+        if foreground || request.force {
             self.foreground_requests.push_back(request);
         } else {
             self.requests.push_back(request);
@@ -1149,6 +1156,10 @@ impl MediaFetchState {
         let Some(position) = self.requests.iter().position(|request| {
             request.database_id == database_id && request.requested_kind == requested_kind
         }) else {
+            // A hovered cover may already be fetching on a background worker.
+            if self.active_requests.contains(&(database_id, requested_kind)) {
+                self.active_foreground.insert((database_id, requested_kind));
+            }
             return false;
         };
         let Some(request) = self.requests.remove(position) else {
@@ -1159,13 +1170,64 @@ impl MediaFetchState {
     }
 
     fn pop_next(&mut self, foreground_only: bool) -> Option<MediaFetchRequest> {
-        self.foreground_requests.pop_back().or_else(|| {
-            if foreground_only {
-                None
-            } else {
-                self.requests.pop_back()
+        if let Some(request) = self.foreground_requests.pop_back() {
+            self.active_foreground.insert((request.database_id, request.requested_kind));
+            return Some(request);
+        }
+        let visible = self.requests.iter().enumerate()
+            .filter_map(|(index, request)| self.visible_rank
+                .get(&(request.database_id, request.requested_kind))
+                .map(|rank| (index, *rank)))
+            .min_by_key(|(_, rank)| *rank);
+        if let Some((index, _)) = visible {
+            return self.requests.remove(index);
+        }
+        if foreground_only { None } else { self.requests.pop_back() }
+    }
+
+    fn set_visible(&mut self, view: String, keys: Vec<(i64, ArtworkKind)>) {
+        if keys.is_empty() {
+            self.visible_views.remove(&view);
+        } else {
+            self.visible_views.insert(view, keys);
+        }
+        self.visible_rank.clear();
+        for keys in self.visible_views.values() {
+            for (rank, key) in keys.iter().enumerate() {
+                self.visible_rank.entry(*key)
+                    .and_modify(|previous| *previous = (*previous).min(rank))
+                    .or_insert(rank);
             }
-        })
+        }
+    }
+
+    fn should_yield(&self, key: (i64, ArtworkKind)) -> bool {
+        self.shutdown || (!self.visible_rank.contains_key(&key)
+            && !self.active_foreground.contains(&key)
+            && (!self.foreground_requests.is_empty()
+                || self.requests.iter().any(|request| self.visible_rank
+                    .contains_key(&(request.database_id, request.requested_kind)))))
+    }
+
+    fn trim_offscreen_prefetch(&mut self) -> Vec<(i64, ArtworkKind)> {
+        let mut retained = 0;
+        let mut removed = Vec::new();
+        // Preserve the newest offscreen requests, which are usually the rows
+        // just outside the current viewport. Don't retain an entire scroll's
+        // worth of stale downloads or let them fill the admission limit.
+        for index in (0..self.requests.len()).rev() {
+            let request = &self.requests[index];
+            let key = (request.database_id, request.requested_kind);
+            if request.force || self.visible_rank.contains_key(&key) {
+                continue;
+            }
+            retained += 1;
+            if retained > OFFSCREEN_PREFETCH_LIMIT {
+                self.requests.remove(index);
+                removed.push(key);
+            }
+        }
+        removed
     }
 }
 
@@ -1229,12 +1291,32 @@ impl MediaFetchQueue {
         if state.shutdown {
             bail!("artwork retrieval workers are unavailable");
         }
-        if state.queued_len() >= MEDIA_DOWNLOAD_QUEUE_CAPACITY {
+        let priority = foreground || state.visible_rank
+            .contains_key(&(request.database_id, request.requested_kind));
+        // A full prefetch backlog must never reject a newly visible cover.
+        let capacity = MEDIA_DOWNLOAD_QUEUE_CAPACITY * if priority { 2 } else { 1 };
+        if state.queued_len() >= capacity {
             bail!("artwork retrieval queue is full");
         }
         state.push(request, foreground);
-        ready.notify_one();
+        // A single wake can select a reserved worker that cannot consume the
+        // new background job, leaving eligible workers asleep indefinitely.
+        ready.notify_all();
         Ok(())
+    }
+
+    pub fn set_visible_artwork(
+        &self,
+        view: String,
+        keys: Vec<(i64, ArtworkKind)>,
+    ) -> Result<Vec<(i64, ArtworkKind)>> {
+        let (state, ready) = &*self.shared;
+        let mut state = state.lock()
+            .map_err(|_| anyhow::anyhow!("artwork retrieval queue is unavailable"))?;
+        state.set_visible(view, keys);
+        let removed = state.trim_offscreen_prefetch();
+        ready.notify_all();
+        Ok(removed)
     }
 
     pub fn prioritize_request(
@@ -1251,7 +1333,7 @@ impl MediaFetchQueue {
         }
         let prioritized = state.prioritize(database_id, requested_kind);
         if prioritized {
-            ready.notify_one();
+            ready.notify_all();
         }
         Ok(prioritized)
     }
@@ -1309,31 +1391,51 @@ fn media_fetch_worker<F>(
                 Ok(state) => state,
                 Err(_) => return,
             };
-            while state.foreground_requests.is_empty()
-                && (foreground_only || state.requests.is_empty())
-                && !state.shutdown
-            {
+            loop {
+                if state.shutdown { return; }
+                if let Some(request) = state.pop_next(foreground_only) {
+                    state.active_requests.insert((request.database_id, request.requested_kind));
+                    break request;
+                }
                 state = match ready.wait(state) {
                     Ok(state) => state,
                     Err(_) => return,
                 };
             }
-            if state.shutdown {
-                return;
-            }
-            state.pop_next(foreground_only)
         };
-        let Some(request) = request else { continue };
-        callback(fetch_media(
+        let key = (request.database_id, request.requested_kind);
+        let should_yield = || shared.0.lock().map_or(true, |state| state.should_yield(key));
+        let outcome = fetch_media(
             &agent,
             &root,
             &base_url,
             &provider_priority,
-            request,
+            request.clone(),
             worker_index,
-        ));
+            &should_yield,
+        );
+        if let Ok(mut state) = shared.0.lock() {
+            state.active_requests.remove(&key);
+            state.active_foreground.remove(&key);
+            if outcome.is_none() && !state.shutdown {
+                // Yield between network operations, without reporting a miss
+                // or clearing the model's pending request. Cached files survive.
+                state.push(request, false);
+            }
+            shared.1.notify_all();
+        }
+        if let Some(outcome) = outcome { callback(outcome); }
     }
 }
+
+#[derive(Debug)]
+struct MediaFetchYield;
+impl std::fmt::Display for MediaFetchYield {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("yielding to visible artwork")
+    }
+}
+impl std::error::Error for MediaFetchYield {}
 
 fn fetch_media(
     agent: &ureq::Agent,
@@ -1342,14 +1444,16 @@ fn fetch_media(
     provider_priority: &[String],
     request: MediaFetchRequest,
     worker_index: usize,
-) -> MediaFetchOutcome {
+    should_yield: &dyn Fn() -> bool,
+) -> Option<MediaFetchOutcome> {
     let mut errors = Vec::new();
     for provider in automatic_provider_order(provider_priority) {
+        if should_yield() { return None; }
         if !request.force && provider_failure_backoff_is_active(&provider) {
             continue;
         }
         let result = match provider.as_str() {
-            "libretro" => fetch_libretro(agent, root, base_url, &request, worker_index),
+            "libretro" => fetch_libretro(agent, root, base_url, &request, worker_index, should_yield),
             "steamgriddb" => fetch_steamgriddb(root, &request),
             "igdb" => fetch_igdb(root, &request),
             "emumovies" => fetch_emumovies(root, &request),
@@ -1360,7 +1464,7 @@ fn fetch_media(
         match result {
             Ok(Some((fetched_kind, path))) => {
                 clear_provider_failure(&provider);
-                return MediaFetchOutcome::Found {
+                return Some(MediaFetchOutcome::Found {
                     request_id: request.request_id,
                     database_id: request.database_id,
                     requested_kind: request.requested_kind,
@@ -1368,10 +1472,11 @@ fn fetch_media(
                     path,
                     provider,
                     force: request.force,
-                };
+                });
             }
             Ok(None) => clear_provider_failure(&provider),
             Err(error) => {
+                if error.is::<MediaFetchYield>() { return None; }
                 remember_provider_failure(&provider);
                 errors.push(format!(
                     "{}: {}",
@@ -1382,7 +1487,7 @@ fn fetch_media(
         }
     }
 
-    if errors.is_empty() {
+    Some(if errors.is_empty() {
         missing_outcome(request)
     } else {
         MediaFetchOutcome::Failed {
@@ -1392,7 +1497,7 @@ fn fetch_media(
             error: errors.join("; "),
             force: request.force,
         }
-    }
+    })
 }
 
 fn provider_failure_backoff_is_active(provider: &str) -> bool {
@@ -1435,6 +1540,7 @@ fn fetch_libretro(
     base_url: &str,
     request: &MediaFetchRequest,
     worker_index: usize,
+    should_yield: &dyn Fn() -> bool,
 ) -> Result<Option<(ArtworkKind, PathBuf)>> {
     if !request.force && negative_cache_is_fresh(root, request.database_id, request.requested_kind)
     {
@@ -1456,6 +1562,7 @@ fn fetch_libretro(
         }
 
         for candidate in libretro_title_candidates(&request.title) {
+            if should_yield() { return Err(MediaFetchYield.into()); }
             let url = format!(
                 "{}/{}/{}/{}.png",
                 base_url,
@@ -2516,6 +2623,98 @@ mod tests {
         assert_eq!(state.pop_next(false).unwrap().database_id, 1);
     }
 
+    #[test]
+    fn visible_artwork_precedes_prefetch_but_not_selected_artwork() {
+        let mut state = MediaFetchState::default();
+        for id in 1..=100 { state.push(fetch_request(id, ArtworkKind::BoxFront), false); }
+        state.set_visible("grid".into(), vec![(2, ArtworkKind::BoxFront), (1, ArtworkKind::BoxFront)]);
+        state.push(fetch_request(101, ArtworkKind::Fanart), true);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 101);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 2);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 1);
+        assert!(state.pop_next(true).is_none());
+        assert_eq!(state.pop_next(false).unwrap().database_id, 100);
+    }
+
+    #[test]
+    fn scrolling_replaces_priority_without_duplicating_or_cancelling_other_views() {
+        let mut state = MediaFetchState::default();
+        for id in 1..=10 { state.push(fetch_request(id, ArtworkKind::BoxFront), false); }
+        state.set_visible("grid".into(), vec![(1, ArtworkKind::BoxFront)]);
+        state.set_visible("shelf".into(), vec![(2, ArtworkKind::BoxFront)]);
+        state.set_visible("grid".into(), vec![(3, ArtworkKind::BoxFront)]);
+        state.set_visible("shelf".into(), vec![]);
+        assert_eq!(state.queued_len(), 10);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 3);
+        assert!(state.pop_next(true).is_none());
+        assert!(state.visible_views.contains_key("grid"));
+        assert!(!state.visible_views.contains_key("shelf"));
+    }
+
+    #[test]
+    fn offscreen_search_yields_only_when_more_relevant_work_is_waiting() {
+        let mut state = MediaFetchState::default();
+        state.push(fetch_request(2, ArtworkKind::BoxFront), false);
+        assert!(!state.should_yield((1, ArtworkKind::BoxFront)));
+        state.set_visible("grid".into(), vec![(2, ArtworkKind::BoxFront)]);
+        assert!(state.should_yield((1, ArtworkKind::BoxFront)));
+        assert!(!state.should_yield((2, ArtworkKind::BoxFront)));
+        state.active_requests.insert((1, ArtworkKind::BoxFront));
+        state.prioritize(1, ArtworkKind::BoxFront);
+        assert!(!state.should_yield((1, ArtworkKind::BoxFront)));
+    }
+
+    #[test]
+    fn visible_artwork_is_accepted_when_prefetch_queue_is_full() {
+        let queue = MediaFetchQueue {
+            shared: Arc::new((Mutex::new(MediaFetchState::default()), Condvar::new())),
+        };
+        for id in 1..=MEDIA_DOWNLOAD_QUEUE_CAPACITY {
+            queue.try_request(fetch_request(id as i64, ArtworkKind::BoxFront)).unwrap();
+        }
+        assert!(queue.try_request(fetch_request(1000, ArtworkKind::BoxFront)).is_err());
+        let removed = queue.set_visible_artwork("grid".into(), vec![(1000, ArtworkKind::BoxFront)]).unwrap();
+        assert_eq!(removed.len(), MEDIA_DOWNLOAD_QUEUE_CAPACITY - OFFSCREEN_PREFETCH_LIMIT);
+        assert!(removed.contains(&(1, ArtworkKind::BoxFront)));
+        assert!(!removed.contains(&(MEDIA_DOWNLOAD_QUEUE_CAPACITY as i64, ArtworkKind::BoxFront)));
+        queue.try_request(fetch_request(1000, ArtworkKind::BoxFront)).unwrap();
+        assert_eq!(queue.shared.0.lock().unwrap().pop_next(true).unwrap().database_id, 1000);
+    }
+
+    #[test]
+    fn trimming_prefetch_never_discards_visible_or_explicit_work() {
+        let mut state = MediaFetchState::default();
+        state.push(fetch_request(1, ArtworkKind::BoxFront), false);
+        let mut forced = fetch_request(2, ArtworkKind::BoxFront);
+        forced.force = true;
+        state.push(forced, false);
+        for id in 3..=500 { state.push(fetch_request(id, ArtworkKind::BoxFront), false); }
+        state.set_visible("grid".into(), vec![(1, ArtworkKind::BoxFront)]);
+        let removed = state.trim_offscreen_prefetch();
+        assert!(!removed.contains(&(1, ArtworkKind::BoxFront)));
+        assert!(!removed.contains(&(2, ArtworkKind::BoxFront)));
+        assert_eq!(state.queued_len(), OFFSCREEN_PREFETCH_LIMIT + 2);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 2);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 1);
+    }
+
+    #[test]
+    fn yielding_artwork_does_not_report_a_provider_failure_or_cache_a_miss() {
+        let root = tempfile::tempdir().unwrap();
+        let mut request = fetch_request(42, ArtworkKind::BoxFront);
+        request.platform = "Nintendo Entertainment System".into();
+        let agent: ureq::Agent = ureq::Agent::config_builder().build().into();
+        let checks = std::cell::Cell::new(0);
+        let outcome = fetch_media(&agent, root.path(), "http://127.0.0.1:1",
+            &default_provider_priority(), request, 0, &|| {
+                checks.set(checks.get() + 1);
+                checks.get() >= 2 // Stop at first URL, after provider selection.
+            });
+        assert!(outcome.is_none());
+        assert!(!negative_cache_is_fresh(root.path(), 42, ArtworkKind::BoxFront));
+        assert!(root.path().read_dir().unwrap().next().is_none());
+    }
+
     fn touch(path: &Path) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"image fixture").unwrap();
@@ -2825,7 +3024,8 @@ mod tests {
                 exact_only: true,
             },
             0,
-        );
+            &|| false,
+        ).expect("uninterrupted fetch");
         server.join().unwrap();
         match outcome {
             MediaFetchOutcome::Found {

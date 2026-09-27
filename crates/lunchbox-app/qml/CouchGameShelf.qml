@@ -4,6 +4,11 @@ import QtQuick
 
 MomentumListView {
     id: shelf
+    VisibleArtworkPriority {
+        libraryModel: shelf.library
+        view: shelf
+        viewId: "couch-shelf"
+    }
 
     required property var library
     required property color background
@@ -78,11 +83,11 @@ MomentumListView {
         height: shelf.cinematic ? 98 : shelf.height - 8
 
         function requestArtwork() {
-            shelf.library.request_artwork(gameMediaId, gameCanonicalTitle,
-                                          gamePlatform, "box-front")
+            shelf.library.request_artwork_for_game(gameId, "box-front")
         }
 
         Component.onCompleted: requestArtwork()
+        onGameIdChanged: requestArtwork()
         onGameMediaIdChanged: requestArtwork()
         onGameCanonicalTitleChanged: requestArtwork()
         onGamePlatformChanged: requestArtwork()
