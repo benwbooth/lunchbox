@@ -272,7 +272,7 @@ mod tests {
         assert!(!adapted.contains("lunchpailOpening"));
         assert!(adapted.contains("#include \"/shaders/koko/config.inc\""));
         assert!(adapted.contains("vec3 light = vec3(0.0)"));
-        assert!(adapted.contains("* (1.0 - pixel_fg_image.a) * lunchpailArtBounds"));
+        assert!(adapted.contains("* (lunchpailPadding + lunchpailBevel) * lunchpailArtBounds"));
         assert!(adapted.contains("texture(in_glow_pass, lunchpailSample)"));
         assert!(adapted.contains("lunchpailReflection * lunchpailLip"));
         assert!(adapted.contains("texelFetch(lunchpail_picture_bounds, ivec2(2), 0)"));
@@ -305,6 +305,20 @@ mod tests {
         );
         assert!(!material.contains("co_content ="));
         assert!(!material.contains("* 0.55"));
+    }
+
+    #[test]
+    fn opaque_inner_bevel_does_not_require_native_black_padding() {
+        let material = include_str!("retrotube_inner_reflection.slang");
+        assert!(material.contains("* (1.0 - pixel_fg_image.a)"));
+        assert!(material.contains("* pixel_fg_image.a"));
+        assert!(material.contains("smoothstep(0.0, 0.055, lunchpailDistance)"));
+        assert!(material.contains("smoothstep(0.10, 0.28, lunchpailArtBrightness)"));
+        assert!(material.contains("step(0.00001, lunchpailDistance)"));
+        // The opaque material adds to (not replaces) the existing transparent
+        // lip. The same shader must handle a full-frame console and an arcade
+        // core with native black margins, without per-game special cases.
+        assert!(material.contains("lunchpailPadding + lunchpailBevel"));
     }
 
     #[test]

@@ -14,8 +14,9 @@ Project, Orionsangel, and Duimon. Available choices depend on the system,
 game, and installed artwork.
 
 **RetroTube TV** reflects the picture onto the dark inner lip beside the screen,
-not over the printed outer artwork. Narrow black padding in a game's picture
-can receive this light without cropping or enlarging the game. This works with
+not over the printed outer artwork. Both the dark bezel beside a full-screen
+picture and narrow black padding can receive this light without cropping or
+enlarging the game. This works with
 external artwork as well as Koko's built-in TV frame. The artwork
 keeps its shape, unused sidebars stay black, and the game retains its curved
 screen opening. The effect applies on the next game launch.

@@ -1,8 +1,10 @@
 // Fragment snippet inserted into Koko's final compositor. Its original
 // reflection_blur_pre/reflection_blur passes and fn_pixel_bezel provide the
 // material controls, aspect-correct blur, corner shading and roughness model.
-// External artwork has no material LUT: use its transparent inner lip instead,
-// never light the printed artwork or alter the picture's size/curvature.
+// External artwork has no material LUT. Include both transparent padding and
+// the dark, opaque bevel immediately beside the picture; many console games
+// fill their aperture and have no transparent padding. Keep the printed outer
+// artwork untouched and never alter the picture's size/curvature.
 vec3 light = vec3(0.0);
 float lunchpailArtBounds = step(0.0, image_coords.x) * step(image_coords.x, 1.0)
     * step(0.0, image_coords.y) * step(image_coords.y, 1.0);
@@ -10,9 +12,16 @@ vec2 lunchpailEdge = clamp(co_content, lunchpailPictureBounds.xy, lunchpailPictu
 vec2 lunchpailOutside = abs(co_content - lunchpailEdge);
 lunchpailOutside.x *= vIn_aspect;
 float lunchpailDistance = length(lunchpailOutside);
+float lunchpailPadding = (1.0 - smoothstep(0.0, 0.10, lunchpailDistance))
+    * (1.0 - pixel_fg_image.a);
+// The material band is narrower than the possible native padding. Its
+// distance is measured from the curved picture edge, not the image rectangle,
+// so the light stops before the TV's outer frame, logos and printed cabinet.
+float lunchpailArtBrightness = max(max(pixel_fg_image.r, pixel_fg_image.g), pixel_fg_image.b);
+float lunchpailBevel = (1.0 - smoothstep(0.0, 0.055, lunchpailDistance))
+    * (1.0 - smoothstep(0.10, 0.28, lunchpailArtBrightness)) * pixel_fg_image.a;
 float lunchpailLip = step(0.00001, lunchpailDistance)
-    * (1.0 - smoothstep(0.0, 0.10, lunchpailDistance))
-    * (1.0 - pixel_fg_image.a) * lunchpailArtBounds;
+    * (lunchpailPadding + lunchpailBevel) * lunchpailArtBounds;
 if (lunchpailLip > 0.0 && BEZEL_REFL_STRENGTH > 0.0) {
     // Like Koko's mirrored-repeat sampler: flip about the curved picture edge,
     // not the flat artwork rectangle. Normalize only the material coordinates
