@@ -2,8 +2,6 @@ name: Publish Flatpak repository
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
   # Releases created with GITHUB_TOKEN do not fire another release workflow.
   workflow_run:
     workflows: [Native packages]
