@@ -28,10 +28,14 @@ WheelHandler {
     property real velocityY: 0
     property double lastFrameAt: 0
     property double lastNotchAt: 0
-    property int burstCount: 0
+    property real burstCount: 0
     property int lastDirection: 0
     property bool advancing: false
     property real lastAppliedContentY: NaN
+    property double lastPixelAt: 0
+    property real pixelVelocity: 0
+    property int pixelSamples: 0
+    property bool pixelGestureActive: false
 
     onEnabledChanged: {
         if (!enabled)
@@ -77,9 +81,14 @@ WheelHandler {
 
     function stopMomentum() {
         momentumTimer.stop()
+        pixelReleaseTimer.stop()
         velocityY = 0
         lastFrameAt = 0
         lastAppliedContentY = NaN
+        lastPixelAt = 0
+        pixelVelocity = 0
+        pixelSamples = 0
+        pixelGestureActive = false
     }
 
     function addVelocity(impulse) {
@@ -98,12 +107,48 @@ WheelHandler {
             momentumTimer.start()
     }
 
-    function scrollPixels(distance) {
-        // Touchpads already send a stream of pixel deltas, including their
-        // native kinetic tail. Apply each packet now instead of waiting for a
-        // timer and multiplying it into a delayed, oversized jump.
-        stopMomentum()
+    function scrollPixels(distance, phased) {
+        // Follow the fingers exactly while they move. Not every platform
+        // supplies a kinetic tail (notably libinput touchpads), so retain the
+        // release velocity instead of unconditionally discarding momentum.
+        const now = Date.now()
+        const elapsed = now - lastPixelAt
+        if (!pixelGestureActive || elapsed > 120) {
+            pixelVelocity = 0
+            pixelSamples = 0
+        } else {
+            const sample = distance / (Math.max(8, elapsed) / 1000)
+            pixelVelocity = pixelVelocity * 0.35 + sample * 0.65
+        }
+        if (pixelVelocity * distance < 0)
+            pixelVelocity = 0
+        ++pixelSamples
+        pixelGestureActive = true
+        lastPixelAt = now
+        momentumTimer.stop()
+        velocityY = 0
+        lastFrameAt = 0
         moveImmediately(distance)
+        // Phased gestures release on ScrollEnd. Older/unphased devices need
+        // a short inactivity fallback, never an extra glide between packets.
+        if (phased)
+            pixelReleaseTimer.stop()
+        else
+            pixelReleaseTimer.restart()
+    }
+
+    function finishPixelGesture() {
+        pixelReleaseTimer.stop()
+        if (!pixelGestureActive)
+            return
+        const releasedVelocity = pixelSamples >= 2 && Date.now() - lastPixelAt <= 120
+                ? pixelVelocity * momentumShare() / 0.7 : 0
+        pixelGestureActive = false
+        pixelVelocity = 0
+        pixelSamples = 0
+        lastPixelAt = 0
+        if (Math.abs(releasedVelocity) >= minimumVelocity)
+            addVelocity(releasedVelocity)
     }
 
     function moveImmediately(distance) {
@@ -119,7 +164,7 @@ WheelHandler {
         const now = Date.now()
         const direction = steps < 0 ? -1 : 1
         burstCount = now - lastNotchAt <= 230 && direction === lastDirection
-                   ? Math.min(10, burstCount + 1) : 0
+                   ? Math.min(10, burstCount + Math.abs(steps)) : 0
         lastNotchAt = now
 
         const acceleration = Math.min(9.0, 1 + burstCount * 0.7)
@@ -170,6 +215,11 @@ WheelHandler {
         onTriggered: handler.advanceMomentum()
     }
 
+    property Timer pixelReleaseTimer: Timer {
+        interval: 60
+        onTriggered: handler.finishPixelGesture()
+    }
+
     property Connections scrollerConnections: Connections {
         target: scroller
 
@@ -187,17 +237,37 @@ WheelHandler {
             // marked so they do not cancel themselves. GridView can also
             // round our position to a pixel on a later layout pass; that is
             // still our movement, not a scrollbar/navigation takeover.
-            if (!handler.advancing && handler.momentumRunning
+            if (!handler.advancing && (handler.momentumRunning || handler.pixelGestureActive)
                     && Math.abs(scroller.contentY - handler.lastAppliedContentY) > 1)
                 handler.stopMomentum()
         }
     }
 
-    onWheel: function(event) {
-        const distance = Math.abs(event.angleDelta.y) >= 120
-                         ? -event.angleDelta.y
-                         : event.pixelDelta.y !== 0
-                           ? -event.pixelDelta.y : -event.angleDelta.y
+    function handleWheel(event) {
+        const phase = event.phase === undefined ? Qt.NoScrollPhase : event.phase
+        if (phase === Qt.ScrollBegin)
+            stopMomentum()
+        if (phase === Qt.ScrollEnd) {
+            const handled = pixelGestureActive
+            finishPixelGesture()
+            event.accepted = handled
+            return
+        }
+        // Native inertia (e.g. macOS) owns its tail. Never add a second one.
+        if (phase === Qt.ScrollMomentum) {
+            stopMomentum()
+            moveImmediately(-event.pixelDelta.y)
+            event.accepted = event.pixelDelta.y !== 0
+            return
+        }
+        const touchpad = event.device && event.device.type === PointerDevice.TouchPad
+        const pixelScroll = event.pixelDelta.y !== 0
+                && (touchpad || phase !== Qt.NoScrollPhase || event.angleDelta.y === 0)
+        const distance = pixelScroll ? -event.pixelDelta.y : -event.angleDelta.y
+        if (distance === 0) {
+            event.accepted = false
+            return
+        }
         // Let an enclosing pane take over when this one has reached its edge.
         if ((distance < 0 && scroller.contentY <= lowerBound() + 0.5)
                 || (distance > 0 && scroller.contentY >= upperBound() - 0.5)) {
@@ -205,26 +275,19 @@ WheelHandler {
             event.accepted = false
             return
         }
-        // X11/Wayland mouse wheels commonly provide both deltas. The angle
-        // delta represents real wheel notches; preferring the tiny synthetic
-        // pixel delta was the reason scrolling barely moved on Linux.
-        const notchSteps = event.angleDelta.y / 120
-        if (event.device && event.device.type === PointerDevice.TouchPad
-                && event.pixelDelta.y !== 0) {
-            scrollPixels(-event.pixelDelta.y)
+        if (pixelScroll) {
+            scrollPixels(distance, phase !== Qt.NoScrollPhase)
             burstCount = 0
             lastNotchAt = 0
-        } else if (Math.abs(event.angleDelta.y) >= 120) {
-            scrollNotches(-notchSteps)
-        } else if (event.pixelDelta.y !== 0) {
-            scrollPixels(-event.pixelDelta.y)
-            burstCount = 0
-            lastNotchAt = 0
-        } else if (event.angleDelta.y !== 0) {
-            scrollNotches(-notchSteps)
         } else {
-            return
+            // High-resolution mouse wheels can emit fractions of a notch
+            // alongside synthetic pixel deltas. They still need inertia.
+            pixelReleaseTimer.stop()
+            pixelGestureActive = false
+            scrollNotches(-event.angleDelta.y / 120)
         }
         event.accepted = true
     }
+
+    onWheel: event => handleWheel(event)
 }

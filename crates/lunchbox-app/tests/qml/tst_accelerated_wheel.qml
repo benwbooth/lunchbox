@@ -151,4 +151,89 @@ TestCase {
         verify(!handler.momentumRunning,
                "A scrollbar or navigation jump should take control")
     }
+
+    function wheelPacket(pixels, angle, phase, device) {
+        const event = { pixelDelta: Qt.point(0, pixels), angleDelta: Qt.point(0, angle),
+                        phase: phase, device: { type: device }, accepted: false }
+        handler.handleWheel(event)
+        return event
+    }
+
+    function pixelSwipe() {
+        wheelPacket(0, 0, Qt.ScrollBegin, PointerDevice.TouchPad)
+        for (let i = 0; i < 4; ++i) {
+            wheelPacket(-24, -12, Qt.ScrollUpdate, PointerDevice.TouchPad)
+            wait(16)
+        }
+    }
+
+    function test_touchpad_tracks_fingers_then_glides_on_release() {
+        pixelSwipe()
+        compare(scroller.contentY, 96, "Finger movement must be direct, not accelerated")
+        verify(!handler.momentumRunning, "Do not coast while fingers are still scrolling")
+        wheelPacket(0, 0, Qt.ScrollEnd, PointerDevice.TouchPad)
+        verify(handler.momentumRunning, "A touchpad without native inertia needs a release glide")
+        wait(100)
+        verify(scroller.contentY > 150, "Lifting fingers must not stop the grid dead")
+    }
+
+    function test_native_inertia_does_not_get_a_second_tail() {
+        pixelSwipe()
+        wheelPacket(0, 0, Qt.ScrollEnd, PointerDevice.TouchPad)
+        verify(handler.momentumRunning)
+        const released = scroller.contentY
+        wheelPacket(-12, -6, Qt.ScrollMomentum, PointerDevice.TouchPad)
+        compare(scroller.contentY, released + 12)
+        verify(!handler.momentumRunning, "Native inertia replaces synthesized inertia")
+        wheelPacket(0, 0, Qt.ScrollEnd, PointerDevice.TouchPad)
+        const stopped = scroller.contentY
+        wait(100)
+        compare(scroller.contentY, stopped, "Never coast again after native inertia ends")
+    }
+
+    function test_touchpad_pause_or_new_gesture_stops_glide() {
+        pixelSwipe()
+        wait(150)
+        wheelPacket(0, 0, Qt.ScrollEnd, PointerDevice.TouchPad)
+        verify(!handler.momentumRunning, "A finger pause before release means stop")
+        pixelSwipe()
+        wheelPacket(0, 0, Qt.ScrollEnd, PointerDevice.TouchPad)
+        verify(handler.momentumRunning)
+        wheelPacket(0, 0, Qt.ScrollBegin, PointerDevice.TouchPad)
+        verify(!handler.momentumRunning, "Touching down again takes control")
+    }
+
+    function test_unphased_pixel_stream_gets_one_release_glide() {
+        for (let i = 0; i < 4; ++i) {
+            wheelPacket(-20, 0, Qt.NoScrollPhase, PointerDevice.Mouse)
+            wait(16)
+        }
+        compare(scroller.contentY, 80)
+        wait(140)
+        verify(scroller.contentY > 120, "Unphased smooth scrolling still needs momentum")
+    }
+
+    function test_small_mouse_wheel_deltas_retain_momentum() {
+        wheelPacket(-2, -15, Qt.NoScrollPhase, PointerDevice.Mouse)
+        verify(handler.momentumRunning, "Fractional notches must not use the no-inertia path")
+        const immediate = scroller.contentY
+        wait(100)
+        verify(scroller.contentY > immediate + 40)
+        handler.stopMomentum()
+        handler.lastNotchAt = 0
+        handler.burstCount = 0
+        for (let i = 0; i < 8; ++i)
+            wheelPacket(-2, -15, Qt.NoScrollPhase, PointerDevice.Mouse)
+        verify(handler.burstCount < 1, "Acceleration counts full notches, not tiny packets")
+    }
+
+    function test_navigation_cancels_pending_pixel_release() {
+        handler.scrollPixels(24)
+        wait(16)
+        handler.scrollPixels(24)
+        scroller.contentY = 500
+        wait(150)
+        compare(scroller.contentY, 500)
+        verify(!handler.momentumRunning)
+    }
 }
