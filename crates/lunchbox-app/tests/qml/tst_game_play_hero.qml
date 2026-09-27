@@ -98,6 +98,32 @@ TestCase {
         compare(action.background.color, "#237a4d")
     }
 
+    function test_arcade_settings_are_scoped_collapsible_and_locked_during_play() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            arcadeBloodAvailable: true, arcadeBloodSupported: true, arcadeBlood: "red"
+        })
+        const section = findChild(hero, "arcadeSettingsSection")
+        const combo = findChild(hero, "arcadeBloodCombo")
+        verify(!section.visible)
+        hero.settingsExpanded = true
+        verify(section.visible)
+        verify(!combo.visible)
+        hero.arcadeExpanded = true
+        verify(combo.visible)
+        compare(combo.currentIndex, 1)
+        compare(combo.model[combo.currentIndex].label, "Red blood")
+        verify(combo.enabled)
+        hero.gameRunning = true
+        verify(!combo.enabled)
+        hero.gameRunning = false
+        hero.arcadeBloodSupported = false
+        verify(!combo.enabled)
+        hero.arcadeBlood = "censored"
+        compare(combo.currentIndex, 2)
+        hero.arcadeBloodAvailable = false
+        verify(!section.visible)
+    }
+
     function test_settings_accordion_hides_advanced_controls_but_not_play() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)

@@ -1,5 +1,6 @@
 mod arcade;
 mod arcade_download;
+mod arcade_settings;
 mod bezel_orionsangel;
 mod bezel_project;
 mod build_info;

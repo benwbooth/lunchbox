@@ -26,6 +26,11 @@ Rectangle {
     required property int selectedEmulatorOption
     required property bool translationOptedIn
     required property bool translationFeatureEnabled
+    property string arcadeBlood: "game"
+    property bool arcadeBloodAvailable: false
+    property bool arcadeBloodSupported: false
+    property bool arcadeExpanded: false
+    signal arcadeBloodSelected(string mode)
     required property int firmwareMissingCount
     required property string firmwareSetupLabel
     required property var emulatorLabelAt
@@ -261,6 +266,55 @@ Rectangle {
             highlighted: hero.translationOptedIn
             onClicked: hero.translationOptInSelected(!hero.translationOptedIn)
             Accessible.description: "Remembered for this game. Other games launch without translation."
+        }
+
+        Column {
+            objectName: "arcadeSettingsSection"
+            width: parent.width
+            visible: hero.settingsExpanded && hero.arcadeBloodAvailable
+            spacing: 6
+            LbButton {
+                objectName: "arcadeSettingsToggle"
+                width: parent.width
+                text: (hero.arcadeExpanded ? "▾  " : "▸  ") + "Arcade settings"
+                flat: true
+                onClicked: hero.arcadeExpanded = !hero.arcadeExpanded
+            }
+            Column {
+                width: parent.width
+                visible: hero.arcadeExpanded
+                spacing: 6
+                Text {
+                    text: "Blood"
+                    color: hero.ink
+                    font.pixelSize: 12
+                }
+                LbComboBox {
+                    id: arcadeBloodCombo
+                    objectName: "arcadeBloodCombo"
+                    width: parent.width
+                    enabled: hero.arcadeBloodSupported && !hero.launchBusy && !hero.gameRunning
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        {value: "game", label: "Use game setting"},
+                        {value: "red", label: "Red blood"},
+                        {value: "censored", label: "Censored blood"}
+                    ]
+                    currentIndex: hero.arcadeBlood === "red" ? 1 : hero.arcadeBlood === "censored" ? 2 : 0
+                    onActivated: hero.arcadeBloodSelected(model[currentIndex].value)
+                    Accessible.name: "Arcade blood setting"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: hero.arcadeBloodSupported
+                          ? "Native Neo Geo arcade setting. Remembered for this game and reapplied after loading a state. ROMs and high-score files are not edited. Changes apply next launch."
+                          : "Automatic blood settings require RetroArch MAME with an arcade (MVS) BIOS. Your choice is kept when switching emulators."
+                    color: hero.muted
+                    font.pixelSize: 11
+                }
+            }
         }
 
         RetroAchievementsPane {

@@ -947,9 +947,9 @@ impl CalibratedLaunch {
         Ok(())
     }
 
-    /// Retain only the known resume transformation. Original inspected files
+    /// Retain only a known resume/native-settings transformation. Original inspected files
     /// remain verified; never refresh their hashes to accept unrelated changes.
-    pub(crate) fn retain_mame_resume(
+    pub(crate) fn retain_mame_session_transform(
         &mut self,
         before: &LaunchPlan,
         after: &LaunchPlan,
@@ -964,13 +964,13 @@ impl CalibratedLaunch {
                 .retroarch_content
                 .as_ref()
                 .is_some_and(|content| content.content == input.command_path),
-            "MAME resume does not target the retained controller session"
+            "MAME transformation does not target the retained controller session"
         );
         #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
         if let Some(prepared) = &input.relative_launch_plan {
             ensure!(
                 prepared == before,
-                "MAME relative plan changed before resume attachment"
+                "MAME relative plan changed before session attachment"
             );
         }
         let new_command = after

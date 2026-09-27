@@ -317,6 +317,12 @@ qBittorrent selects only those members, and ingestion materializes the complete
 MAME or Hypseus-compatible launch layout. Leave-in-place mode keeps the payload
 qBittorrent-owned and links that layout without copying multi-gigabyte media.
 
+Neo Geo Metal Slug arcade releases (1, 2, X, 3, 4 and 5) expose **Arcade settings →
+Blood** under game details' Settings & mappings. RetroArch MAME can apply red or
+censored blood per game, including after a save-state restore, without patching
+ROMs or editing high-score files. See [native arcade settings](docs/ARCADE_SETTINGS.md)
+for supported runtimes and limitations.
+
 Installed eXoDOS, eXoWin3x, and eXoWin9x archives expose a native `PC Install`
 card in game details. Preparation runs off the GUI thread, resolves the exact
 matching metadata/game-data/utility archives, safely extracts title files and

@@ -12997,6 +12997,10 @@ ApplicationWindow {
                         emulatorOptionCount: gameDetails.emulator_option_count
                         selectedEmulatorOption: gameDetails.selected_emulator_option
                         translationOptedIn: gameDetails.translation_opted_in
+                        arcadeBlood: gameDetails.arcade_blood
+                        arcadeBloodAvailable: gameDetails.arcade_blood_available
+                        arcadeBloodSupported: gameDetails.arcade_blood_supported
+                        onArcadeBloodSelected: function(mode) { gameDetails.save_arcade_blood(mode) }
                         translationFeatureEnabled: appSettings.translation_enabled
                         modsBackend: gameMods
                         modsLocked: patchCatalog.applying

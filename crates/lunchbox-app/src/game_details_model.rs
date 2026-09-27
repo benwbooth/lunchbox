@@ -195,6 +195,9 @@ pub mod qobject {
         #[qproperty(i32, emulator_option_count)]
         #[qproperty(i32, selected_emulator_option)]
         #[qproperty(bool, translation_opted_in)]
+        #[qproperty(QString, arcade_blood)]
+        #[qproperty(bool, arcade_blood_available)]
+        #[qproperty(bool, arcade_blood_supported)]
         #[qproperty(i32, detail_revision)]
         #[qproperty(QString, display_scope)]
         #[qproperty(QString, display_fullscreen)]
@@ -476,6 +479,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn save_translation_opt_in(self: Pin<&mut GameDetailsModel>, enabled: bool);
+
+        #[qinvokable]
+        fn save_arcade_blood(self: Pin<&mut GameDetailsModel>, mode: QString);
 
         #[qinvokable]
         fn display_shader_preset_count(self: &GameDetailsModel) -> i32;
@@ -857,6 +863,9 @@ pub struct GameDetailsModelRust {
     emulator_option_count: i32,
     selected_emulator_option: i32,
     translation_opted_in: bool,
+    arcade_blood: QString,
+    arcade_blood_available: bool,
+    arcade_blood_supported: bool,
     detail_revision: i32,
     canonical_title: String,
     canonical_metadata: GameMetadata,
@@ -1117,6 +1126,9 @@ impl Default for GameDetailsModelRust {
             emulator_option_count: 0,
             selected_emulator_option: -1,
             translation_opted_in: false,
+            arcade_blood: qstring("game"),
+            arcade_blood_available: false,
+            arcade_blood_supported: false,
             detail_revision: 0,
             canonical_title: String::new(),
             canonical_metadata: GameMetadata::default(),
@@ -1876,6 +1888,15 @@ impl qobject::GameDetailsModel {
                 false
             });
         self.as_mut().set_translation_opted_in(translation_opted_in);
+        let blood = SettingsStore::open_default()
+            .and_then(|store| store.game_arcade_blood(&game_id_string))
+            .unwrap_or_else(|error| {
+                eprintln!("LUNCHBOX_ARCADE_PREFERENCE_READ_FAILED: {error:#}");
+                Default::default()
+            });
+        self.as_mut().set_arcade_blood(qstring(blood.key()));
+        self.as_mut().set_arcade_blood_available(false);
+        self.as_mut().set_arcade_blood_supported(false);
         // Present the game's final emulator layout immediately on re-select;
         // the async discovery below only runs when nothing is cached yet.
         self.as_mut()
@@ -5300,6 +5321,26 @@ impl qobject::GameDetailsModel {
         self.as_mut().refresh_display_controls();
     }
 
+    pub fn save_arcade_blood(mut self: Pin<&mut Self>, mode: QString) {
+        if *self.as_ref().launch_busy()
+            || *self.as_ref().game_running()
+            || !*self.as_ref().arcade_blood_supported()
+        {
+            return;
+        }
+        let result =
+            crate::arcade_settings::BloodMode::parse(&mode.to_string()).and_then(|value| {
+                SettingsStore::open_default()?
+                    .set_game_arcade_blood(&self.as_ref().game_id().to_string(), value)
+            });
+        match result {
+            Ok(()) => self.as_mut().set_arcade_blood(mode),
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not save arcade preference: {error:#}"
+            ))),
+        }
+    }
+
     pub fn save_translation_opt_in(mut self: Pin<&mut Self>, enabled: bool) {
         let game_id = self.as_ref().game_id().to_string();
         match SettingsStore::open_default()
@@ -5459,6 +5500,15 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_display_save_states(qstring(&loaded.save_states));
         let selected = self.as_ref().selected_rom_emulator_option();
+        let arcade_available =
+            crate::arcade_settings::blood_available(&self.as_ref().rust().local_file_path);
+        let arcade_supported = arcade_available
+            && selected.as_ref().is_some_and(|option| {
+                option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                    && crate::emulator::canonical_retroarch_core_name(&option.core_name) == "mame"
+            });
+        self.as_mut().set_arcade_blood_available(arcade_available);
+        self.as_mut().set_arcade_blood_supported(arcade_supported);
         let retroarch = selected.as_ref().is_some_and(|option| {
             option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
         });
@@ -6582,6 +6632,24 @@ impl qobject::GameDetailsModel {
                         ).context("Preparing safe MAME auto-resume")?
                     } else { None };
                     eprintln!("LUNCHBOX_LAUNCH_PREP_TIMING display_translation_ms={}", preparation_started.elapsed().as_millis());
+                    let _arcade_session = if let LaunchInput::Rom { option, path, .. } = &launch_input
+                        && crate::arcade_settings::blood_available(path)
+                    {
+                        let mode = SettingsStore::open_default()?.game_arcade_blood(&game_id)?;
+                        if option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                            && crate::emulator::canonical_retroarch_core_name(&option.core_name) == "mame"
+                        {
+                            crate::arcade_settings::ArcadeSession::attach(
+                                &mut plan, &option.executable, mode, calibrated_session.as_mut(),
+                            ).context("Preparing native arcade settings")?
+                        } else {
+                            if mode != crate::arcade_settings::BloodMode::Game {
+                                let warning = "Blood preference was not applied: native arcade settings require RetroArch MAME.";
+                                display_warning.get_or_insert_with(String::new).push_str(warning);
+                            }
+                            None
+                        }
+                    } else { None };
                     let command_summary = plan.command_summary();
                     // Only one mapping layer may own this launch.
                     let controller_activation = if let Some(session) = &calibrated_session {

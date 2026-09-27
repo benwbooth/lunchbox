@@ -46,7 +46,7 @@ impl MameResume {
             .tempdir_in(base)?;
         let (staged, files) = stage(plan, executable, state_path, directory.path())?;
         if let Some(session) = calibrated {
-            session.retain_mame_resume(plan, &staged, &files)?;
+            session.retain_mame_session_transform(plan, &staged, &files)?;
         }
         *plan = staged;
         eprintln!(

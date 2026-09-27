@@ -4256,6 +4256,43 @@ impl SettingsStore {
             .map_err(Into::into)
     }
 
+    pub(crate) fn game_arcade_blood(
+        &self,
+        game_uid: &str,
+    ) -> Result<crate::arcade_settings::BloodMode> {
+        let value: Option<String> = self
+            .connection()?
+            .query_row(
+                "SELECT blood FROM game_arcade_settings WHERE game_uid=?1",
+                [game_uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        crate::arcade_settings::BloodMode::parse(value.as_deref().unwrap_or("game"))
+    }
+
+    pub(crate) fn set_game_arcade_blood(
+        &self,
+        game_uid: &str,
+        mode: crate::arcade_settings::BloodMode,
+    ) -> Result<()> {
+        ensure!(!game_uid.trim().is_empty(), "game identity is required");
+        let connection = self.connection()?;
+        if mode == crate::arcade_settings::BloodMode::Game {
+            connection.execute(
+                "DELETE FROM game_arcade_settings WHERE game_uid=?1",
+                [game_uid],
+            )?;
+        } else {
+            connection.execute(
+                "INSERT INTO game_arcade_settings (game_uid, blood, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(game_uid) DO UPDATE SET blood=excluded.blood, updated_at=excluded.updated_at",
+                params![game_uid, mode.key(), unix_timestamp()],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn game_translation_opted_in(&self, game_uid: &str) -> Result<bool> {
         if game_uid.trim().is_empty() {
             return Ok(false);
@@ -7321,6 +7358,11 @@ fn migrate(connection: &Connection) -> Result<()> {
              game_uid TEXT PRIMARY KEY,
              updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
          );
+         CREATE TABLE IF NOT EXISTS game_arcade_settings (
+             game_uid TEXT PRIMARY KEY,
+             blood TEXT NOT NULL CHECK (blood IN ('red', 'censored')),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+         );
          CREATE TABLE IF NOT EXISTS game_rom_preferences (
              game_uid TEXT PRIMARY KEY,
              path_display TEXT NOT NULL CHECK (
@@ -9313,6 +9355,37 @@ mod tests {
             .unwrap();
         assert!(!store.game_translation_opted_in("game-a").unwrap());
         assert!(!store.has_game_translation_opt_ins().unwrap());
+    }
+
+    #[test]
+    fn arcade_blood_preference_is_per_game_persistent_and_reversible() {
+        use crate::arcade_settings::BloodMode;
+        let (directory, store) = store();
+        assert_eq!(store.game_arcade_blood("game-a").unwrap(), BloodMode::Game);
+        store
+            .set_game_arcade_blood("game-a", BloodMode::Red)
+            .unwrap();
+        assert_eq!(store.game_arcade_blood("game-b").unwrap(), BloodMode::Game);
+        let reopened = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        assert_eq!(
+            reopened.game_arcade_blood("game-a").unwrap(),
+            BloodMode::Red
+        );
+        reopened
+            .set_game_arcade_blood("game-a", BloodMode::Censored)
+            .unwrap();
+        assert_eq!(
+            store.game_arcade_blood("game-a").unwrap(),
+            BloodMode::Censored
+        );
+        store
+            .set_game_arcade_blood("game-a", BloodMode::Game)
+            .unwrap();
+        assert_eq!(
+            reopened.game_arcade_blood("game-a").unwrap(),
+            BloodMode::Game
+        );
+        assert!(store.set_game_arcade_blood("", BloodMode::Red).is_err());
     }
 
     #[test]
