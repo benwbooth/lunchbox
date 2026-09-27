@@ -15415,7 +15415,7 @@ ApplicationWindow {
                                 enabled: !gameDetails.launch_busy && !gameDetails.game_running
                                 onClicked: gameDetails.configure_gamebuddy(checked, gameDetails.gamebuddy_executable)
                                 ToolTip.visible: hovered
-                                ToolTip.text: "Start the separate GameBuddy assistant after the game launches."
+                                ToolTip.text: "Start the game with GameBuddy assistance and an in-game overlay on supported systems."
                             }
                             TextField {
                                 width: parent.width

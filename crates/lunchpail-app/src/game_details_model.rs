@@ -370,7 +370,11 @@ pub mod qobject {
         fn launch_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
-        fn configure_gamebuddy(self: Pin<&mut GameDetailsModel>, enabled: bool, executable: QString);
+        fn configure_gamebuddy(
+            self: Pin<&mut GameDetailsModel>,
+            enabled: bool,
+            executable: QString,
+        );
 
         #[qinvokable]
         fn save_sync_target_json(self: &GameDetailsModel) -> QString;
@@ -6295,13 +6299,19 @@ impl qobject::GameDetailsModel {
     }
 
     pub fn configure_gamebuddy(mut self: Pin<&mut Self>, enabled: bool, executable: QString) {
-        let config = crate::gamebuddy::Config { enabled, executable: executable.to_string().trim().to_owned() };
+        let config = crate::gamebuddy::Config {
+            enabled,
+            executable: executable.to_string().trim().to_owned(),
+        };
         match config.save() {
             Ok(()) => {
                 self.as_mut().set_gamebuddy_enabled(config.enabled);
-                self.as_mut().set_gamebuddy_executable(qstring(config.executable));
+                self.as_mut()
+                    .set_gamebuddy_executable(qstring(config.executable));
             }
-            Err(error) => self.as_mut().set_launch_status(qstring(format!("Could not save GameBuddy preferences: {error:#}"))),
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not save GameBuddy preferences: {error:#}"
+            ))),
         }
     }
 
@@ -6870,6 +6880,16 @@ impl qobject::GameDetailsModel {
                                 .set_launch_status(qstring("Starting the emulator…"));
                         }
                     });
+                    let (gamebuddy_session, compositor_warning) = match gamebuddy_config.prepare(
+                        &activity_title, &game_id, &activity_platform, &worker_session_token, &launch_cancel,
+                    ) {
+                        Ok(session) => (session, None),
+                        Err(error) => (None, Some(format!("GameBuddy compositor unavailable; using desktop companion: {error:#}"))),
+                    };
+                    if launch_cancel.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                    }
+                    if let Some(session) = &gamebuddy_session { session.apply(&mut plan); }
                     let mut child = match calibrated_session.as_mut() {
                         Some(session) => session.spawn_frontend(&plan, &launch_cancel)?,
                         None => crate::emulator::spawn_launch_plan(&plan)?,
@@ -6937,15 +6957,17 @@ impl qobject::GameDetailsModel {
                         .as_ref()
                         .err()
                         .map(|error| format!("Play activity could not be recorded: {error}"));
-                    let gamebuddy_warning = match gamebuddy_config.launch(
+                    let gamebuddy_warning = if let Some(session) = &gamebuddy_session {
+                        session.attach(process_id).err().map(|error| format!("GameBuddy overlay could not attach: {error:#}"))
+                    } else { match gamebuddy_config.launch(
                         &activity_title, &game_id, &activity_platform, process_id, &worker_session_token,
                     ) {
                         Ok(Some(pid)) => { eprintln!("LUNCHPAIL_GAMEBUDDY_STARTED pid={pid} game_pid={process_id}"); None }
                         Ok(None) => None,
                         Err(error) => Some(format!("GameBuddy: {error:#}")),
-                    };
+                    }};
                     let tracking_warning =
-                        [controller_warning, calibration_warning, activity_warning, display_warning, gamebuddy_warning]
+                        [controller_warning, calibration_warning, activity_warning, display_warning, compositor_warning, gamebuddy_warning]
                         .into_iter()
                         .flatten()
                         .collect::<Vec<_>>();
@@ -7029,6 +7051,7 @@ impl qobject::GameDetailsModel {
                             Err(error) => break Err(error),
                         }
                     };
+                    drop(gamebuddy_session);
                     drop(controller_session);
                     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
                     drop(steam_route);
