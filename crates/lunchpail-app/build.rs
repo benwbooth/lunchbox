@@ -201,6 +201,7 @@ fn main() {
                 "qml/TorrentSourceBatchReview.qml",
                 "qml/ViewportCardGeometry.qml",
                 "qml/WatchedTorrentInbox.qml",
+                "qml/BuiltInCollectionScope.qml",
                 "qml/Main.qml",
             ]),
     )

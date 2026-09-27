@@ -84,7 +84,12 @@ ApplicationWindow {
                                                                   && !library.media_loading
                                                                   && !gameDetails.loading))
     property string availability: ""
-    readonly property bool recentlyPlayed: availability === "recent"
+    BuiltInCollectionScope {
+        id: builtInCollectionScope
+        globalFilter: root.availability
+    }
+    readonly property string effectiveAvailability: builtInCollectionScope.effectiveFilter
+    readonly property bool recentlyPlayed: effectiveAvailability === "recent"
     property string selectedCollectionId: ""
     property string selectedCollectionName: ""
     property string editingCollectionId: ""
@@ -530,6 +535,7 @@ ApplicationWindow {
             return
         const position = view ? Math.max(0, Math.round(view.contentY)) : 0
         navigationSettings.setValue("availability", root.availability)
+        navigationSettings.setValue("builtInCollection", builtInCollectionScope.collection)
         navigationSettings.sync()
         library.save_library_session(root.selectedPlatform,
                                      root.selectedGameId,
@@ -758,6 +764,8 @@ ApplicationWindow {
     }
     onSelectedGameIdChanged: scheduleSessionSave()
     onSelectedPlatformChanged: {
+        if (root.selectedPlatform.length > 0)
+            builtInCollectionScope.leave()
         root.restorePlatformSearch(root.selectedPlatform)
         root.scheduleSessionSave()
     }
@@ -1166,11 +1174,31 @@ ApplicationWindow {
                 root.selectLibrary("")
         }
         else
-            root.selectLibrary(library.couch_shelf === "all"
+            root.selectNavigationShelf(library.couch_shelf === "all"
                                ? "" : library.couch_shelf)
     }
 
+    function selectNavigationShelf(key) {
+        if (key === "favorites" || key === "recent")
+            selectBuiltInCollection(key)
+        else
+            selectLibrary(key)
+    }
+
+    function selectBuiltInCollection(key) {
+        selectedPlatform = ""
+        selectedCollectionId = ""
+        selectedCollectionName = ""
+        // Custom collections also occupy the backend's availability slot;
+        // their ID is not a global filter to carry into another collection.
+        if (availability.indexOf("collection:") === 0)
+            availability = ""
+        builtInCollectionScope.select(key)
+        scheduleFilter()
+    }
+
     function selectLibrary(availabilityKey) {
+        builtInCollectionScope.leave()
         selectedPlatform = ""
         selectedCollectionId = ""
         selectedCollectionName = ""
@@ -1179,6 +1207,7 @@ ApplicationWindow {
     }
 
     function selectCouchPlatform(platformName) {
+        builtInCollectionScope.leave()
         selectedPlatform = platformName
         selectedCollectionId = ""
         selectedCollectionName = ""
@@ -1187,6 +1216,7 @@ ApplicationWindow {
     }
 
     function selectCollection(collectionId, collectionName) {
+        builtInCollectionScope.leave()
         selectedPlatform = ""
         selectedCollectionId = collectionId
         selectedCollectionName = collectionName
@@ -1506,6 +1536,10 @@ ApplicationWindow {
         let heading = "All Games"
         if (selectedCollectionId.length > 0)
             heading = selectedCollectionName
+        else if (builtInCollectionScope.collection === "favorites")
+            heading = "Favorites"
+        else if (builtInCollectionScope.collection === "recent")
+            heading = "Recently Played"
         else if (selectedPlatform.length > 0)
             heading = selectedPlatform
         else if (availability === "local")
@@ -4857,7 +4891,7 @@ ApplicationWindow {
                 root.scheduleFilter()
         }
         function onActivity_revisionChanged() {
-            if (library.ready && root.availability === "recent")
+            if (library.ready && root.recentlyPlayed)
                 root.scheduleFilter()
         }
         function onFavorite_pending_countChanged() {
@@ -8703,7 +8737,7 @@ ApplicationWindow {
         interval: 75
         repeat: false
         onTriggered: library.apply_filter(searchField.text, root.selectedPlatform,
-                                           root.availability)
+                                           root.effectiveAvailability)
     }
 
     Timer {
@@ -8726,9 +8760,12 @@ ApplicationWindow {
                 root.selectedCollectionId = ""
                 root.selectedCollectionName = ""
                 root.availability = navigationSettings.value("availability", "")
+                builtInCollectionScope.restore(
+                            navigationSettings.value("builtInCollection", ""),
+                            root.selectedPlatform)
                 library.apply_filter(searchField.text,
                                      root.selectedPlatform,
-                                     root.availability)
+                                     root.effectiveAvailability)
                 Qt.callLater(root.revealSelectedPlatform)
                 root.librarySessionFilterApplied = true
                 return
@@ -11590,11 +11627,11 @@ ApplicationWindow {
         gamepad: gamepadInput
         downloadQueue: downloadQueue
         preferredGameId: root.selectedGameId
-        currentFilterKey: root.availability
+        currentFilterKey: root.effectiveAvailability
         currentPlatformName: root.selectedPlatform
         attractProbeEnabled: root.couchAttractUiProbe
         onExitRequested: root.exitCouchMode()
-        onFilterRequested: key => root.selectLibrary(key)
+        onFilterRequested: key => root.selectNavigationShelf(key)
         onPlatformRequested: platform => root.selectCouchPlatform(platform)
         onCollectionRequested: function(collectionId, collectionName) {
             root.selectCollection(collectionId, collectionName)
@@ -12003,7 +12040,7 @@ ApplicationWindow {
                 iconName: "games"
                 glyph: "▦"
                 count: library.game_count.toString()
-                active: root.selectedPlatform === "" && root.availability === ""
+                active: root.selectedPlatform === "" && root.effectiveAvailability === ""
                 onClicked: { libraryNav.close(); root.selectLibrary("") }
             }
             SidebarNavButton {
@@ -12011,7 +12048,7 @@ ApplicationWindow {
                 iconName: "collection"
                 glyph: "◆"
                 count: library.local_game_count.toString()
-                active: root.selectedPlatform === "" && root.availability === "local"
+                active: root.selectedPlatform === "" && root.effectiveAvailability === "local"
                 onClicked: { libraryNav.close(); root.selectLibrary("local") }
             }
             SidebarNavButton {
@@ -12019,23 +12056,23 @@ ApplicationWindow {
                 iconName: "favorite"
                 glyph: "★"
                 count: library.favorite_count.toString()
-                active: root.selectedPlatform === "" && root.availability === "favorites"
-                onClicked: { libraryNav.close(); root.selectLibrary("favorites") }
+                active: builtInCollectionScope.collection === "favorites"
+                onClicked: { libraryNav.close(); root.selectBuiltInCollection("favorites") }
             }
             SidebarNavButton {
                 label: "Recently Played"
                 iconName: "recent"
                 glyph: "◷"
                 count: library.recent_count.toString()
-                active: root.selectedPlatform === "" && root.availability === "recent"
-                onClicked: { libraryNav.close(); root.selectLibrary("recent") }
+                active: builtInCollectionScope.collection === "recent"
+                onClicked: { libraryNav.close(); root.selectBuiltInCollection("recent") }
             }
             SidebarNavButton {
                 label: "Minerva"
                 iconName: "download"
                 glyph: "↓"
                 count: library.downloadable_game_count.toString()
-                active: root.availability === "downloadable"
+                active: root.effectiveAvailability === "downloadable"
                 onClicked: { libraryNav.close(); root.selectLibrary("downloadable") }
             }
             SidebarNavButton {
@@ -12151,8 +12188,8 @@ ApplicationWindow {
                 iconName: "favorite"
                 glyph: "★"
                 count: library.favorite_count.toString()
-                active: root.selectedPlatform === "" && root.availability === "favorites"
-                onClicked: root.selectLibrary("favorites")
+                active: builtInCollectionScope.collection === "favorites"
+                onClicked: root.selectBuiltInCollection("favorites")
             }
             SidebarNavButton {
                 objectName: "recentlyPlayedCollection"
@@ -12160,8 +12197,8 @@ ApplicationWindow {
                 iconName: "recent"
                 glyph: "◷"
                 count: library.recent_count.toString()
-                active: root.selectedPlatform === "" && root.recentlyPlayed
-                onClicked: root.selectLibrary("recent")
+                active: builtInCollectionScope.collection === "recent"
+                onClicked: root.selectBuiltInCollection("recent")
             }
         }
 
@@ -12307,7 +12344,7 @@ ApplicationWindow {
                     library.platform_revision
                     return library.game_count.toString()
                 }
-                active: root.selectedPlatform === "" && root.availability === ""
+                active: root.selectedPlatform === "" && root.effectiveAvailability === ""
                 onClicked: root.selectLibrary("")
             }
             delegate: SidebarNavButton {
@@ -12717,7 +12754,7 @@ ApplicationWindow {
                         text: library.loading ? "Opening your library" :
                               !library.ready ? "Catalog unavailable" :
                               library.game_count === 0 ? "Your library is ready for games" :
-                              root.availability === "favorites" && library.favorite_count === 0 ? "No favorites yet" :
+                              root.effectiveAvailability === "favorites" && library.favorite_count === 0 ? "No favorites yet" :
                               root.recentlyPlayed && library.recent_count === 0 ? "No recently played games yet" :
                               "No games match these filters"
                         color: root.ink
@@ -12732,7 +12769,7 @@ ApplicationWindow {
                               !library.ready ? library.status_message :
                               library.game_count === 0 ?
                                   "Add a discovery database or import local games. Minerva availability is layered over the catalog without treating provider filenames as canonical identities." :
-                              root.availability === "favorites" && library.favorite_count === 0 ?
+                              root.effectiveAvailability === "favorites" && library.favorite_count === 0 ?
                                   "Click the star on any game cover to add it to Favorites." :
                               root.recentlyPlayed && library.recent_count === 0 ?
                                   "Games you launch with Lunchpail appear here, most recently played first." :
