@@ -21174,7 +21174,7 @@
       "source": "https://github.com/libretro/flycast/blob/45bd2f4e59708a7c16a5bb1cb90a94d1b39e330d/core/libretro/libretro.cpp#L1440-L1496",
       "retroarch_library": "Flycast",
       "explicit_selection": false,
-      "requires_fresh_start": true,
+      "requires_fresh_start": false,
       "retroarch_launch": {
         "platforms": [
           "Arcade",
@@ -21192,7 +21192,7 @@
       "conditions": [
         "Standard fighting-style digital panel, with no cabinet-specific inspection or peripheral mapping. Uses the core's normal gamepad button routing and system detection.",
         "Naomi numbered buttons use B/A/Y/X/R/L/R2/L2. Atomiswave consumes only the first five action channels; extra positions are unused. Game-specific action labels and native internal remapping remain the core's responsibility.",
-        "Start and Select provide Start and Coin. Service/test channels and analog axes are not assigned. Source-only implementation; tests and runtime verification are deferred."
+        "Start and Select provide Start and Coin. Service/test channels are not assigned. Saved games can resume with the selected physical controllers: arcade inputs are polled through the frontend each frame, not restored physical-device assignments."
       ],
       "bindings": {
         "up": "DPadUp",
@@ -21219,7 +21219,7 @@
       "source": "https://github.com/libretro/flycast/blob/45bd2f4e59708a7c16a5bb1cb90a94d1b39e330d/core/libretro/libretro.cpp#L1440-L1496",
       "retroarch_library": "Flycast",
       "explicit_selection": true,
-      "requires_fresh_start": true,
+      "requires_fresh_start": false,
       "retroarch_launch": {
         "platforms": [
           "Arcade",
@@ -21237,7 +21237,7 @@
       "conditions": [
         "Standard fighting-style digital panel, with no cabinet-specific inspection or peripheral mapping. Uses the core's normal gamepad button routing and system detection.",
         "Naomi numbered buttons use B/A/Y/X/R/L/R2/L2. Atomiswave consumes only the first five action channels; extra positions are unused. Game-specific action labels and native internal remapping remain the core's responsibility.",
-        "Start and Select provide Start and Coin. Service/test channels and analog axes are not assigned. Source-only implementation; tests and runtime verification are deferred."
+        "Start and Select provide Start and Coin. Service/test channels are not assigned. Saved games can resume with the selected physical controllers: arcade inputs are polled through the frontend each frame, not restored physical-device assignments."
       ],
       "bindings": {
         "up": "DPadUp",

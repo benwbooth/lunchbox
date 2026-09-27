@@ -13452,6 +13452,49 @@ mod tests {
         }
     }
 
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn flycast_arcade_resume_keeps_the_selected_physical_controller() {
+        let (calibration, numbering) = calibrated_layout("brawler64");
+        for id in ["retroarch:flycast:arcade-6", "retroarch:flycast:arcade-8"] {
+            let profile = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap();
+            // The arcade branch polls frontend pad input each frame. Unlike
+            // Dreamcast Maple topology changes, loading state cannot select a
+            // different physical joystick. A fresh-start refusal here used to
+            // discard the entire mapping and activate the SC2 fallback.
+            assert!(!profile.requires_fresh_start, "{id}");
+            assert_eq!(profile.retroarch_launch.as_ref().unwrap().device, 1);
+            assert_eq!(
+                profile.core_options.get("reicast_system").map(String::as_str),
+                Some("auto")
+            );
+            let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            assert!(config.contains(&format!(
+                "input_player1_joypad_index = \"{}\"", numbering.index
+            )));
+            assert!(!config.contains("savestate_auto_load"));
+            for (output, source) in [("b", "b"), ("a", "c_left"), ("y", "c_up"), ("x", "a")] {
+                let (suffix, value) = numbering
+                    .binding(calibration.bindings[source].native.as_ref().unwrap())
+                    .unwrap();
+                assert!(
+                    config.contains(&format!("input_player1_{output}_{suffix} = \"{value}\"")),
+                    "{id}/{source}"
+                );
+            }
+        }
+        // This does not weaken the separate Dreamcast peripheral contracts.
+        for profile in &catalog().emulator_profiles {
+            if profile.id.starts_with("retroarch:flycast:dreamcast-") {
+                assert!(profile.requires_fresh_start, "{}", profile.id);
+            }
+        }
+    }
+
     /// Most USB pads expose the D-pad as ABS_HAT0X/Y, not EV_KEY buttons.
     /// Exercise the actual writer, including the runtime-inspected MAME path.
     #[test]

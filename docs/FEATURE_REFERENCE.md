@@ -357,13 +357,21 @@ follow-on work; Daphne-source media already normalizes to the validated
 Hypseus-compatible layout.
 
 RetroArch display profiles can select The Bezel Project, Orionsangel console
-art, or Duimon's native 21:9 day/night artwork per platform or game. The 21:9
+art, or Duimon's native 21:9 day/night artwork per platform or game. Every bezel
+retains its image's native aspect ratio, fitted by RetroArch to the actual output
+even when a window is resized or moved between screens. Unused space stays black;
+16:9 artwork is not stretched to fill an ultrawide monitor. The 21:9
 artwork is an unmodified transparent overlay fetched on first use from
 [`Duimon-Mega-Bezel-Potato-21x9`](https://github.com/Duimon/Duimon-Mega-Bezel-Potato-21x9),
 which is licensed CC BY-NC-ND 4.0; Lunchbox does not redistribute the images or
 require the separate Mega Bezel shader stack. The game viewport is fitted to
 the artwork's 4:3 opening in fullscreen. If fullscreen is explicitly disabled,
 the launch continues without the ultrawide overlay and reports why.
+
+Flycast's normal Naomi/Atomiswave arcade controller mappings also apply when
+resuming a save state. The selected physical player controllers and calibrated
+buttons are kept; Dreamcast-specific peripheral modes retain their separate
+fresh-start requirements.
 
 ### Translation/mod patches and cheats
 

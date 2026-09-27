@@ -507,7 +507,7 @@ pub fn attach_launch_display_configuration(
                     // this can differ from the monitor mode under fractional
                     // scaling. The overlay itself remains full-screen.
                     let known_dimensions = output_dimensions.filter(|(w, h)| *w > 0 && *h > 0);
-                    let dimensions = if ultrawide || known_dimensions.is_none() {
+                    let dimensions = if ultrawide {
                         Some(probe_retroarch_output_dimensions(
                             executable,
                             known_dimensions,
@@ -515,10 +515,7 @@ pub fn attach_launch_display_configuration(
                     } else {
                         known_dimensions
                     };
-                    let output_aspect = dimensions
-                        .filter(|(_, height)| *height > 0)
-                        .map(|(width, height)| f64::from(width) / f64::from(height));
-                    let (prepared, pillarboxed) = aspect_fitted_overlay(&path, output_aspect)?;
+                    let prepared = aspect_fitted_overlay(&path)?;
                     let viewport =
                         if ultrawide {
                             let (width, height) = dimensions
@@ -529,17 +526,19 @@ pub fn attach_launch_display_configuration(
                         } else {
                             None
                         };
-                    Ok((prepared, viewport, pillarboxed))
+                    Ok((prepared, viewport))
                 })
                 .transpose()
         }) {
-            Ok(Some((overlay_path, viewport, pillarboxed))) => {
+            Ok(Some((overlay_path, viewport))) => {
                 external_bezel_active = true;
-                black_sidebars = pillarboxed;
+                // The actual output can change after launch (window resizing,
+                // fullscreen, another monitor). Leave any unused area black.
+                black_sidebars = true;
                 lines.push_str("input_overlay_enable = \"true\"\n");
                 lines.push_str(&format!("input_overlay = \"{}\"\n", overlay_path.display()));
                 lines.push_str("input_overlay_opacity = \"1.000000\"\n");
-                lines.push_str("input_overlay_auto_scale = \"false\"\n");
+                lines.push_str("input_overlay_auto_scale = \"true\"\n");
                 lines.push_str("input_overlay_scale_landscape = \"1.000000\"\n");
                 lines.push_str("input_overlay_aspect_adjust_landscape = \"0.000000\"\n");
                 lines.push_str("input_overlay_x_offset_landscape = \"0.000000\"\ninput_overlay_y_offset_landscape = \"0.000000\"\n");
@@ -707,22 +706,15 @@ fn parse_sdl3_display_dimensions(report: &str) -> Option<(u32, u32)> {
     .then_some((width, height))
 }
 
-/// Place fixed-aspect artwork inside a wider (or taller) output without
-/// stretching the artwork. The overlay itself remains full-screen;
-/// its rectangle is centered within that screen. RetroArch's documented
-/// overlay0_rect coordinates are normalized to the full-screen rectangle.
-fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<(PathBuf, bool)> {
-    let Some(output_aspect) = output_aspect.filter(|value| value.is_finite() && *value > 0.0)
-    else {
-        return Ok((path.to_path_buf(), false));
-    };
+/// Give RetroArch the artwork's native aspect, not a rectangle precomputed
+/// against Lunchbox's screen. With input_overlay_auto_scale enabled, RetroArch
+/// fits this unit rectangle to its actual output and updates it on resize.
+/// Explicit dimensions also avoid RetroArch's otherwise implicit 16:9 default
+/// for native ultrawide/portrait art. Cached artwork is never modified.
+fn aspect_fitted_overlay(path: &Path) -> Result<PathBuf> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("reading selected bezel {}", path.display()))?;
-    let image_name = contents
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("overlay0_overlay"))
-        .and_then(|value| value.trim().strip_prefix('='))
-        .map(|value| value.trim().trim_matches('"'))
+    let image_name = config_value_from_text(&contents, "overlay0_overlay")
         .filter(|value| !value.is_empty())
         .context("selected bezel has no image")?;
     let image = path
@@ -733,22 +725,23 @@ fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<(Pat
         .with_context(|| format!("reading selected bezel image {}", image.display()))?;
     let (width, height) = crate::bezel_orionsangel::png_dimensions(&bytes)
         .context("selected bezel image has no valid PNG dimensions")?;
-    let Some((x, y, w, h)) = fitted_overlay_rect(width, height, output_aspect) else {
-        return Ok((path.to_path_buf(), false));
-    };
+    anyhow::ensure!(width > 0 && height > 0, "selected bezel has empty PNG dimensions");
     let mut fitted = String::new();
     for line in contents.lines() {
-        if line.trim_start().starts_with("overlay0_overlay") {
+        let key = line.split_once('=').map(|(key, _)| key.trim());
+        if key == Some("overlay0_overlay") {
             fitted.push_str(&format!("overlay0_overlay = \"{}\"\n", image.display()));
-        } else if !line.trim_start().starts_with("overlay0_rect") {
+        } else if !matches!(key, Some("overlay0_rect" | "overlay0_aspect_ratio"
+            | "overlay0_full_screen" | "overlay0_auto_x_separation" | "overlay0_auto_y_separation")) {
             fitted.push_str(line);
             fitted.push('\n');
         }
     }
     fitted.push_str(&format!(
-        "overlay0_rect = \"{x:.6},{y:.6},{w:.6},{h:.6}\"\n"
+        "overlay0_full_screen = true\noverlay0_rect = \"0.0,0.0,1.0,1.0\"\noverlay0_aspect_ratio = \"{:.9}\"\noverlay0_auto_x_separation = false\noverlay0_auto_y_separation = false\n",
+        f64::from(width) / f64::from(height)
     ));
-    Ok((write_launch_display_config(&fitted)?, w < 1.0 || h < 1.0))
+    write_launch_display_config(&fitted)
 }
 
 fn fitted_overlay_rect(
@@ -958,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn fitted_overlay_config_preserves_source_art_and_leaves_sidebars() {
+    fn fitted_overlay_config_uses_runtime_aspect_and_preserves_source_art() {
         let temporary = tempfile::tempdir().unwrap();
         let image = temporary.path().join("art.png");
         let mut header = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
@@ -966,21 +959,42 @@ mod tests {
         header.extend_from_slice(&1080_u32.to_be_bytes());
         fs::write(&image, header).unwrap();
         let source = temporary.path().join("art.cfg");
-        let original = "overlays = 1\noverlay0_overlay = \"art.png\"\noverlay0_full_screen = true\noverlay0_descs = 0\n";
+        // Even a cached config with stale/wrong geometry must be normalized,
+        // including when the launching screen already matches the artwork.
+        let original = "overlays = 1\noverlay0_overlay = \"art.png\"\noverlay0_full_screen = false\noverlay0_descs = 0\noverlay0_rect = \"0.125,0,0.75,1\"\noverlay0_aspect_ratio = 2.37\noverlay0_auto_x_separation = true\noverlay0_auto_y_separation = true\n";
         fs::write(&source, original).unwrap();
 
-        let (prepared, black_sidebars) =
-            aspect_fitted_overlay(&source, Some(5120.0 / 2160.0)).unwrap();
-        assert!(black_sidebars);
+        let prepared = aspect_fitted_overlay(&source).unwrap();
         let fitted = fs::read_to_string(prepared).unwrap();
-        assert!(fitted.contains("overlay0_rect = \"0.125000,0.000000,0.750000,1.000000\""));
+        assert!(fitted.contains("overlay0_rect = \"0.0,0.0,1.0,1.0\""));
+        assert!(fitted.contains("overlay0_aspect_ratio = \"1.777777778\""));
+        assert!(fitted.contains("overlay0_auto_x_separation = false"));
+        assert!(fitted.contains("overlay0_auto_y_separation = false"));
+        for key in ["overlay0_rect =", "overlay0_aspect_ratio =", "overlay0_full_screen ="] {
+            assert_eq!(fitted.matches(key).count(), 1);
+        }
         assert!(fitted.contains("overlay0_full_screen = true"));
         assert!(fitted.contains(&format!("overlay0_overlay = \"{}\"", image.display())));
         assert_eq!(fs::read_to_string(&source).unwrap(), original);
 
-        let (same_aspect, no_sidebars) = aspect_fitted_overlay(&source, Some(16.0 / 9.0)).unwrap();
-        assert_eq!(same_aspect, source);
-        assert!(!no_sidebars);
+        assert!(!fitted.contains("0.125,0,0.75,1"));
+    }
+
+    #[test]
+    fn every_art_shape_gets_its_own_native_aspect() {
+        let temporary = tempfile::tempdir().unwrap();
+        for (width, height) in [(1920_u32, 1080_u32), (2560, 1080), (1080, 1920), (1600, 1200)] {
+            let image = temporary.path().join("art.png");
+            let mut header = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+            header.extend_from_slice(&width.to_be_bytes());
+            header.extend_from_slice(&height.to_be_bytes());
+            fs::write(&image, header).unwrap();
+            let source = temporary.path().join("art.cfg");
+            fs::write(&source, "overlays = 1\noverlay0_overlay = art.png\noverlay0_descs = 0\n").unwrap();
+            let fitted = fs::read_to_string(aspect_fitted_overlay(&source).unwrap()).unwrap();
+            let native: f64 = config_value_from_text(&fitted, "overlay0_aspect_ratio").unwrap().parse().unwrap();
+            assert!((native - f64::from(width) / f64::from(height)).abs() < 1e-8);
+        }
     }
 
     #[test]
