@@ -1763,6 +1763,9 @@ fn load_torrent_catalog_coverage(
     let mut arcade_fallback = false;
     for row in rows {
         let (mapped_name, provider_name, collection) = row?;
+        if is_merged_mame_source(&collection, &provider_name) {
+            continue;
+        }
         if let Some(name) = mapped_name.filter(|name| !name.trim().is_empty()) {
             coverage
                 .platform_names
@@ -1772,10 +1775,7 @@ fn load_torrent_catalog_coverage(
         coverage.platform_names.insert(provider_key.clone());
         atari_800_fallback |= provider_key == "atari" && collection == "TOSEC";
         arcade_fallback |= collection == "MAME"
-            && matches!(
-                provider_key.as_str(),
-                "roms-merged" | "roms-split" | "roms-non-merged"
-            );
+            && matches!(provider_key.as_str(), "roms-split" | "roms-non-merged");
     }
 
     // Preserve the two explicit fallbacks used by the legacy frontend. These
@@ -1788,6 +1788,17 @@ fn load_torrent_catalog_coverage(
     }
 
     Ok(coverage)
+}
+
+/// Merged archives combine parent and clone ROMs instead of providing one
+/// independently downloadable game. Hide this provider category, not games
+/// whose titles happen to contain "merged" or existing local installations.
+pub(crate) fn is_merged_mame_source(collection: &str, provider_platform: &str) -> bool {
+    collection.trim().eq_ignore_ascii_case("MAME")
+        && matches!(
+            normalize_platform_key(provider_platform).as_str(),
+            "roms-merged" | "software-list-roms-merged"
+        )
 }
 
 /// Normalized platform keys covered by a user-registered local torrent catalog,
@@ -2942,6 +2953,48 @@ mod tests {
         );
         assert_eq!(downloadable.len(), 1);
         assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
+    }
+
+    #[test]
+    fn merged_mame_sources_do_not_advertise_download_coverage() {
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let connection = Connection::open(database.path()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE minerva_torrents (id INTEGER PRIMARY KEY, collection TEXT);
+             CREATE TABLE minerva_torrent_platforms (
+                 torrent_id INTEGER, lunchbox_platform_name TEXT, minerva_platform TEXT);
+             INSERT INTO minerva_torrents VALUES (1, 'MAME'), (2, 'mame');
+             INSERT INTO minerva_torrent_platforms VALUES
+                 (1, 'Arcade', 'ROMs (merged)'),
+                 (2, NULL, 'ROMs - merged');",
+            )
+            .unwrap();
+        let coverage = load_minerva_coverage(Some(database.path())).unwrap();
+        assert!(coverage.platform_names.is_empty());
+
+        connection
+            .execute_batch(
+                "INSERT INTO minerva_torrents VALUES (3, 'MAME');
+             INSERT INTO minerva_torrent_platforms VALUES (3, NULL, 'ROMs (non-merged)');",
+            )
+            .unwrap();
+        let coverage = load_minerva_coverage(Some(database.path())).unwrap();
+        assert!(coverage.platform_names.contains("arcade"));
+        assert!(coverage.platform_names.contains("roms-non-merged"));
+        assert!(!coverage.platform_names.contains("roms-merged"));
+    }
+
+    #[test]
+    fn merged_mame_source_rule_is_exact_and_keeps_other_categories() {
+        assert!(is_merged_mame_source(" MAME ", "ROMs (merged)"));
+        assert!(is_merged_mame_source("mame", "ROMS-MERGED"));
+        assert!(is_merged_mame_source("MAME", "Software List ROMs (merged)"));
+        for platform in ["ROMs (non-merged)", "ROMs (split)", "CHDs (merged)", "MAME"] {
+            assert!(!is_merged_mame_source("MAME", platform), "{platform}");
+        }
+        assert!(!is_merged_mame_source("No-Intro", "ROMs (merged)"));
+        assert!(!is_merged_mame_source("HBMAME", "ROMs (merged)"));
     }
 
     #[test]

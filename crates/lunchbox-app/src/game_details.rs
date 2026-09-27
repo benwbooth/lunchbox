@@ -1500,6 +1500,9 @@ fn resolve_torrent_catalog_bundles(
             total_size,
             mapped_platform_name,
         ) = row?;
+        if catalog::is_merged_mame_source(&collection, &provider_platform) {
+            continue;
+        }
         let provider_key = catalog::normalize_platform_key(&provider_platform);
         let match_kind = if mapped_platform_name
             .as_deref()
@@ -1582,7 +1585,6 @@ fn bundle_source_priority(bundle: &MinervaBundle) -> u8 {
     if collection == "mame" {
         return match catalog::normalize_platform_key(&platform).as_str() {
             "roms-non-merged" => 0,
-            "roms-merged" => 40,
             "roms-split" => 45,
             _ => 50,
         };
@@ -1621,10 +1623,7 @@ fn explicit_fallback_matches(platform_key: &str, provider_key: &str, collection:
         "atari-800" => provider_key == "atari" && collection == "TOSEC",
         "arcade" => {
             (collection.eq_ignore_ascii_case("MAME")
-                && matches!(
-                    provider_key,
-                    "roms-merged" | "roms-split" | "roms-non-merged"
-                ))
+                && matches!(provider_key, "roms-split" | "roms-non-merged"))
                 || (collection.eq_ignore_ascii_case("Laserdisc Collection")
                     && matches!(provider_key, "mame" | "hypseus-singe" | "daphne"))
         }
@@ -1648,6 +1647,11 @@ pub fn load_torrent_files_for_game(
     preferences: &ReleasePreferences,
     launchbox_db_id: Option<i64>,
 ) -> Result<Vec<TorrentFileCandidate>> {
+    // Also reject an old/cached selection before fetching or indexing its
+    // torrent. Hidden sources must not reappear through retry/recovery paths.
+    if catalog::is_merged_mame_source(&bundle.collection, &bundle.provider_platform) {
+        return Ok(Vec::new());
+    }
     let plan_files = if bundle.source_kind == "manual_torrent" {
         registered_torrent_plan_files(
             &crate::settings::SettingsStore::open_default()?,
@@ -1737,10 +1741,7 @@ pub fn load_torrent_files_for_game(
 fn is_arcade_rom_bundle(bundle: &MinervaBundle) -> bool {
     let platform = catalog::normalize_platform_key(&bundle.provider_platform);
     (bundle.collection.eq_ignore_ascii_case("MAME")
-        && matches!(
-            platform.as_str(),
-            "roms-non-merged" | "roms-merged" | "roms-split"
-        ))
+        && matches!(platform.as_str(), "roms-non-merged" | "roms-split"))
         || (bundle.collection.eq_ignore_ascii_case("FinalBurn Neo") && platform == "arcade")
 }
 
@@ -3046,6 +3047,76 @@ mod tests {
         );
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].index, 2);
+    }
+
+    #[test]
+    fn merged_mame_sources_are_hidden_for_mapped_and_fallback_platforms() {
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let connection = rusqlite::Connection::open(database.path()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE minerva_torrents (
+                 id INTEGER PRIMARY KEY, torrent_url TEXT, collection TEXT, total_size INTEGER);
+             CREATE TABLE minerva_torrent_platforms (
+                 torrent_id INTEGER, minerva_platform TEXT, rom_count INTEGER,
+                 lunchbox_platform_name TEXT);
+             INSERT INTO minerva_torrents VALUES
+                 (1, 'https://example.invalid/merged.torrent', 'MAME', 100),
+                 (2, 'https://example.invalid/mapped-merged.torrent', 'mame', 100),
+                 (3, 'https://example.invalid/non-merged.torrent', 'MAME', 100),
+                 (4, 'https://example.invalid/split.torrent', 'MAME', 100),
+                 (5, 'https://example.invalid/software-merged.torrent', 'MAME', 100);
+             INSERT INTO minerva_torrent_platforms VALUES
+                 (1, 'ROMs (merged)', 100, NULL),
+                 (2, 'ROMs (merged)', 100, 'Arcade'),
+                 (3, 'ROMs (non-merged)', 100, NULL),
+                 (4, 'ROMs (split)', 100, NULL),
+                 (5, 'Software List ROMs (merged)', 100, 'Arcade');",
+            )
+            .unwrap();
+        for platform in ["Arcade", "Arcade Laserdisc", "Arcade Pinball"] {
+            let bundles = resolve_minerva_bundles_from_path(
+                &GameDetails {
+                    platform: platform.into(),
+                    ..GameDetails::default()
+                },
+                database.path(),
+            )
+            .unwrap();
+            assert_eq!(
+                bundles
+                    .iter()
+                    .map(|bundle| bundle.torrent_id)
+                    .collect::<Vec<_>>(),
+                vec![3, 4]
+            );
+            assert!(is_non_merged_arcade_bundle(&bundles[0]));
+        }
+        let bundles = resolve_minerva_bundles_from_path(
+            &GameDetails {
+                platform: "ROMs (merged)".into(),
+                ..GameDetails::default()
+            },
+            database.path(),
+        )
+        .unwrap();
+        assert!(bundles.is_empty());
+        assert!(!explicit_fallback_matches("arcade", "roms-merged", "MAME"));
+    }
+
+    #[test]
+    fn merged_mame_cached_bundle_is_rejected_before_metadata_lookup() {
+        let mut bundle = arcade_bundle("ROMs (merged)");
+        bundle.torrent_url = "not-a-torrent-url".into();
+        let candidates = load_torrent_files_for_game(
+            &bundle,
+            "Any Arcade Game",
+            &[],
+            &preferences("USA", "latest"),
+            None,
+        )
+        .unwrap();
+        assert!(candidates.is_empty());
     }
 
     #[test]
