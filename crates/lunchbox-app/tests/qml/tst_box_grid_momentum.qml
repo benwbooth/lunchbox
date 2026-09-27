@@ -71,5 +71,17 @@ TestCase {
         verify(wheel.momentumRunning)
         wait(150)
         verify(grid.contentY > released + 240, "Release should glide through virtualized rows")
+        // Previously the fixed friction exhausted this flick in about one
+        // second / two rows, despite the grid containing 10,000 games.
+        for (let i = 0; i < 180; ++i) {
+            wheel.lastFrameAt = Date.now() - 16
+            wheel.advanceMomentum()
+        }
+        verify(wheel.momentumRunning, "A large library should retain a long glide")
+        verify(grid.contentY > released + grid.cellHeight * 7,
+               "A large-grid flick should coast well beyond a couple of rows")
+        wheel.handleWheel({pixelDelta: Qt.point(0, 0), angleDelta: Qt.point(0, 0),
+                           device: {type: PointerDevice.TouchPad}, phase: Qt.ScrollBegin})
+        verify(!wheel.momentumRunning, "Touching the trackpad must stop the coast immediately")
     }
 }

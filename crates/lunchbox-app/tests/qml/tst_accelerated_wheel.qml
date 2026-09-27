@@ -72,6 +72,67 @@ TestCase {
         verify(handler.momentumShare() <= 0.7)
     }
 
+    function test_coast_keeps_scaling_beyond_a_few_screens() {
+        let previousFactor = 0
+        for (const pages of [0.1, 2, 10, 40, 100]) {
+            scroller.contentHeight = scroller.height * (1 + pages)
+            const factor = handler.momentumLengthFactor()
+            verify(factor > previousFactor, "Longer content should retain more momentum")
+            previousFactor = factor
+        }
+        scroller.contentHeight = scroller.height * 1000000
+        verify(handler.momentumLengthFactor() <= 5,
+               "Even an enormous catalog must have a bounded coast")
+    }
+
+    function releaseTravel(pages) {
+        handler.stopMomentum()
+        scroller.contentHeight = scroller.height * (1 + pages)
+        scroller.contentY = 0
+        handler.scrollPixels(32, true)
+        handler.lastPixelAt = Date.now() - 16
+        handler.scrollPixels(32, true)
+        compare(scroller.contentY, 64, "Length scaling must never amplify finger motion")
+        handler.finishPixelGesture()
+        const released = scroller.contentY
+        // Advance the real integrator deterministically instead of sleeping
+        // through several complete coasts. Each frame uses the same 16 ms.
+        let frames = 0
+        while (handler.momentumRunning && ++frames < 500) {
+            handler.lastFrameAt = Date.now() - 16
+            handler.advanceMomentum()
+        }
+        verify(!handler.momentumRunning, "A release glide must eventually stop")
+        return scroller.contentY - released
+    }
+
+    function test_trackpad_coasts_much_farther_in_long_content() {
+        const shortTravel = releaseTravel(1)
+        const mediumTravel = releaseTravel(10)
+        const longTravel = releaseTravel(100)
+        verify(mediumTravel > shortTravel * 2,
+               "Medium content must glide farther: " + mediumTravel + " vs " + shortTravel)
+        verify(longTravel > mediumTravel * 1.5,
+               "Large catalogs must not plateau after ten screens")
+        verify(longTravel > 1500,
+               "The sample flick should coast several grid rows, got " + longTravel)
+    }
+
+    function test_short_trackpad_overflow_stays_controlled() {
+        const travel = releaseTravel(0.125)
+        verify(travel <= 36, "A compact pane must not overshoot its remaining content")
+        compare(scroller.contentY, 100)
+    }
+
+    function test_long_trackpad_coast_can_reverse_immediately() {
+        pixelSwipe()
+        wheelPacket(0, 0, Qt.ScrollEnd, PointerDevice.TouchPad)
+        const before = scroller.contentY
+        wheelPacket(24, 12, Qt.ScrollUpdate, PointerDevice.TouchPad)
+        compare(scroller.contentY, before - 24)
+        verify(!handler.momentumRunning, "The next finger motion must interrupt the longer coast")
+    }
+
     function test_short_scroll_is_immediate_with_only_a_tiny_tail() {
         scroller.contentHeight = scroller.height + 80
         handler.scrollNotches(1)

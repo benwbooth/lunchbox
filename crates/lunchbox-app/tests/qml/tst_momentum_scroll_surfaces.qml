@@ -241,4 +241,14 @@ TestCase {
         wait(60)
         verify(nestedScroll.contentItem.contentY > 0)
     }
+
+    function test_shared_vertical_profiles_scale_trackpad_momentum() {
+        for (const view of [list, grid, flick, scrollView.contentItem, gutterList]) {
+            const handler = findChild(view, "momentumWheelHandler")
+            verify(handler, "Each vertical surface must use the shared trackpad profile")
+            verify(handler.momentumLengthFactor() > 1,
+                   "Long scroll regions should coast farther, not just the desktop grid")
+            verify(handler.effectiveFriction() < handler.frictionPerSecond)
+        }
+    }
 }

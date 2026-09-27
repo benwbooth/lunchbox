@@ -26,6 +26,7 @@ WheelHandler {
     readonly property real momentumVelocity: velocityY
 
     property real velocityY: 0
+    property real coastFriction: frictionPerSecond
     property double lastFrameAt: 0
     property double lastNotchAt: 0
     property real burstCount: 0
@@ -75,6 +76,19 @@ WheelHandler {
         return Math.min(0.7, length / (length + Math.max(1, scroller.height)))
     }
 
+    function momentumLengthFactor() {
+        const pages = scrollableLength() / Math.max(1, scroller.height)
+        // A fixed friction stopped a trackpad flick after roughly one row,
+        // whether there were ten games or ten thousand. Grow the coast with
+        // the number of scrollable screens, not the input packet size. The
+        // logarithm and cap keep huge catalogs from coasting indefinitely.
+        return 1 + Math.min(4, 0.6 * Math.log(Math.max(1, pages)) / Math.LN2)
+    }
+
+    function effectiveFriction() {
+        return frictionPerSecond / momentumLengthFactor()
+    }
+
     function clampContentY(value) {
         return Math.max(lowerBound(), Math.min(upperBound(), value))
     }
@@ -91,7 +105,7 @@ WheelHandler {
         pixelGestureActive = false
     }
 
-    function addVelocity(impulse) {
+    function addVelocity(impulse, friction) {
         if (!isFinite(impulse) || impulse === 0)
             return
 
@@ -101,6 +115,7 @@ WheelHandler {
 
         velocityY = Math.max(-maximumVelocity,
                              Math.min(maximumVelocity, velocityY + impulse))
+        coastFriction = friction === undefined ? frictionPerSecond : friction
         lastDirection = direction
         lastFrameAt = Date.now()
         if (!momentumTimer.running)
@@ -148,7 +163,7 @@ WheelHandler {
         pixelSamples = 0
         lastPixelAt = 0
         if (Math.abs(releasedVelocity) >= minimumVelocity)
-            addVelocity(releasedVelocity)
+            addVelocity(releasedVelocity, effectiveFriction())
     }
 
     function moveImmediately(distance) {
@@ -176,6 +191,8 @@ WheelHandler {
         moveImmediately(steps * pageDistance * (1 - kineticShare)
                         * Math.min(2.0, acceleration))
         // Under exponential friction the remaining distance is velocity / k.
+        // Mouse notches already use length-scaled page travel. Preserve their
+        // response and bounds; only trackpads use the longer release coast.
         addVelocity(steps * pageDistance * kineticShare
                     * frictionPerSecond * acceleration)
     }
@@ -191,8 +208,9 @@ WheelHandler {
         const deltaSeconds = Math.max(0.001, Math.min(0.05, elapsed))
         lastFrameAt = now
 
-        const decay = Math.exp(-frictionPerSecond * deltaSeconds)
-        const distance = velocityY * (1 - decay) / frictionPerSecond
+        const friction = coastFriction
+        const decay = Math.exp(-friction * deltaSeconds)
+        const distance = velocityY * (1 - decay) / friction
         const current = scroller.contentY
         const next = clampContentY(current + distance)
         advancing = true
