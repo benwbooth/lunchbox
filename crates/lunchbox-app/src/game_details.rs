@@ -613,8 +613,9 @@ fn load_related_games_from_connection(
                 return None;
             }
             if hide_adult
-                && catalog::is_adult_game(
+                && catalog::is_adult_game_on_platform(
                     &effective.title,
+                    &candidate.platform,
                     Some(&effective.esrb),
                     Some(&effective.genre),
                 )

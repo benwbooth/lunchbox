@@ -235,6 +235,9 @@ fn project_data_path(file_name: &str) -> PathBuf {
 pub fn load(path: &Path) -> Result<Catalog> {
     let connection = open_read_only(path, "Lunchbox database")?;
     validate_canonical_schema(&connection)?;
+    if let Err(error) = crate::arcade_content::initialize(&connection) {
+        eprintln!("LUNCHBOX_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
+    }
 
     if let Some(discovery_path) = requested_discovery_database_path() {
         return load_discovery_catalog(
@@ -255,6 +258,9 @@ pub fn load(path: &Path) -> Result<Catalog> {
 pub fn load_preview(path: &Path, focus: &CatalogPreviewFocus) -> Result<Option<CatalogPreview>> {
     let canonical = open_read_only(path, "Lunchbox database")?;
     validate_canonical_schema(&canonical)?;
+    if let Err(error) = crate::arcade_content::initialize(&canonical) {
+        eprintln!("LUNCHBOX_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
+    }
     let Some(discovery_path) = requested_discovery_database_path() else {
         return Ok(None);
     };
@@ -318,7 +324,7 @@ fn load_preview_from_sources(
         let (id, title, platform, status, database_id) = row?;
         let local = installed.is_local(&id, &title, &platform, database_id);
         let non_retail = is_non_retail_game(&title, None);
-        let adult = is_adult_game(&title, None, None);
+        let adult = is_adult_game_on_platform(&title, &platform, None, None);
         let release_regions = release_region_membership(&title, None);
         let media_id = stable_media_id(database_id, &id);
         games.push(Game {
@@ -479,7 +485,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
         let title: String = row.get(1)?;
         let platform: String = row.get(2)?;
         let non_retail = is_non_retail_game(&title, None);
-        let adult = is_adult_game(&title, None, None);
+        let adult = is_adult_game_on_platform(&title, &platform, None, None);
         let release_regions = release_region_membership(&title, None);
         Ok(Game {
             media_id: stable_media_id(0, &id),
@@ -753,7 +759,7 @@ fn load_discovery_catalog_with_native_state(
             (lower.as_str(), *covered)
         };
         let non_retail = is_non_retail_game(&title, release_type.as_deref());
-        let adult = is_adult_game(&title, esrb.as_deref(), genre.as_deref());
+        let adult = is_adult_game_on_platform(&title, &platform, esrb.as_deref(), genre.as_deref());
         let release_regions = release_region_membership(&title, region.as_deref());
         let media_id = stable_media_id(database_id, &id);
         let mut search_key = String::with_capacity(title.len() + platform_lower.len() + 1);
@@ -1646,7 +1652,7 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
             installed.game_uids.insert(game_uid);
         } else {
             let non_retail = is_non_retail_game(&title, None);
-            let adult = is_adult_game(&title, None, None);
+            let adult = is_adult_game_on_platform(&title, &platform, None, None);
             let release_regions = release_region_membership(&title, None);
             let game_uid = format!("local-file:{id}");
             installed.local_only_games.push(Game {
@@ -1985,6 +1991,10 @@ fn contains_adult_token(text: &str) -> bool {
                 .iter()
                 .any(|token| part.eq_ignore_ascii_case(token))
         })
+}
+
+pub(crate) fn is_adult_game_on_platform(title: &str, platform: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
+    is_adult_game(title, esrb, genre) || crate::arcade_content::is_adult(title, platform)
 }
 
 pub(crate) fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {

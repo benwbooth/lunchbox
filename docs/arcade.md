@@ -55,6 +55,19 @@ are preferable to stretched artwork.
 See [Display and bezels](display.md) if the game is cropped or does not fit
 the opening.
 
+## Adult-content filtering
+
+The **Adult** filter also recognizes arcade games whose names and genres do
+not mention adult content, such as *Excelsior*. Lunchbox uses
+[progetto-SNAPS' Mature list](https://www.progettosnaps.net/catver/) and matches
+its ROM-set names to game titles and revisions. It does not treat every
+mahjong or puzzle game as adult, or change a game's official age rating.
+
+The small classification list downloads automatically and is cached for
+offline use. A first run without internet access has only the catalog's
+existing ratings and keyword checks. Like any community list, it can have
+gaps; the filter is not a parental-control guarantee.
+
 ## Metal Slug blood settings
 
 Supported Neo Geo releases of Metal Slug, 2, X, 3, 4, and 5 expose

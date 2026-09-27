@@ -59,6 +59,15 @@ under terms compatible with CC BY-SA 4.0.
 
 ## Runtime-only metadata services
 
+- **progetto-SNAPS Mature.ini (AntoPISA)** — Lunchbox downloads the adult-content
+  classification list to the user's metadata cache. It is not bundled in the
+  executable or public database. The pinned MAME 0.289 snapshot is from
+  `AntoPISA/MAME_SupportFiles` commit `bca9d8a74079f74a4a40298e06bf1634c820c7cb`,
+  `catver.ini/mature.ini`, SHA-256
+  `172af9967a614679bca756e74fc4254aa6f5fc3a45265dac0475622bbdba7d53`.
+  ROM-set identifiers are matched to the existing Libretro metadata and optional
+  local arcade aliases; no ESRB rating is invented or overwritten.
+  Upstream: <https://www.progettosnaps.net/catver/>.
 - **IGDB** — its API FAQ permits local caching and serving retrieved data to end users. Commercial
   integrations require a partnership and visible attribution. This review does not interpret that
   as permission to publish an IGDB database dump. <https://api-docs.igdb.com/>.
