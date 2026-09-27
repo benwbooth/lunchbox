@@ -1,0 +1,1821 @@
+//! Apply guided target/player intent to an existing native runtime setup.
+//! This is a launch-local copy. Never rewrite trusted runtime paths, hashes,
+//! content identities or the user's separately saved advanced configuration.
+use crate::{
+    controller_catalog::EmulatorProfile,
+    controllers::ControllerDevice,
+    emulator::{EmulatorRuntimeKind, LaunchPlan, RomEmulatorOption},
+    settings::AppSettings,
+};
+use anyhow::{Context, Result, ensure};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
+
+mod runtime;
+
+#[cfg(target_os = "linux")]
+fn apply_nestopia_players(
+    mapping: &mut crate::settings::ControllerMappingSettings,
+    emulator_id: &str,
+    plan: &LaunchPlan,
+    ids: &[String],
+) -> Result<usize> {
+    ensure!(
+        (1..=2).contains(&ids.len()),
+        "Nestopia UE supports one or two players"
+    );
+    let mut found = 0;
+    for setup in &mut mapping.nestopia_ue_flatpak_launches {
+        if setup.emulator_id != emulator_id
+            || !plan
+                .arguments
+                .iter()
+                .any(|arg| arg == setup.content.as_os_str())
+        {
+            continue;
+        }
+        found += 1;
+        setup.players = ids
+            .iter()
+            .enumerate()
+            .map(
+                |(index, id)| crate::controller_nestopia_ue_flatpak::settings::Player {
+                    player: u8::try_from(index + 1).unwrap(),
+                    controller_id: id.clone(),
+                },
+            )
+            .collect();
+        setup.review(&mapping.calibrations)?;
+    }
+    Ok(found)
+}
+
+#[cfg(target_os = "linux")]
+fn apply_punes_players(
+    mapping: &mut crate::settings::ControllerMappingSettings,
+    emulator_id: &str,
+    plan: &LaunchPlan,
+    ids: &[String],
+) -> Result<usize> {
+    ensure!(
+        matches!(ids.len(), 1 | 2),
+        "puNES requires one or two players"
+    );
+    let mut found = 0;
+    for setup in &mut mapping.punes_flatpak_launches {
+        if setup.emulator_id != emulator_id
+            || !plan
+                .arguments
+                .iter()
+                .any(|arg| arg == setup.content.as_os_str())
+        {
+            continue;
+        }
+        found += 1;
+        setup.players = ids
+            .iter()
+            .enumerate()
+            .map(
+                |(index, controller_id)| crate::controller_punes_flatpak::settings::Player {
+                    player: u8::try_from(index + 1).unwrap(),
+                    controller_id: controller_id.clone(),
+                },
+            )
+            .collect();
+        setup.review(&mapping.calibrations)?;
+    }
+    Ok(found)
+}
+
+pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
+    profile.native_launch.is_some()
+        && (matches!(
+            profile.core.as_str(),
+            "ares"
+                | "duckstation"
+                | "mednafen"
+                | "ppsspp"
+                | "mgba"
+                | "snes9x"
+                | "fceux"
+                | "sameboy"
+                | "dolphin"
+                | "pcsx2"
+                | "rpcs3"
+                | "melonds"
+                | "flycast"
+                | "mame"
+                | "bizhawk"
+                | "bsnes"
+                | "stella"
+                | "vice"
+                | "hatari"
+                | "desmume"
+                | "openmsx"
+                | "mesen2"
+                | "blastem"
+                | "xemu"
+                | "scummvm"
+                | "jgenesis"
+                | "gopher64"
+                | "gearsystem"
+                | "gearcoleco"
+                | "xroar"
+                | "zesarux"
+                | "oricutron"
+                | "atari-plus-plus"
+                | "aranym"
+                | "atari800"
+                | "nanoboyadvance"
+                | "vba-m"
+                | "86box"
+                | "a7800"
+                | "gambatte"
+                | "picodrive"
+                | "nestopia-ue"
+                | "skyemu"
+                | "linapple"
+                | "fuse"
+                | "amiberry"
+                | "gbe-plus"
+                | "pokemini"
+                | "uzem"
+                | "eka2l1"
+                | "cemu"
+                | "azahar"
+                | "shadps4"
+                | "ymir"
+                | "dreampotato"
+                | "panda3ds"
+                | "supermodel"
+                | "openbor"
+                | "touchhle"
+                | "tsugaru"
+                | "pcem"
+                | "simcoupe"
+                | "vector06sdl"
+                | "adamem"
+                | "ep128emu"
+                | "play"
+                | "vita3k"
+                | "caprice32"
+                | "rmg"
+                | "simple64"
+                | "kronos"
+                | "yaba-sanshiro"
+        ) || cfg!(target_os = "linux") && matches!(profile.core.as_str(), "nestopia" | "punes"))
+}
+
+pub(crate) fn settings_for_launch<'a>(
+    settings: &'a AppSettings,
+    option: &RomEmulatorOption,
+    platform: &str,
+    plan: &LaunchPlan,
+    inventory: &[ControllerDevice],
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Cow<'a, AppSettings>> {
+    if option.runtime_kind != EmulatorRuntimeKind::Standalone {
+        return Ok(Cow::Borrowed(settings));
+    }
+    let Some(profile) =
+        crate::controller_target::selected(&settings.controller_mapping, option, platform)?
+    else {
+        return Ok(Cow::Borrowed(settings));
+    };
+    // ares already consumes guided settings directly, without a saved runtime.
+    if profile.transport == "ares-settings" {
+        return Ok(Cow::Borrowed(settings));
+    }
+    // DOSBox-X and DOSBox Staging consume the measured controller directly at
+    // launch: the private mapper is generated from the calibration and the
+    // running joystick numbering, so there is no per-content saved runtime.
+    if matches!(
+        profile.transport.as_str(),
+        "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+    ) {
+        return Ok(Cow::Borrowed(settings));
+    }
+    if !supports(profile) {
+        anyhow::bail!(
+            "{} still needs its native setup connected to guided target selection. The saved target was not applied; no game was started.",
+            option.emulator_name
+        );
+    }
+    let ids = player_ids(settings, profile, inventory)?;
+    let matches = |id: &str, content: &Path| {
+        id == option.emulator_id && plan.arguments.iter().any(|arg| arg == content.as_os_str())
+    };
+    let mut adjusted = settings.clone();
+    let mapping = &mut adjusted.controller_mapping;
+    runtime::reuse(mapping, &profile.core, &option.emulator_id, plan)?;
+    #[cfg(target_os = "linux")]
+    if profile.core == "mgba"
+        && !mapping
+            .mgba_launches
+            .iter()
+            .any(|setup| matches(&setup.emulator_id, &setup.content))
+    {
+        mapping
+            .mgba_launches
+            .push(crate::controller_mgba::guided::discover(
+                option,
+                plan,
+                &ids[0],
+                profile.target_layout == "gba",
+                cancel,
+            )?);
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = cancel;
+    let mut found = 0usize;
+    match profile.core.as_str() {
+        "bizhawk" => {
+            use crate::controller_bizhawk::guided;
+            let scope =
+                guided::scope(&profile.target_layout).context("Unknown BizHawk guided target")?;
+            for id in &ids {
+                let choices = source_choices(&mapping.calibrations[id], profile)?;
+                mapping
+                    .calibrations
+                    .get_mut(id)
+                    .context("BizHawk calibration disappeared")?
+                    .target_mappings
+                    .insert(profile.id.clone(), choices);
+            }
+            for setup in mapping
+                .bizhawk_launch
+                .iter_mut()
+                .chain(&mut mapping.bizhawk_launches)
+            {
+                if setup.emulator_id != option.emulator_id
+                    || !setup.matches_platform(platform)
+                    || setup.scope_id() != scope
+                {
+                    continue;
+                }
+                found += 1;
+                guided::apply(setup, profile, &ids)?;
+            }
+            // Multiple BizHawk cores may emulate the same system. The selected
+            // guided target chooses one in this launch copy, without deleting
+            // the user's other persisted core setups.
+            let keep = |setup: &crate::controller_bizhawk::NativeLaunchSettings| {
+                setup.emulator_id != option.emulator_id
+                    || !setup.matches_platform(platform)
+                    || setup.scope_id() == scope
+            };
+            if mapping
+                .bizhawk_launch
+                .as_ref()
+                .is_some_and(|setup| !keep(setup))
+            {
+                mapping.bizhawk_launch = None;
+            }
+            mapping.bizhawk_launches.retain(keep);
+        }
+        "mame" => {
+            let panel = match profile.target_layout.as_str() {
+                "arcade-six-button" => crate::controller_mame_native::Panel::Six,
+                "arcade-eight-button" => crate::controller_mame_native::Panel::Eight,
+                _ => anyhow::bail!("Unsupported MAME guided arcade panel"),
+            };
+            for setup in &mut mapping.mame_native_launches {
+                if setup.emulator_id != option.emulator_id {
+                    continue;
+                }
+                found += 1;
+                setup.resolve_inputs_at_launch = true;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| {
+                        Ok(crate::controller_mame_native::settings::SavedPlayer {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            panel,
+                            native_device_id: String::new(),
+                            controls: BTreeMap::new(),
+                            source_controls: arcade_sources(&mapping.calibrations[id], profile)?,
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                setup.validate()?;
+            }
+            // First Flatpak launches synthesize a launch-scoped setup instead
+            // of failing for a missing hand-written entry (mgba precedent).
+            // Native builds keep explicit setups: their executable, cfg and
+            // SDL paths cannot be discovered without a trusted local scan.
+            #[cfg(target_os = "linux")]
+            if found == 0
+                && matches!(
+                    &option.executable,
+                    crate::emulator::EmulatorExecutable::Flatpak { .. }
+                )
+            {
+                mapping
+                    .mame_native_launches
+                    .push(crate::controller_mame_native::guided::discover(
+                        option,
+                        plan,
+                        panel,
+                        profile,
+                        &ids,
+                        &mapping.calibrations,
+                        cancel,
+                    )?);
+                found += 1;
+            }
+        }
+        "flycast" => {
+            let panel = match profile.target_layout.as_str() {
+                "arcade-six-button" => crate::controller_flycast_native::arcade::Panel::Six,
+                "arcade-eight-button" => crate::controller_flycast_native::arcade::Panel::Eight,
+                _ => anyhow::bail!("Unsupported Flycast guided arcade panel"),
+            };
+            for setup in &mut mapping.flycast_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| {
+                        Ok(crate::controller_flycast_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            panel,
+                            source_controls: arcade_sources(&mapping.calibrations[id], profile)?,
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "pcsx2" => {
+            for setup in &mut mapping.pcsx2_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.multitaps = [ids.len() > 2, ids.len() > 5];
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| {
+                        Ok(crate::controller_pcsx2::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            source_controls: source_choices(&mapping.calibrations[id], profile)?,
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "rpcs3" => {
+            for setup in &mut mapping.rpcs3_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| {
+                        Ok(crate::controller_rpcs3::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            source_controls: source_choices(&mapping.calibrations[id], profile)?,
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "melonds" => {
+            for setup in &mut mapping.melonds_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_melonds::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                    source_controls: source_choices(&mapping.calibrations[&ids[0]], profile)?,
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "dolphin" => {
+            for setup in &mut mapping.dolphin_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.resolve_devices_at_launch = true;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_dolphin::standalone::settings::Player {
+                            port: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            device_qualifier: String::new(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "mgba" => {
+            for setup in &mut mapping.mgba_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.handheld = if profile.target_layout == "gba" {
+                    crate::controller_mgba::settings::Handheld::Gba
+                } else {
+                    crate::controller_mgba::settings::Handheld::Gameboy
+                };
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "ppsspp" => {
+            for setup in &mut mapping.ppsspp_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "scummvm" => {
+            for setup in &mut mapping.scummvm_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "jgenesis" => {
+            for setup in &mut mapping.jgenesis_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "gopher64" => {
+            for setup in &mut mapping.gopher64_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_gopher64_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written JSON entry (mgba precedent).
+            if found == 0 {
+                mapping.gopher64_native_launches.push(
+                    crate::controller_gopher64_native::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?,
+                );
+                found += 1;
+            }
+        }
+        "gearsystem" | "gearcoleco" => {
+            for setup in &mut mapping.gear_native_launches {
+                if !matches(&setup.emulator_id, &setup.content)
+                    || setup.adapter.core() != profile.core
+                {
+                    continue;
+                }
+                found += 1;
+                setup.profile_id.clone_from(&profile.id);
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_gear_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "xroar" => {
+            for setup in &mut mapping.xroar_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.profile_id.clone_from(&profile.id);
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_xroar_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "zesarux" => {
+            ensure!(ids.len() == 1, "ZEsarUX Kempston setup requires one player");
+            for setup in &mut mapping.zesarux_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "oricutron" => {
+            for setup in &mut mapping.oricutron_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_oricutron_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "atari-plus-plus" => {
+            for setup in &mut mapping.atari_plus_plus_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_atari_plus_plus_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "aranym" => {
+            for setup in &mut mapping.aranym_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_aranym_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "atari800" => {
+            for setup in &mut mapping.atari800_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_atari800_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "nanoboyadvance" => {
+            for setup in &mut mapping.nanoboyadvance_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_nanoboyadvance_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "vba-m" => {
+            for setup in &mut mapping.vba_m_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_vba_m_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "86box" => {
+            for setup in &mut mapping.eighty_six_box_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_86box_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "caprice32" => {
+            for setup in &mut mapping.caprice32_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_caprice32_standalone::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "vita3k" => {
+            for setup in &mut mapping.vita3k_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_vita3k_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "play" => {
+            for setup in &mut mapping.play_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_play_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "ep128emu" => {
+            for setup in &mut mapping.ep128emu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_ep128emu_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "adamem" => {
+            for setup in &mut mapping.adamem_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_adamem_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "vector06sdl" => {
+            for setup in &mut mapping.vector06sdl_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_vector06sdl_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "simcoupe" => {
+            for setup in &mut mapping.simcoupe_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_simcoupe_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "pcem" => {
+            for setup in &mut mapping.pcem_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_pcem_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "tsugaru" => {
+            for setup in &mut mapping.tsugaru_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_tsugaru_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "touchhle" => {
+            for setup in &mut mapping.touchhle_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_touchhle_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "openbor" => {
+            for setup in &mut mapping.openbor_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_openbor_standalone::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "supermodel" => {
+            for setup in &mut mapping.supermodel_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_supermodel_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "panda3ds" => {
+            for setup in &mut mapping.panda3ds_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_panda3ds_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "dreampotato" => {
+            for setup in &mut mapping.dreampotato_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_dreampotato_standalone::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "ymir" => {
+            for setup in &mut mapping.ymir_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_ymir_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "shadps4" => {
+            for setup in &mut mapping.shadps4_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_shadps4_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "azahar" => {
+            for setup in &mut mapping.azahar_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_azahar_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "cemu" => {
+            for setup in &mut mapping.cemu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_cemu_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "eka2l1" => {
+            for setup in &mut mapping.eka2l1_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_eka2l1_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "uzem" => {
+            for setup in &mut mapping.uzem_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_uzem_standalone::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "pokemini" => {
+            for setup in &mut mapping.pokemini_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_pokemini_standalone::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "gbe-plus" => {
+            for setup in &mut mapping.gbe_plus_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_gbe_plus_standalone::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "amiberry" => {
+            for setup in &mut mapping.amiberry_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_amiberry_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "fuse" => {
+            for setup in &mut mapping.fuse_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_fuse_standalone::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            joystick_type:
+                                crate::controller_fuse_standalone::JoystickType::Kempston,
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "linapple" => {
+            for setup in &mut mapping.linapple_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_linapple_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "skyemu" => {
+            for setup in &mut mapping.skyemu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_skyemu_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "nestopia-ue" => {
+            for setup in &mut mapping.nestopia_ue_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_nestopia_ue_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "picodrive" => {
+            for setup in &mut mapping.picodrive_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_picodrive_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "gambatte" => {
+            for setup in &mut mapping.gambatte_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_gambatte_standalone::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "a7800" => {
+            for setup in &mut mapping.a7800_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_a7800_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "rmg" => {
+            for setup in &mut mapping.rmg_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_rmg_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "simple64" => {
+            for setup in &mut mapping.simple64_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_simple64_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "yaba-sanshiro" => {
+            for setup in &mut mapping.yaba_sanshiro_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "kronos" => {
+            for setup in &mut mapping.kronos_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                let slots = setup
+                    .players
+                    .iter()
+                    .map(|player| (player.port, player.device_id))
+                    .collect::<Vec<_>>();
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(index, id)| {
+                        let (port, device_id) =
+                            slots.get(index).copied().unwrap_or_else(|| match index {
+                                0 => (1, 1),
+                                1 => (2, 1),
+                                other => (1, other as u8),
+                            });
+                        crate::controller_kronos_native::settings::Player {
+                            player: (index + 1) as u8,
+                            controller_id: id.clone(),
+                            port,
+                            device_id,
+                        }
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "xemu" => {
+            for setup in &mut mapping.xemu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_xemu_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "blastem" => {
+            for setup in &mut mapping.blastem_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_blastem_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "mesen2" => {
+            for setup in &mut mapping.mesen2_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.system =
+                    crate::controller_mesen2_native::system_for_layout(&profile.target_layout)?
+                        .into();
+                setup.review(&mapping.calibrations)?;
+            }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            // Linux only: the session verifies through evdev device nodes.
+            #[cfg(target_os = "linux")]
+            if found == 0 {
+                ensure!(
+                    ids.len() == 1,
+                    "Mesen2 maps a single controller; assign exactly one player in Controller setup"
+                );
+                mapping.mesen2_native_launches.push(
+                    crate::controller_mesen2_native::guided::discover(
+                        option,
+                        plan,
+                        &profile.target_layout,
+                        &ids[0],
+                        cancel,
+                    )?,
+                );
+                found += 1;
+            }
+        }
+        "openmsx" => {
+            for setup in &mut mapping.openmsx_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_openmsx_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "desmume" => {
+            for setup in &mut mapping.desmume_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "hatari" => {
+            for setup in &mut mapping.hatari_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_hatari_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "vice" => {
+            for setup in &mut mapping.vice_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_vice_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "stella" => {
+            for setup in &mut mapping.stella_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_stella_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "bsnes" => {
+            for setup in &mut mapping.bsnes_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_bsnes::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            // Linux only: discovery resolves host executable/SDL paths.
+            #[cfg(target_os = "linux")]
+            if found == 0 {
+                mapping
+                    .bsnes_launches
+                    .push(crate::controller_bsnes::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?);
+                found += 1;
+            }
+        }
+        "snes9x" => {
+            for setup in &mut mapping.snes9x_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_snes9x::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            // Linux only: native discovery uses host Unix probing and the
+            // Flatpak branch needs Linux namespaces.
+            #[cfg(target_os = "linux")]
+            if found == 0 {
+                mapping
+                    .snes9x_launches
+                    .push(crate::controller_snes9x::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?);
+                found += 1;
+            }
+        }
+        #[cfg(target_os = "linux")]
+        "nestopia" => {
+            found += apply_nestopia_players(mapping, &option.emulator_id, plan, &ids)?;
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            if found == 0 {
+                mapping.nestopia_ue_flatpak_launches.push(
+                    crate::controller_nestopia_ue_flatpak::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?,
+                );
+                found += 1;
+            }
+        }
+        #[cfg(target_os = "linux")]
+        "punes" => {
+            found += apply_punes_players(mapping, &option.emulator_id, plan, &ids)?;
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (nestopia precedent).
+            if found == 0 {
+                mapping.punes_flatpak_launches.push(
+                    crate::controller_punes_flatpak::guided::discover(option, plan, &ids, cancel)?,
+                );
+                found += 1;
+            }
+        }
+        "fceux" => {
+            for setup in &mut mapping.fceux_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_fceux::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "sameboy" => {
+            for setup in &mut mapping.sameboy_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_sameboy::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "duckstation" => {
+            for setup in &mut mapping.duckstation_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                let kind = if profile.target_layout == "playstation-digital" {
+                    "DigitalController"
+                } else {
+                    "AnalogController"
+                };
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_duckstation::SavedPlayer {
+                        pad: (i + 1) as u8,
+                        controller_id: id.clone(),
+                        controller_type: kind.into(),
+                    })
+                    .collect();
+                setup.apply_selected_ports = true;
+                setup.review(&mapping.calibrations)?;
+            }
+            // First Flatpak launches synthesize a launch-scoped setup instead
+            // of failing for a missing hand-written entry (mgba precedent).
+            // Native builds keep explicit setups: their helper and SDL paths
+            // cannot be discovered without a trusted local installation scan.
+            #[cfg(target_os = "linux")]
+            if found == 0
+                && matches!(
+                    &option.executable,
+                    crate::emulator::EmulatorExecutable::Flatpak { .. }
+                )
+            {
+                mapping
+                    .duckstation_launches
+                    .push(crate::controller_duckstation::guided::discover(
+                        option,
+                        plan,
+                        profile.target_layout != "playstation-digital",
+                        &ids,
+                        cancel,
+                    )?);
+                found += 1;
+            }
+        }
+        "mednafen" => {
+            for setup in &mut mapping.mednafen_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                use crate::controller_mednafen::{md::Tap, profiles::Gamepad, settings::Player};
+                let mut gamepad = Gamepad::from_profile_id(&profile.id)
+                    .context("Unknown Mednafen guided target")?;
+                if gamepad == Gamepad::NesTwo && ids.len() > 2 {
+                    gamepad = Gamepad::NesFourScore;
+                }
+                setup.gamepad = gamepad;
+                setup.md_tap = (gamepad.system() == "md").then_some(if ids.len() <= 2 {
+                    Tap::None
+                } else if ids.len() <= 5 {
+                    Tap::PortOne
+                } else {
+                    Tap::Dual
+                });
+                // Native sequential logical slots are allocated by the existing
+                // topology writers; no SDL index becomes an emulated port number.
+                setup.psx_multitaps =
+                    (gamepad.system() == "psx").then_some([ids.len() > 2, ids.len() > 5]);
+                setup.saturn_multitaps =
+                    (gamepad.system() == "ss").then_some([ids.len() > 2, ids.len() > 7]);
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                        gamepad: None,
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        _ => unreachable!(),
+    }
+    ensure!(
+        found == 1,
+        if found == 0 {
+            "This emulator has no native runtime setup for this game yet. Your guided target and players are saved, but automatic runtime discovery is still required."
+        } else {
+            "More than one native runtime setup matches this game. Resolve the duplicate before launching."
+        }
+    );
+    Ok(Cow::Owned(adjusted))
+}
+
+/// Consume exactly the same resolver and manual overrides as the visual review.
+/// These are physical layout IDs, not guessed SDL/native button numbers.
+fn source_choices(
+    calibration: &crate::controller_catalog::Calibration,
+    profile: &EmulatorProfile,
+) -> Result<BTreeMap<String, String>> {
+    let mut used = BTreeSet::new();
+    calibration
+        .plan_profile(profile)?
+        .rows
+        .into_iter()
+        .map(|row| {
+            let source = row.physical_id.with_context(|| {
+                format!(
+                    "Assign a physical control to {} in Controller setup",
+                    row.target
+                )
+            })?;
+            ensure!(
+                row.input
+                    .as_ref()
+                    .is_some_and(|input| input.native.is_some()),
+                "{} needs physical calibration",
+                row.target
+            );
+            ensure!(
+                used.insert(source.clone()),
+                "The native target cannot reuse a physical control"
+            );
+            Ok((row.target_id, source))
+        })
+        .collect()
+}
+
+pub(crate) fn arcade_sources(
+    calibration: &crate::controller_catalog::Calibration,
+    profile: &EmulatorProfile,
+) -> Result<BTreeMap<String, String>> {
+    let mut choices = source_choices(calibration, profile)?;
+    // Generic panel artwork calls the Select-position control "select";
+    // the native panel writer calls the same destination action "coin".
+    let coin = choices
+        .remove("select")
+        .context("Arcade target is missing Coin")?;
+    ensure!(
+        choices.insert("coin".into(), coin).is_none(),
+        "Duplicate arcade Coin target"
+    );
+    Ok(choices)
+}
+
+pub(crate) fn player_ids(
+    settings: &AppSettings,
+    profile: &EmulatorProfile,
+    inventory: &[ControllerDevice],
+) -> Result<Vec<String>> {
+    let mapping = &settings.controller_mapping;
+    ensure!(
+        mapping.explicit_player_selection,
+        "Choose players in Controller setup first"
+    );
+    let limit = profile
+        .native_launch
+        .as_ref()
+        .context("Missing native player limits")?
+        .max_players;
+    ensure!(
+        !mapping.player_mappings.is_empty() && mapping.player_mappings.len() <= limit,
+        "This target supports up to {limit} players. Adjust the players in Controller setup."
+    );
+    let mut seen = BTreeSet::new();
+    mapping.player_mappings.iter().enumerate().map(|(i, player)| {
+        let id = player.controller_id.as_ref().context("Select a controller for every player")?;
+        ensure!(seen.insert(id) && !mapping.hidden_controller_ids.contains(id), "Player {} has a duplicate or hidden controller", i + 1);
+        ensure!(inventory.iter().filter(|device| &device.stable_id == id).count() == 1, "Player {} is disconnected or has an ambiguous device identity", i + 1);
+        let calibration = mapping.calibrations.get(id).context("Finish recording this controller first")?;
+        ensure!(calibration.os == "linux" && calibration.backend != crate::controller_sdl3::BACKEND,
+            "{} currently needs Linux physical button calibration. SDL3 logical-button translation for this native adapter is not implemented yet.", profile.core);
+        calibration.plan_profile(profile)?;
+        Ok(id.clone())
+    }).collect()
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use crate::controller_catalog::{Calibration, InputBinding, NativeInput, catalog};
+    use std::{collections::BTreeMap, ffi::OsString, path::PathBuf};
+
+    fn nes_calibration() -> Calibration {
+        Calibration {
+            target_mappings: BTreeMap::new(),
+            layout: "nes".into(),
+            os: "linux".into(),
+            backend: "gilrs-0.11".into(),
+            bindings: catalog()
+                .layout("nes")
+                .unwrap()
+                .controls
+                .iter()
+                .enumerate()
+                .map(|(index, control)| {
+                    (
+                        control.id.clone(),
+                        InputBinding {
+                            code: index as u32,
+                            kind: "button".into(),
+                            direction: 0,
+                            logical: control.label.clone(),
+                            native: Some(NativeInput {
+                                code: 0x1_0000 + index as u32,
+                                direction: 0,
+                            }),
+                            axis: None,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn guided_nestopia_apply_updates_exact_two_player_setup() {
+        let directory = tempfile::tempdir().unwrap();
+        let content = directory.path().join("oracle.nes");
+        std::fs::write(&content, b"nes").unwrap();
+        let mut mapping = crate::settings::ControllerMappingSettings::default();
+        mapping
+            .calibrations
+            .insert("pad-a".into(), nes_calibration());
+        mapping
+            .calibrations
+            .insert("pad-b".into(), nes_calibration());
+        mapping.nestopia_ue_flatpak_launches.push(
+            crate::controller_nestopia_ue_flatpak::settings::SavedSetup {
+                emulator_id: "nestopia-id".into(),
+                content: content.clone(),
+                source_main_config: "/tmp/nestopia/nestopia.conf".into(),
+                source_input_config: "/tmp/nestopia/input.conf".into(),
+                probe_program: "/tmp/lunchpail-controller-probe".into(),
+                sdl_library: "/tmp/libSDL2.so".into(),
+                executable_sha256: "a".repeat(64),
+                players: vec![
+                    crate::controller_nestopia_ue_flatpak::settings::Player {
+                        player: 1,
+                        controller_id: "old-a".into(),
+                    },
+                    crate::controller_nestopia_ue_flatpak::settings::Player {
+                        player: 2,
+                        controller_id: "old-b".into(),
+                    },
+                ],
+            },
+        );
+        let plan = LaunchPlan {
+            emulator_name: "Nestopia UE".into(),
+            program: "/usr/bin/flatpak".into(),
+            arguments: vec![OsString::from("run"), content.into_os_string()],
+            current_directory: PathBuf::from("/tmp"),
+            environment: Vec::new(),
+            cleanup_paths: Vec::new(),
+            retroarch_content: None,
+        };
+        assert_eq!(
+            apply_nestopia_players(
+                &mut mapping,
+                "nestopia-id",
+                &plan,
+                &["pad-a".into(), "pad-b".into()],
+            )
+            .unwrap(),
+            1
+        );
+        let players = &mapping.nestopia_ue_flatpak_launches[0].players;
+        assert_eq!(players[0].controller_id, "pad-a");
+        assert_eq!(players[1].controller_id, "pad-b");
+        let profile = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "nestopia-ue:flatpak-nes")
+            .unwrap();
+        assert_eq!(
+            mapping.calibrations["pad-a"]
+                .plan_profile(profile)
+                .unwrap()
+                .rows
+                .len(),
+            8
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn guided_punes_apply_updates_two_player_setup() {
+        let directory = tempfile::tempdir().unwrap();
+        let content = directory.path().join("oracle.nes");
+        std::fs::write(&content, b"nes").unwrap();
+        let mut mapping = crate::settings::ControllerMappingSettings::default();
+        mapping
+            .calibrations
+            .insert("pad-a".into(), nes_calibration());
+        mapping
+            .calibrations
+            .insert("pad-b".into(), nes_calibration());
+        mapping.punes_flatpak_launches.push(
+            crate::controller_punes_flatpak::settings::SavedSetup {
+                emulator_id: "punes-id".into(),
+                content: content.clone(),
+                source_main_config: "/tmp/punes/puNES.cfg".into(),
+                source_input_config: "/tmp/punes/input.cfg".into(),
+                probe_program: "/tmp/lunchpail-controller-probe".into(),
+                executable_sha256: "a".repeat(64),
+                players: vec![crate::controller_punes_flatpak::settings::Player {
+                    player: 1,
+                    controller_id: "old-a".into(),
+                }],
+            },
+        );
+        let plan = LaunchPlan {
+            emulator_name: "puNES".into(),
+            program: "/usr/bin/flatpak".into(),
+            arguments: vec![OsString::from("run"), content.into_os_string()],
+            current_directory: PathBuf::from("/tmp"),
+            environment: Vec::new(),
+            cleanup_paths: Vec::new(),
+            retroarch_content: None,
+        };
+        assert_eq!(
+            apply_punes_players(
+                &mut mapping,
+                "punes-id",
+                &plan,
+                &["pad-a".into(), "pad-b".into()],
+            )
+            .unwrap(),
+            1
+        );
+        let players = &mapping.punes_flatpak_launches[0].players;
+        assert_eq!(players[0].controller_id, "pad-a");
+        assert_eq!(players[1].controller_id, "pad-b");
+        let profile = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "punes:flatpak-nes-standard")
+            .unwrap();
+        assert_eq!(
+            mapping.calibrations["pad-a"]
+                .plan_profile(profile)
+                .unwrap()
+                .rows
+                .len(),
+            8
+        );
+    }
+}

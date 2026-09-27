@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "jsgroth/jgenesis", "commit": "cbe7f129e3f5c805a2a2e4318981834192116e90", "role": "v0.14.1 tag pin: config discovery, input TOML serialization, save/state path resolution, BIOS/boot-ROM config" },
     { "kind": "docs", "url": "https://github.com/jsgroth/jgenesis/blob/cbe7f129e3f5c805a2a2e4318981834192116e90/README.md", "role": "official platform support statement (Linux/Windows/web) and supported console list" },
-    { "kind": "contract", "url": "sources/emulator-install-sources.json", "role": "Lunchbox approved installables: Linux AppImage (jsgroth/jgenesis) and Windows GitHub zip; no macOS entry" }
+    { "kind": "contract", "url": "sources/emulator-install-sources.json", "role": "Lunchpail approved installables: Linux AppImage (jsgroth/jgenesis) and Windows GitHub zip; no macOS entry" }
   ],
   "platforms": {
     "linux": {
@@ -72,7 +72,7 @@
           "evidence": ["source:jgenesis @cbe7f12 (cartridge/BIOS configuration contains no cryptographic-key input)"]
         }
       ],
-      "notes": "Lunchbox installs the official v0.14.1 AppImage (sources/emulator-install-sources.json); ROM-folder saves/states stay next to the ROMs, and 'Emulator Folder' means the AppImage's parent directory. macOS is not captured: README lists Linux/Windows/web as officially supported, the v0.14.1 release ships only an AppImage and a Windows zip, CI (.github/workflows/rust.yml) has no macOS job, and the Lunchbox sources file has no macOS entry."
+      "notes": "Lunchpail installs the official v0.14.1 AppImage (sources/emulator-install-sources.json); ROM-folder saves/states stay next to the ROMs, and 'Emulator Folder' means the AppImage's parent directory. macOS is not captured: README lists Linux/Windows/web as officially supported, the v0.14.1 release ships only an AppImage and a Windows zip, CI (.github/workflows/rust.yml) has no macOS job, and the Lunchpail sources file has no macOS entry."
     },
     "windows": {
       "paths": [
@@ -129,7 +129,7 @@
           "evidence": ["source:jgenesis @cbe7f12 (cartridge/BIOS configuration contains no cryptographic-key input)"]
         }
       ],
-      "notes": "Lunchbox installs the official v0.14.1 windows-x86_64 zip (sources/emulator-install-sources.json). macOS is not captured: no official macOS builds exist upstream and no Lunchbox macOS installable is declared."
+      "notes": "Lunchpail installs the official v0.14.1 windows-x86_64 zip (sources/emulator-install-sources.json). macOS is not captured: no official macOS builds exist upstream and no Lunchpail macOS installable is declared."
     }
   },
   "platform_gaps": {

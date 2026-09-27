@@ -9,17 +9,17 @@ a substitute for a finished community translation patch.
 
 ## What runs on your computer?
 
-- **OCR** finds and reads the text. Lunchbox runs the downloaded PP-OCRv6
+- **OCR** finds and reads the text. Lunchpail runs the downloaded PP-OCRv6
   models through ONNX Runtime.
 - **Ollama** runs the TranslateGemma model that translates the recognized text.
 - **RetroArch's AI Service** supplies the game image and displays the result.
 
 Ollama does not run the OCR model. Using Docker for Ollama does not move
-Lunchbox's OCR into that container.
+Lunchpail's OCR into that container.
 
 ## Requirements
 
-You need a supported GPU setup for both OCR and translation. Lunchbox checks
+You need a supported GPU setup for both OCR and translation. Lunchpail checks
 them before starting and reports an error instead of silently using CPU OCR.
 
 | Installation | GPU setup |
@@ -52,7 +52,7 @@ service is using the configured address before starting another one.
 
 ## Turn it on for a game
 
-Enable **Translate this game** in Game details. Lunchbox remembers the choice
+Enable **Translate this game** in Game details. Lunchpail remembers the choice
 for that game; other games launch without its translation bridge.
 
 In RetroArch, press **F10 once** to start automatic updates and again to stop.

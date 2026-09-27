@@ -1,0 +1,85 @@
+app-id: io.github.benwbooth.Lunchpail
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lunchpail
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=host
+  # Read/migrate the existing profile after the application ID rename.
+  - --filesystem=~/.var/app/io.github.benwbooth.Lunchbox
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDL_SHARED=ON
+      - -DSDL_STATIC=OFF
+      - -DSDL_TESTS=OFF
+      - -DSDL_EXAMPLES=OFF
+      - -DSDL_VIDEO=OFF
+      - -DSDL_AUDIO=OFF
+      # SDL is used for controller input; Qt owns the application windows.
+      - -DSDL_UNIX_CONSOLE_BUILD=ON
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz
+        sha256: f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7
+  - name: lunchpail
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/lunchpail/cargo
+        CARGO_NET_OFFLINE: 'true'
+        QMAKE: /usr/bin/qmake6
+        LUNCHPAIL_SDL3_LIBRARY: /app/lib/libSDL3.so.0
+        # MAME's CHD core is linked from a pinned prebuilt archive (declared
+        # below), so no target downloads anything at build time.
+        LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE: /run/build/lunchpail/chdman/libchdman_rs-x86_64-linux.a
+        # The Flatpak sandbox has no build-time network access. Link against
+        # the declared CPU ONNX Runtime instead of ort-sys downloading one.
+        ORT_LIB_PATH: /run/build/lunchpail/onnxruntime/lib
+        ORT_PREFER_DYNAMIC_LINK: '1'
+    build-commands:
+      - cargo build --locked --offline --release --no-default-features --package lunchpail-app --package lunchpail-controller-probe --bin lunchpail --bin lunchpail-controller-probe
+      - cargo run --locked --offline --release --package lunchpail-db -- extract --archive artifacts/lunchpail.db.7z --output database
+      - install -Dm0755 target/release/lunchpail /app/bin/lunchpail
+      - install -Dm0755 target/release/lunchpail-controller-probe /app/bin/lunchpail-controller-probe
+      - install -Dm0755 onnxruntime/lib/libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1.28.0
+      - ln -s libonnxruntime.so.1.28.0 /app/lib/libonnxruntime.so.1
+      - ln -s libonnxruntime.so.1 /app/lib/libonnxruntime.so
+      - install -Dm0755 onnxruntime/lib/libonnxruntime_providers_shared.so /app/lib/libonnxruntime_providers_shared.so
+      - install -Dm0644 database/lunchpail.db /app/share/lunchpail/lunchpail.db
+      - install -Dm0644 packaging/io.github.benwbooth.Lunchpail.desktop /app/share/applications/io.github.benwbooth.Lunchpail.desktop
+      - install -Dm0644 packaging/io.github.benwbooth.Lunchpail.metainfo.xml /app/share/metainfo/io.github.benwbooth.Lunchpail.metainfo.xml
+      - install -Dm0644 assets/lunchpail.svg /app/share/icons/hicolor/scalable/apps/io.github.benwbooth.Lunchpail.svg
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .flatpak-builder
+          - build
+          - result
+          - target
+      - cargo-sources.json
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-x64-1.28.0.tgz
+        sha256: a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407
+        dest: onnxruntime
+      - type: file
+        url: https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-x86_64-unknown-linux-gnu-glibc2.35.a
+        sha256: 5340f4e65d0fd0c40d5b1dd3c6ad1d5daa653ddb7f93affb70f0480cbc781a17
+        dest: chdman
+        dest-filename: libchdman_rs-x86_64-linux.a

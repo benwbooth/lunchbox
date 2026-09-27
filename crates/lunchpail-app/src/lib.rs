@@ -1,0 +1,920 @@
+mod app_paths;
+mod arcade;
+mod arcade_content;
+mod arcade_download;
+mod arcade_settings;
+mod bezel_orionsangel;
+mod bezel_project;
+mod build_info;
+mod catalog;
+mod collection_identity;
+pub mod collection_identity_model;
+mod collections;
+mod controller_86box_native;
+mod controller_8_bit_wonders_standalone;
+mod controller_a7800_native;
+mod controller_adam_plus_standalone;
+mod controller_adamem_native;
+mod controller_adviemulator_standalone;
+mod controller_amiarcadia_native;
+mod controller_amiberry_native;
+mod controller_apf_emuw_standalone;
+mod controller_applewin_native;
+mod controller_aranym_native;
+mod controller_ardens_standalone;
+mod controller_ares;
+mod controller_arnold_native;
+mod controller_atari800_native;
+mod controller_atari_plus_plus_native;
+mod controller_axis;
+mod controller_azahar_native;
+mod controller_b2_native;
+mod controller_b_em_standalone;
+mod controller_beebem_standalone;
+mod controller_bgb_standalone;
+mod controller_bigpemu_standalone;
+mod controller_bizhawk;
+#[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
+mod controller_bizhawk_guard;
+mod controller_blastem_native;
+mod controller_bluemsx_standalone;
+mod controller_bsnes;
+mod controller_caprice32_standalone;
+mod controller_catalog;
+mod controller_cemu_native;
+mod controller_clock_signal_standalone;
+mod controller_colem_standalone;
+mod controller_coverage;
+mod controller_crocods;
+mod controller_cuzebox_native;
+mod controller_cxbx_reloaded_native;
+mod controller_denise_native;
+mod controller_desmume_native;
+mod controller_devector_standalone;
+mod controller_dolphin;
+mod controller_dosbox_native;
+mod controller_dosbox_staging_native;
+mod controller_dosbox_x_native;
+mod controller_dreamm_standalone;
+mod controller_dreampotato_standalone;
+mod controller_duckstation;
+mod controller_eightyone_standalone;
+mod controller_eka2l1_native;
+mod controller_emma_02_standalone;
+mod controller_emulicious_standalone;
+mod controller_ep128emu;
+mod controller_ep128emu_native;
+mod controller_escv_native;
+mod controller_fbneo;
+mod controller_fceux;
+mod controller_flycast_native;
+mod controller_fmsx_standalone;
+mod controller_freej2me_standalone;
+mod controller_fs_uae_native;
+mod controller_fuse_standalone;
+mod controller_gambatte_standalone;
+mod controller_gbe_plus_standalone;
+mod controller_gear_native;
+mod controller_gearcoleco_standalone;
+mod controller_gearsystem_standalone;
+mod controller_genymotion_standalone;
+mod controller_geolith_standalone;
+mod controller_gopher64_native;
+mod controller_guided_native;
+mod controller_hatari;
+mod controller_hatari_native;
+mod controller_hypseus_singe_native;
+mod controller_jgenesis_native;
+mod controller_jollycv_standalone;
+mod controller_jpcsp_standalone;
+mod controller_jsorcerer_standalone;
+mod controller_jynx_standalone;
+mod controller_kronos;
+mod controller_kronos_native;
+mod controller_launch;
+mod controller_launch_modes;
+mod controller_layout;
+mod controller_libretro_core_rows;
+mod controller_linapple_native;
+mod controller_loopymse_standalone;
+mod controller_lrps2;
+mod controller_m88kai_standalone;
+mod controller_macos_on_hyper_v_standalone;
+mod controller_magnavody_standalone;
+mod controller_magnavox_odyssey_ds_standalone;
+mod controller_mame;
+mod controller_mame_native;
+mod controller_mastergear_standalone;
+mod controller_mednafen;
+mod controller_meka_native;
+mod controller_melonds;
+mod controller_melonds_ds_standalone;
+mod controller_memu_standalone;
+mod controller_mesen2_native;
+mod controller_mgba;
+mod controller_mini_vmac_standalone;
+mod controller_models;
+mod controller_msx_emu_standalone;
+mod controller_mu_native;
+mod controller_mugen_standalone;
+mod controller_nanoboyadvance_native;
+mod controller_native_platform;
+mod controller_native_process;
+mod controller_native_targets;
+mod controller_nes_emu_standalone;
+#[cfg(target_os = "linux")]
+mod controller_nestopia_ue_flatpak;
+mod controller_nestopia_ue_native;
+mod controller_nethersx2_standalone;
+mod controller_nuance_resurrection_native;
+mod controller_o2em_standalone;
+mod controller_odyemu_standalone;
+mod controller_odysim_standalone;
+mod controller_odyssey_now_hal_standalone;
+mod controller_odyweb_standalone;
+mod controller_openbor_standalone;
+mod controller_openmsx_native;
+mod controller_oricutron_native;
+mod controller_osx_kvm_standalone;
+mod controller_ovcc_standalone;
+mod controller_panda3ds_native;
+mod controller_pcem_native;
+mod controller_pcsx2;
+mod controller_pcsx_rearmed_standalone;
+mod controller_phem_standalone;
+mod controller_pico_8_standalone;
+mod controller_picodrive_native;
+mod controller_pk201_standalone;
+mod controller_play_native;
+mod controller_pokemini_standalone;
+mod controller_ppsspp;
+mod controller_prosystem_native;
+mod controller_proton_standalone;
+mod controller_provenance_standalone;
+mod controller_psx;
+mod controller_puae;
+#[cfg(target_os = "linux")]
+mod controller_punes_flatpak;
+mod controller_punes_native;
+mod controller_px68k_standalone;
+mod controller_quasi88_standalone;
+mod controller_retro8_standalone;
+mod controller_retro_virtual_machine_standalone;
+mod controller_rmg_native;
+mod controller_rpcs3;
+mod controller_same_cdi;
+mod controller_sameboy;
+mod controller_scummvm;
+mod controller_scummvm_native;
+mod controller_sdl3;
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+mod controller_sdl3_retroarch;
+mod controller_shadps4_native;
+mod controller_sheepshaver_standalone;
+mod controller_simcoupe_native;
+mod controller_simcp;
+mod controller_simple64_native;
+mod controller_skyemu_native;
+mod controller_snepulator_standalone;
+mod controller_snes9x;
+mod controller_speccy_standalone;
+mod controller_spectral_standalone;
+mod controller_steemsse;
+mod controller_steemsse_native;
+mod controller_stella;
+mod controller_stella_native;
+mod controller_supermodel_native;
+mod controller_tanuki3ds_standalone;
+mod controller_target;
+mod controller_touchhle_native;
+mod controller_tsugaru_native;
+mod controller_uzem_standalone;
+mod controller_vba_m_native;
+mod controller_vector06sdl_native;
+mod controller_vice_native;
+mod controller_vice_xpet_standalone;
+mod controller_vice_xvic;
+mod controller_virtual_apf_standalone;
+mod controller_virtual_jaguar_standalone;
+mod controller_virtualbuddy_standalone;
+mod controller_virtualc64_native;
+mod controller_visual_pinball_standalone;
+mod controller_vita3k_native;
+mod controller_wasm4_w4_standalone;
+mod controller_wataroo_standalone;
+mod controller_waydroid_standalone;
+mod controller_winarcadia_standalone;
+mod controller_windows_sorcerer_standalone;
+mod controller_wine_standalone;
+mod controller_winuae_native;
+mod controller_xebra_standalone;
+mod controller_xemu_native;
+mod controller_xenia_native;
+mod controller_xm7_standalone;
+mod controller_xm8_standalone;
+mod controller_xroar_native;
+mod controller_yaba_sanshiro;
+mod controller_yaba_sanshiro_native;
+mod controller_ymir_native;
+mod controller_zesarux_native;
+mod controllers;
+mod couch_theme;
+pub mod display_setup;
+mod download_plan;
+pub mod download_queue_model;
+mod emulator;
+mod emulator_manager;
+pub mod emulator_manager_model;
+mod emulator_session;
+pub mod emulator_update_model;
+mod emumovies;
+pub mod emumovies_model;
+mod exo_install;
+mod exo_media;
+mod external_torrent;
+pub mod external_torrent_model;
+mod firmware;
+mod firmware_audit;
+pub mod firmware_audit_model;
+mod game_details;
+pub mod game_details_model;
+mod game_mods;
+pub mod game_mods_model;
+pub mod gamepad_input;
+mod hover_preview;
+mod igdb;
+pub mod igdb_model;
+mod ingest;
+pub mod launch_profile_manager_model;
+mod library_audit;
+pub mod library_audit_model;
+pub mod library_model;
+mod list_view;
+mod local_import;
+pub mod local_import_model;
+mod local_provider_manifest;
+pub mod local_provider_manifest_model;
+mod media;
+mod media_acquisition;
+mod media_audit;
+pub mod media_audit_model;
+mod media_repair_batch;
+mod native_file_dialog;
+mod nestopia_ue_fds_firmware;
+mod patch_catalog;
+pub mod patch_catalog_model;
+pub mod platform_locations;
+mod platform_process;
+mod profile_backup;
+mod provider_image;
+mod qbittorrent;
+mod region_priority;
+mod release_content;
+mod retroachievements;
+pub mod retroachievements_model;
+use lunchpail_controller_probe::retroarch_frontend_autoconfig;
+mod desktop_application;
+mod retroarch_saves;
+mod retroarch_shaders;
+mod rom_launch_preparation;
+mod runtime_adapter;
+pub mod save_cloud;
+pub mod save_sync;
+pub mod save_sync_model;
+pub mod save_sync_service;
+mod screenscraper;
+pub mod screenscraper_model;
+mod settings;
+pub mod settings_model;
+mod single_instance;
+mod steamgriddb;
+pub mod steamgriddb_model;
+mod tags;
+mod translation;
+mod translation_docker;
+mod watched_torrent;
+pub mod watched_torrent_model;
+pub mod web_artwork_model;
+mod window_icon;
+
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+
+use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QQuickStyle, QString, QUrl};
+
+static PROCESS_STARTED: OnceLock<Instant> = OnceLock::new();
+static WEB_ARTWORK_PROBE_FIXTURE: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+pub fn mark_process_started() {
+    let _ = PROCESS_STARTED.set(Instant::now());
+}
+
+pub(crate) fn startup_elapsed() -> Duration {
+    PROCESS_STARTED.get_or_init(Instant::now).elapsed()
+}
+
+pub(crate) fn web_artwork_probe_fixture() -> Option<&'static std::path::Path> {
+    WEB_ARTWORK_PROBE_FIXTURE
+        .get()
+        .map(std::path::PathBuf::as_path)
+}
+
+fn seed_web_artwork_ui_probe() -> anyhow::Result<()> {
+    use std::io::Write;
+
+    let path = std::env::temp_dir().join(format!(
+        "lunchpail-web-artwork-probe-{}.png",
+        std::process::id()
+    ));
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(&[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0xb5,
+        0x1c, 0x0c, 0x02, 0x00, 0x00, 0x00, 0x0b, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x64,
+        0xf8, 0x0f, 0x00, 0x01, 0x05, 0x01, 0x01, 0x27, 0x18, 0xe3, 0x66, 0x00, 0x00, 0x00, 0x00,
+        0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ])?;
+    file.sync_all()?;
+    let _ = WEB_ARTWORK_PROBE_FIXTURE.set(path);
+    Ok(())
+}
+
+pub fn initialize_qt() {
+    cxx_qt::init_crate!(cxx_qt);
+    cxx_qt::init_crate!(cxx_qt_lib);
+    cxx_qt::init_crate!(lunchpail_app);
+    cxx_qt::init_qml_module!("Lunchpail");
+}
+
+fn preferred_controls_style(
+    desktop: Option<&str>,
+    requested_style: Option<&str>,
+    command_line_style: bool,
+) -> Option<&'static str> {
+    if requested_style.is_some() || command_line_style {
+        return None;
+    }
+    desktop
+        .unwrap_or_default()
+        .split([':', ';'])
+        .any(|part| part.eq_ignore_ascii_case("kde"))
+        .then_some("org.kde.desktop")
+}
+
+fn configure_controls_style(style: Option<&str>) {
+    if let Some(style) = style {
+        QQuickStyle::set_style(&QString::from(style));
+        eprintln!("LUNCHPAIL_QT_CONTROLS_STYLE style={style}");
+    }
+}
+
+fn startup_controls_style() -> Option<&'static str> {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
+    let requested_style = std::env::var("QT_QUICK_CONTROLS_STYLE").ok();
+    let command_line_style = std::env::args().any(|arg| arg == "-style");
+    preferred_controls_style(
+        desktop.as_deref(),
+        requested_style.as_deref(),
+        command_line_style,
+    )
+}
+
+fn may_bypass_instance_guard(arguments: &[String], platform: Option<&str>) -> bool {
+    platform == Some("offscreen")
+        && arguments
+            .iter()
+            .any(|argument| argument.starts_with("--") && argument.ends_with("-ui-probe"))
+}
+
+fn needs_widget_application(
+    selected_style: Option<&str>,
+    environment_style: Option<&str>,
+    command_line_style: Option<&str>,
+) -> bool {
+    [selected_style, environment_style, command_line_style]
+        .into_iter()
+        .flatten()
+        .any(|style| style.eq_ignore_ascii_case("org.kde.desktop"))
+}
+
+pub fn run() -> i32 {
+    app_paths::import_legacy_environment();
+    if std::env::args().nth(1).as_deref() == Some("--cheat-core-identity") {
+        return game_mods::core_identity_helper();
+    }
+    #[cfg(all(target_os = "linux", feature = "rocm-ocr"))]
+    if let Err(error) = translation::configure_gpu_cache() {
+        eprintln!("LUNCHPAIL_TRANSLATION_OCR_GPU_CACHE_UNAVAILABLE: {error:#}");
+    }
+    if std::env::args().any(|arg| arg == "--sdl3-display-inspect") {
+        return match lunchpail_controller_probe::live_sdl3::primary_display_metrics(
+            &controller_sdl3::runtime_path(),
+        ) {
+            Ok(metrics) => {
+                println!(
+                    "{}x{}@{}@{}",
+                    metrics.width, metrics.height, metrics.pixel_density, metrics.video_driver
+                );
+                0
+            }
+            Err(error) => {
+                eprintln!("SDL3 display mode: {error:#}");
+                1
+            }
+        };
+    }
+    if std::env::args().any(|arg| arg == "--sdl3-input-stream" || arg == "--sdl3-input-inspect") {
+        let once = std::env::args().any(|arg| arg == "--sdl3-input-inspect");
+        return match lunchpail_controller_probe::live_sdl3::stream(
+            &controller_sdl3::runtime_path(),
+            once,
+        ) {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("SDL3 native input: {error:#}");
+                1
+            }
+        };
+    }
+    if std::env::args().any(|arg| arg == "--controller-numbering-probe") {
+        return match controller_launch::numbering_probe() {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("{error:#}");
+                1
+            }
+        };
+    }
+    let arguments: Vec<String> = std::env::args().collect();
+    if let Some(index) = arguments
+        .iter()
+        .position(|arg| arg == "--export-controller-svgs")
+    {
+        let Some(directory) = arguments.get(index + 1) else {
+            eprintln!("--export-controller-svgs requires a destination directory");
+            return 2;
+        };
+        return match controller_catalog::export_svg(std::path::Path::new(directory)) {
+            Ok(()) => {
+                println!(
+                    "Exported {} controller SVG diagrams",
+                    controller_catalog::catalog().layouts.len()
+                );
+                0
+            }
+            Err(error) => {
+                eprintln!("Controller export failed: {error:#}");
+                1
+            }
+        };
+    }
+    if std::env::args().any(|argument| argument == "--emumovies-soundtrack-probe") {
+        return match emumovies_model::soundtrack_saved_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_EMUMOVIES_SOUNDTRACK_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_EMUMOVIES_SOUNDTRACK_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if let Some(path) = std::env::args()
+        .skip_while(|argument| argument != "--emumovies-list-library-path")
+        .nth(1)
+    {
+        return match emumovies_model::list_saved_library_path(&path) {
+            Ok(entries) => {
+                println!(
+                    "LUNCHPAIL_EMUMOVIES_LIBRARY_PATH path={path:?} entries={}",
+                    entries.len()
+                );
+                for entry in entries {
+                    println!("LUNCHPAIL_EMUMOVIES_LIBRARY_ENTRY path={entry:?}");
+                }
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_EMUMOVIES_LIBRARY_FAILED path={path:?} error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--web-artwork-ui-probe")
+        && let Err(error) = seed_web_artwork_ui_probe()
+    {
+        eprintln!("LUNCHPAIL_WEB_ARTWORK_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+    if std::env::args().any(|argument| argument == "--firmware-audit-ui-probe") {
+        match firmware_audit::seed_ui_probe() {
+            Ok(path) => println!("LUNCHPAIL_FIRMWARE_AUDIT_SEEDED path={path:?}"),
+            Err(error) => {
+                eprintln!("LUNCHPAIL_FIRMWARE_AUDIT_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+    match settings::state_database_path()
+        .and_then(|path| profile_backup::apply_pending_restore(&path))
+    {
+        Ok(Some(summary)) => println!(
+            "LUNCHPAIL_PROFILE_RESTORED collections={} installed_games={} customized_games={} import_profiles={} themes={}",
+            summary.collections,
+            summary.installed_games,
+            summary.customized_games,
+            summary.import_profiles,
+            summary.themes
+        ),
+        Ok(None) => {}
+        Err(error) => eprintln!("LUNCHPAIL_PROFILE_RESTORE_FAILED error={error:#}"),
+    }
+
+    if std::env::args().any(|argument| {
+        matches!(
+            argument.as_str(),
+            "--hover-preview-ui-probe" | "--hover-artwork-transition-ui-probe"
+        )
+    }) {
+        match hover_preview::prepare_ui_probe() {
+            Ok(Some(path)) => println!("LUNCHPAIL_HOVER_PREVIEW_SEEDED path={path:?}"),
+            Ok(None) => println!("LUNCHPAIL_HOVER_PREVIEW_DOWNLOAD_PROBE clean_cache=true"),
+            Err(error) => {
+                eprintln!("LUNCHPAIL_HOVER_PREVIEW_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
+    if std::env::args().any(|argument| argument == "--install-management-ui-probe") {
+        match ingest::seed_install_management_ui_probe() {
+            Ok(path) => println!("LUNCHPAIL_INSTALL_MANAGEMENT_SEEDED path={:?}", path),
+            Err(error) => {
+                eprintln!("LUNCHPAIL_INSTALL_MANAGEMENT_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
+    if std::env::args().any(|argument| argument == "--import-profile-ui-probe")
+        && let Err(error) = local_import::seed_import_profile_ui_probe()
+    {
+        eprintln!("LUNCHPAIL_IMPORT_PROFILE_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
+    if std::env::args().any(|argument| argument == "--import-profile-batch-ui-probe")
+        && let Err(error) = local_import::seed_import_profile_batch_ui_probe()
+    {
+        eprintln!("LUNCHPAIL_IMPORT_PROFILE_BATCH_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
+    if std::env::args().any(|argument| argument == "--hash-cache-ui-probe")
+        && let Err(error) = local_import::seed_hash_cache_ui_probe()
+    {
+        eprintln!("LUNCHPAIL_HASH_CACHE_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
+    if std::env::args().any(|argument| argument == "--couch-theme-ui-probe")
+        && let Err(error) = couch_theme::seed_ui_probe()
+    {
+        eprintln!("LUNCHPAIL_COUCH_THEME_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
+    if std::env::args().any(|argument| argument == "--activity-history-ui-probe")
+        && let Err(error) = settings::seed_activity_history_probe()
+    {
+        eprintln!("LUNCHPAIL_ACTIVITY_HISTORY_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
+    if std::env::args().any(|argument| argument == "--emulator-lifecycle-recovery-ui-probe") {
+        match settings::seed_emulator_lifecycle_recovery_probe() {
+            Ok(evidence) => println!("LUNCHPAIL_EMULATOR_RECOVERY_SEEDED {evidence}"),
+            Err(error) => {
+                eprintln!("LUNCHPAIL_EMULATOR_RECOVERY_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
+    if std::env::args().any(|argument| argument == "--media-repair-recovery-ui-probe") {
+        match media_repair_batch::seed_media_repair_recovery_probe() {
+            Ok(evidence) => println!("LUNCHPAIL_MEDIA_REPAIR_RECOVERY_SEEDED {evidence}"),
+            Err(error) => {
+                eprintln!("LUNCHPAIL_MEDIA_REPAIR_RECOVERY_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
+    if std::env::args().any(|argument| argument == "--library-audit-fixture") {
+        return match library_audit::library_audit_fixture_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_LIBRARY_AUDIT_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_LIBRARY_AUDIT_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--archive-import-probe") {
+        return match local_import::archive_import_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_ARCHIVE_IMPORT_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_ARCHIVE_IMPORT_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--multi-archive-import-probe") {
+        return match local_import::multi_archive_import_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_MULTI_ARCHIVE_IMPORT_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_MULTI_ARCHIVE_IMPORT_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--manual-match-probe") {
+        return match local_import::manual_match_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_MANUAL_MATCH_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_MANUAL_MATCH_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--alternate-title-probe") {
+        return match game_details::alternate_title_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_ALTERNATE_TITLE_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_ALTERNATE_TITLE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--variant-probe") {
+        return match game_details::variant_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_VARIANTS_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_VARIANTS_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--faxanadu-candidate-probe") {
+        return match game_details::faxanadu_candidate_probe() {
+            Ok(evidence) => {
+                println!("LUNCHPAIL_FAXANADU_CANDIDATE_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_FAXANADU_CANDIDATE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--emulator-update-probe") {
+        return match emulator_manager::load_available_emulator_updates() {
+            Ok(inventory) => {
+                println!(
+                    "LUNCHPAIL_EMULATOR_UPDATES_READY updates={} warnings={}",
+                    inventory.updates.len(),
+                    inventory.warnings.len()
+                );
+                for update in inventory.updates {
+                    println!(
+                        "LUNCHPAIL_EMULATOR_UPDATE name={:?} source={:?} package={:?} current={:?} available={:?}",
+                        update.display_name,
+                        update.source_label,
+                        update.row.package_id,
+                        update.current_version,
+                        update.available_version
+                    );
+                }
+                for warning in inventory.warnings {
+                    eprintln!("LUNCHPAIL_EMULATOR_UPDATE_WARNING {warning}");
+                }
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_EMULATOR_UPDATES_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--controller-probe") {
+        let inventory = controllers::controller_inventory();
+        println!(
+            "LUNCHPAIL_CONTROLLER_READY provider={} available={} service={} version={:?} controllers={} managed={} targets={} warnings={}",
+            inventory.provider.provider,
+            inventory.provider.available,
+            inventory.provider.service_accessible,
+            inventory.provider.version,
+            inventory.controllers.len(),
+            inventory.managed_device_count,
+            inventory.supported_targets.len(),
+            inventory.warnings.len()
+        );
+        for (index, controller) in inventory.controllers.iter().enumerate() {
+            println!(
+                "LUNCHPAIL_CONTROLLER_DEVICE player={} id={:?} name={:?} virtual={}",
+                index + 1,
+                controller.stable_id,
+                controller.name,
+                controller.is_virtual
+            );
+        }
+        for warning in inventory.warnings {
+            eprintln!("LUNCHPAIL_CONTROLLER_WARNING {warning}");
+        }
+        return 0;
+    }
+
+    if std::env::args().any(|argument| argument == "--manual-candidate-probe") {
+        let title = "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)";
+        return match media_acquisition::manual_candidate_probe(title) {
+            Ok(candidate) => {
+                println!("LUNCHPAIL_MANUAL_CANDIDATE title={title:?} {candidate}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_MANUAL_CANDIDATE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if std::env::args().any(|argument| argument == "--initialize-state") {
+        return match settings::SettingsStore::open_default() {
+            Ok(store) => {
+                println!("LUNCHPAIL_STATE_READY path={:?}", store.path());
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHPAIL_STATE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    // One visible Lunchpail owns the desktop. Headless UI probes may run
+    // alongside it, but a visible probe must raise the existing instance just
+    // like any other second launch.
+    let arguments = std::env::args().collect::<Vec<_>>();
+    let qpa_platform = std::env::var("QT_QPA_PLATFORM").ok();
+    let headless_ui_probe = may_bypass_instance_guard(&arguments, qpa_platform.as_deref());
+    let _instance_guard = if headless_ui_probe {
+        None
+    } else {
+        match single_instance::request_or_own() {
+            Ok(Some(guard)) => Some(guard),
+            Ok(None) => return 0,
+            Err(error) => {
+                eprintln!("LUNCHPAIL_INSTANCE_FAILED error={error:#}");
+                None
+            }
+        }
+    };
+
+    if !headless_ui_probe {
+        if let Err(error) = app_paths::migrate_user_directories() {
+            eprintln!("LUNCHPAIL_PROFILE_UPGRADE_FAILED: {error:#}");
+            return 1;
+        }
+        translation::prewarm_saved_settings_background();
+    }
+
+    let controls_style = startup_controls_style();
+    let environment_style = std::env::var("QT_QUICK_CONTROLS_STYLE").ok();
+    let command_line_style = arguments
+        .windows(2)
+        .find(|pair| pair[0] == "-style")
+        .map(|pair| pair[1].as_str());
+    initialize_qt();
+
+    let mut application = if needs_widget_application(
+        controls_style,
+        environment_style.as_deref(),
+        command_line_style,
+    ) {
+        desktop_application::new()
+    } else {
+        QGuiApplication::new()
+    };
+    configure_controls_style(controls_style);
+    QGuiApplication::set_desktop_file_name(&QString::from("io.github.benwbooth.Lunchpail"));
+    window_icon::install();
+    let mut application_ref = application
+        .as_mut()
+        .expect("Qt did not construct a QGuiApplication");
+    application_ref
+        .as_mut()
+        .set_application_name(&QString::from("Lunchpail"));
+    application_ref
+        .as_mut()
+        .set_organization_name(&QString::from("Lunchpail"));
+    application_ref
+        .as_mut()
+        .set_organization_domain(&QString::from("github.com/benwbooth"));
+    let mut engine = QQmlApplicationEngine::new();
+    let engine = engine
+        .as_mut()
+        .expect("Qt did not construct a QQmlApplicationEngine");
+    engine.load(&QUrl::from("qrc:/qt/qml/Lunchpail/qml/Main.qml"));
+
+    application_ref.exec()
+}
+
+#[cfg(test)]
+mod controls_style_tests {
+    use super::{may_bypass_instance_guard, preferred_controls_style};
+
+    #[test]
+    fn only_headless_ui_probes_may_run_beside_a_visible_instance() {
+        let normal = vec!["lunchpail".to_owned()];
+        let probe = vec![
+            "lunchpail".to_owned(),
+            "--unified-top-bar-ui-probe".to_owned(),
+        ];
+        assert!(!may_bypass_instance_guard(&normal, Some("offscreen")));
+        assert!(!may_bypass_instance_guard(&probe, Some("wayland")));
+        assert!(!may_bypass_instance_guard(&probe, None));
+        assert!(may_bypass_instance_guard(&probe, Some("offscreen")));
+    }
+
+    #[test]
+    fn kde_desktop_uses_desktop_controls() {
+        assert_eq!(
+            preferred_controls_style(Some("KDE"), None, false),
+            Some("org.kde.desktop")
+        );
+        assert_eq!(
+            preferred_controls_style(Some("GNOME:KDE"), None, false),
+            Some("org.kde.desktop")
+        );
+    }
+
+    #[test]
+    fn other_desktops_keep_their_platform_style() {
+        assert_eq!(preferred_controls_style(Some("GNOME"), None, false), None);
+        assert_eq!(preferred_controls_style(None, None, false), None);
+    }
+
+    #[test]
+    fn explicit_style_wins_over_desktop_detection() {
+        assert_eq!(
+            preferred_controls_style(Some("KDE"), Some("Material"), false),
+            None
+        );
+        assert_eq!(preferred_controls_style(Some("KDE"), None, true), None);
+    }
+
+    #[test]
+    fn explicit_kde_style_still_uses_widget_application() {
+        assert!(super::needs_widget_application(
+            None,
+            Some("org.kde.desktop"),
+            None
+        ));
+        assert!(super::needs_widget_application(
+            None,
+            None,
+            Some("org.kde.desktop")
+        ));
+        assert!(!super::needs_widget_application(None, Some("Fusion"), None));
+    }
+}

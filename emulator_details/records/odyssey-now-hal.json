@@ -6,7 +6,7 @@
     { "kind": "source", "repo": "https://github.com/Vibrant-Media-Lab/OdysseyNowHAL", "url": "https://github.com/Vibrant-Media-Lab/OdysseyNowHAL", "commit": "7eb0c1da4f46728dd22eab189840f8f51f03118b", "role": "official Unity project, keyboard/gamepad/Arduino input and PlayerPrefs paths" },
     { "kind": "docs", "url": "https://github.com/Vibrant-Media-Lab/OdysseyNowHAL/blob/7eb0c1da4f46728dd22eab189840f8f51f03118b/README.md", "role": "official controls and Windows/macOS build documentation" },
     { "kind": "artifact", "url": "https://pathealy.itch.io/odyssey-now-hal", "role": "official playable build listing for Windows and macOS" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ODYSSEY_NOW_HAL_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ODYSSEY_NOW_HAL_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
   ],
   "platforms": {
     "windows": {

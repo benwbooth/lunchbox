@@ -22,7 +22,7 @@
     },
     {
       "kind": "contract",
-      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PROVENANCE_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PROVENANCE_CONTROLLER_BOUNDARY.md",
       "role": "fail-closed desktop controller boundary"
     },
     {
@@ -122,7 +122,7 @@
   },
   "controller_boundary": {
     "native_writer": "not_implemented",
-    "refusal": "Do not invent a Provenance desktop controller file: the pinned Apple-platform project does not establish a stable desktop persistence and mapping grammar for Lunchbox. Apple runtime input, app container paths, and per-core save/state behavior require platform-specific inspection."
+    "refusal": "Do not invent a Provenance desktop controller file: the pinned Apple-platform project does not establish a stable desktop persistence and mapping grammar for Lunchpail. Apple runtime input, app container paths, and per-core save/state behavior require platform-specific inspection."
   },
   "notes": "Provenance is cataloged as an Apple-platform emulator frontend. The source advertises iCloud synchronization and app-level save states, but neither establishes one cross-host desktop controller/configuration namespace. Runtime Apple build and effective controller input were not verified."
 }

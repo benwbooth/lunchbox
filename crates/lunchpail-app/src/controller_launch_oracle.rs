@@ -1,0 +1,1369 @@
+//! Opt-in real kernel -> generated config -> RetroArch -> emulated hardware test.
+//! Includes an opt-in saved-calibration -> discovery -> prepare integration path.
+//! Virtual fixtures are not evidence of physical Brawler64 calibration capture.
+use super::*;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::os::fd::AsRawFd;
+use std::os::unix::process::CommandExt;
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver};
+use std::time::{Duration, Instant};
+
+struct VirtualPad(File);
+
+impl VirtualPad {
+    fn create(calibration: &Calibration, discoverable: bool) -> Result<(Self, PathBuf)> {
+        let pad = Self(OpenOptions::new().write(true).open("/dev/uinput")?);
+        let fd = pad.0.as_raw_fd();
+        for (request, value) in [
+            (0x40045564, 1),
+            (0x40045564, 3),
+            (0x40045567, 0),
+            (0x40045567, 1),
+        ] {
+            ensure!(
+                unsafe { libc::ioctl(fd, request as libc::c_ulong, value as libc::c_int) } >= 0,
+                "uinput capability: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        for binding in calibration.bindings.values().filter(|b| b.kind == "button") {
+            let code = binding.native.as_ref().unwrap().code & 0xffff;
+            ensure!(
+                unsafe { libc::ioctl(fd, 0x40045565 as libc::c_ulong, code as libc::c_int) } >= 0,
+                "uinput button: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        // Linux uinput_setup ABI: input_id (8), name (80), ff_effects_max (4).
+        static NEXT_PAD: AtomicU64 = AtomicU64::new(0);
+        let instance = NEXT_PAD.fetch_add(1, Ordering::Relaxed);
+        let name = format!(
+            "Lunchpail {} gamepad oracle {}-{instance}",
+            if discoverable {
+                "Steam-compatible virtual"
+            } else {
+                "virtual"
+            },
+            std::process::id()
+        );
+        ensure!(name.len() < 80, "Oracle device name exceeds uinput ABI");
+        let mut setup = [0u8; 92];
+        setup[..2].copy_from_slice(&0x06u16.to_ne_bytes()); // BUS_VIRTUAL
+        if discoverable {
+            // Exercise the existing Steam-compatible virtual-pad discovery class,
+            // not a test-only discovery override or a claim of physical hardware.
+            setup[2..4].copy_from_slice(&0x28deu16.to_ne_bytes());
+            setup[4..6].copy_from_slice(&0x11ffu16.to_ne_bytes());
+        }
+        setup[8..8 + name.len()].copy_from_slice(name.as_bytes());
+        ensure!(
+            unsafe { libc::ioctl(fd, 0x405c5503 as libc::c_ulong, setup.as_ptr()) } >= 0,
+            "uinput setup: {}",
+            std::io::Error::last_os_error()
+        );
+        for axis in [0u16, 1] {
+            let mut abs = [0u8; 28]; // uinput_abs_setup, including alignment padding
+            abs[..2].copy_from_slice(&axis.to_ne_bytes());
+            abs[8..12].copy_from_slice(&(-32767i32).to_ne_bytes());
+            abs[12..16].copy_from_slice(&32767i32.to_ne_bytes());
+            ensure!(
+                unsafe { libc::ioctl(fd, 0x401c5504 as libc::c_ulong, abs.as_ptr()) } >= 0,
+                "uinput axis: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        ensure!(
+            unsafe { libc::ioctl(fd, 0x5501 as libc::c_ulong) } >= 0,
+            "uinput create: {}",
+            std::io::Error::last_os_error()
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            for entry in fs::read_dir("/sys/class/input")? {
+                let entry = entry?;
+                if !entry.file_name().to_string_lossy().starts_with("js") {
+                    continue;
+                }
+                if fs::read_to_string(entry.path().join("device/name"))
+                    .ok()
+                    .as_deref()
+                    .map(str::trim)
+                    == Some(&name)
+                {
+                    let path = Path::new("/dev/input").join(entry.file_name());
+                    if File::open(&path).is_ok() {
+                        return Ok((pad, path));
+                    }
+                }
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "No readable joydev node for {name}"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    fn button(&mut self, code: u16, pressed: bool) -> Result<()> {
+        for (kind, code, value) in [(1, code, i32::from(pressed)), (0, 0, 0)] {
+            let event = libc::input_event {
+                time: libc::timeval {
+                    tv_sec: 0,
+                    tv_usec: 0,
+                },
+                type_: kind,
+                code,
+                value,
+            };
+            // input_event is a C POD; all fields, including timeval, initialized.
+            let bytes = unsafe {
+                std::slice::from_raw_parts(
+                    (&event as *const libc::input_event).cast::<u8>(),
+                    std::mem::size_of_val(&event),
+                )
+            };
+            self.0.write_all(bytes)?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for VirtualPad {
+    fn drop(&mut self) {
+        unsafe {
+            libc::ioctl(self.0.as_raw_fd(), 0x5502 as libc::c_ulong);
+        }
+    }
+}
+
+struct RetroArch(Child);
+impl Drop for RetroArch {
+    fn drop(&mut self) {
+        // Flatpak may leave its sandbox child alive after the launcher exits.
+        // Only signal the new process group created for this owned invocation.
+        unsafe {
+            libc::kill(-(self.0.id() as libc::pid_t), libc::SIGKILL);
+        }
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OracleTarget {
+    Gba,
+    Nes,
+    Psx,
+    PsxHw,
+}
+
+impl OracleTarget {
+    fn is_psx(self) -> bool {
+        matches!(self, Self::Psx | Self::PsxHw)
+    }
+}
+
+fn await_keys(
+    child: &mut RetroArch,
+    replies: &Receiver<String>,
+    expected: u16,
+    target: OracleTarget,
+    timeout: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    let mut last = String::new();
+    loop {
+        ensure!(
+            Instant::now() < deadline,
+            "Expected emulated buttons {expected:04x}, last reply: {last}"
+        );
+        // Do not reap here: Drop must retain ownership of the numeric process
+        // group until it has signalled it. EOF/broken pipe detect early exit.
+        child
+            .0
+            .stdin
+            .as_mut()
+            .context("Missing stdin")?
+            .write_all(match target {
+                OracleTarget::Gba => b"READ_CORE_MEMORY 02000000 8\n",
+                OracleTarget::Nes => b"READ_CORE_MEMORY 00000000 4\n",
+                OracleTarget::Psx | OracleTarget::PsxHw => b"READ_CORE_MEMORY 00020000 36\n",
+            })?;
+        // A command written while the frontend is still creating its stdin
+        // command driver may be consumed before the core publishes a memory
+        // map. Retry on a short cadence instead of spending the entire bounded
+        // wait on that first request.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let response = match replies.recv_timeout(remaining.min(Duration::from_millis(200))) {
+            Ok(response) => response,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("RetroArch memory response stream closed")
+            }
+        };
+        let values = response
+            .split_whitespace()
+            .skip(2)
+            .map(|s| u8::from_str_radix(s, 16))
+            .collect::<std::result::Result<Vec<_>, _>>();
+        if let Ok(bytes) = values {
+            if target.is_psx()
+                && bytes.len() == 36
+                && bytes[..4] == [0x4c, 0x42, 0x50, 0x53]
+                && bytes[32..34] == [0, 0x41]
+                && u16::from_le_bytes([bytes[34], bytes[35]]) == expected
+            {
+                return Ok(());
+            }
+            if target == OracleTarget::Gba
+                && bytes.len() == 8
+                && bytes[4..] == [0x4e, 0x49, 0x42, 0x4c]
+                && u16::from_le_bytes([bytes[0], bytes[1]]) == expected
+            {
+                return Ok(());
+            }
+            if target == OracleTarget::Nes
+                && bytes.len() == 4
+                && bytes[1..] == *b"LBN"
+                && bytes[0] == expected as u8
+            {
+                return Ok(());
+            }
+        }
+        last.clear();
+        last.push_str(&response);
+        ensure!(
+            Instant::now() < deadline,
+            "Expected emulated buttons {expected:04x}, last reply: {last}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn local_display_number(display: &str) -> Result<u32> {
+    let display = display
+        .strip_prefix(':')
+        .context("Expected local X display")?;
+    let (number, screen) = display
+        .split_once('.')
+        .map_or((display, None), |(number, screen)| (number, Some(screen)));
+    ensure!(
+        !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()),
+        "Invalid X display number"
+    );
+    if let Some(screen) = screen {
+        ensure!(
+            !screen.is_empty() && screen.bytes().all(|b| b.is_ascii_digit()),
+            "Invalid X screen number"
+        );
+    }
+    Ok(number.parse()?)
+}
+
+fn validate_private_display(display: &str, desktop: &str) -> Result<()> {
+    ensure!(
+        !display.contains('.'),
+        "Oracle display must be :<number> without a screen suffix"
+    );
+    ensure!(
+        local_display_number(display)? != local_display_number(desktop)?,
+        "Use a separate local X display"
+    );
+    Ok(())
+}
+
+#[test]
+fn private_display_rejects_desktop_aliases_and_missing_desktop() {
+    for (display, desktop) in [
+        (":0", ":0"),
+        (":0", ":0.0"),
+        (":00", ":0.1"),
+        (":97", ""),
+        (":97.0", ":0"),
+        (":97x", ":0"),
+        (":97", "host:0"),
+    ] {
+        assert!(
+            validate_private_display(display, desktop).is_err(),
+            "{display:?}, {desktop:?}"
+        );
+    }
+    assert!(validate_private_display(":97", ":0.0").is_ok());
+    assert!(validate_private_display(":97", ":1").is_ok());
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and trusted mGBA core; see https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::Gba, false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and the reviewed Nestopia core; see https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_nes_hardware_through_nestopia() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::Nes, false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_psx_hardware_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::Psx, false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX HW core and local BIOS; see https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_psx_hw_hardware_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::PsxHw, false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display and trusted mGBA; creates two Steam-compatible virtual pads; see https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::Gba, true)
+}
+
+#[test]
+#[ignore = "requires writable uinput, an isolated X display, the pinned RetroArch Flatpak/FBNeo core, and the pinned user-owned SF2 set"]
+fn saved_calibration_runs_fbneo_six_button_static_profile_through_flatpak() -> Result<()> {
+    fbneo_six_button_static_profile_oracle()
+}
+
+fn saved_calibration_plan(
+    directory: &Path,
+    calibration: &Calibration,
+    preferred_path: &Path,
+    other_path: &Path,
+) -> Result<(LaunchPlan, CalibratedLaunch)> {
+    let mut warnings = Vec::new();
+    let inventory = crate::controllers::list_local_controllers(&mut warnings);
+    let find = |path: &Path| -> Result<(usize, &ControllerDevice)> {
+        let matches = inventory
+            .iter()
+            .enumerate()
+            .filter(|(_, device)| device.device_path == path)
+            .collect::<Vec<_>>();
+        ensure!(
+            matches.len() == 1,
+            "Expected one discovered oracle pad at {}: {warnings:?}",
+            path.display()
+        );
+        let (index, device) = matches[0];
+        ensure!(
+            device.is_virtual
+                && device.vendor_id.as_deref() == Some("28de")
+                && device.product_id.as_deref() == Some("11ff")
+                && device.bus_type.as_deref() == Some("0006")
+                && device
+                    .name
+                    .starts_with("Lunchpail Steam-compatible virtual gamepad oracle "),
+            "Unexpected discovered oracle identity: {device:?}"
+        );
+        Ok((index, device))
+    };
+    let (preferred_index, preferred) = find(preferred_path)?;
+    let (other_index, other) = find(other_path)?;
+    ensure!(
+        other_index < preferred_index && other.stable_id != preferred.stable_id,
+        "Oracle requires two distinct pads with the preferred pad later in discovery order"
+    );
+
+    let store = crate::settings::SettingsStore::at(directory.join("lunchpail-state.db"))?;
+    let mut settings = AppSettings::default();
+    let mapping = &mut settings.controller_mapping;
+    mapping.calibrated_launch = true;
+    mapping.player_mappings.clear();
+    for device in [other, preferred] {
+        mapping
+            .calibrations
+            .insert(device.stable_id.clone(), calibration.clone());
+    }
+    let platform = "Nintendo Game Boy Advance";
+    mapping.preferred_devices.insert(
+        crate::controllers::system_layout(platform).to_owned(),
+        preferred.stable_id.clone(),
+    );
+    store.save(&settings)?;
+    drop(settings);
+    let settings = store.load()?;
+    ensure!(
+        serde_json::to_value(&settings.controller_mapping.calibrations[&preferred.stable_id])?
+            == serde_json::to_value(calibration)?,
+        "Saved calibration changed during persistence"
+    );
+    let option = RomEmulatorOption::retroarch(
+        "oracle-mgba".into(),
+        "mGBA".into(),
+        "mgba",
+        EmulatorExecutable::Flatpak {
+            command: "flatpak".into(),
+            app_id: "org.libretro.RetroArch".into(),
+        },
+        directory.join("mgba_libretro.so"),
+        true,
+    );
+    let mut plan =
+        crate::emulator::build_rom_launch_plan(&directory.join("input.gba"), platform, &option)?;
+    let boundary = plan
+        .arguments
+        .iter()
+        .position(|arg| arg == "org.libretro.RetroArch")
+        .context("Missing production Flatpak boundary")?;
+    // Only diagnostic I/O and private base-config flags are added by the oracle.
+    // prepare must select the pad and attach all controller arguments itself.
+    plan.arguments.splice(
+        boundary + 1..boundary + 1,
+        [
+            "-M".into(),
+            "noload-nosave".into(),
+            "-c".into(),
+            directory.join("base.cfg").into_os_string(),
+        ],
+    );
+    for flag in ["--device=1:5", "--nodevice=1", "-vd1:5", "--dev=1:5"] {
+        let mut conflicting = plan.clone();
+        conflicting.arguments.insert(boundary + 1, flag.into());
+        let unchanged = conflicting.clone();
+        let error = prepare(&settings, platform, &option, &mut conflicting)
+            .err()
+            .context("Conflicting device command unexpectedly prepared a calibrated launch")?;
+        ensure!(
+            error
+                .to_string()
+                .contains("conflicts with calibrated device")
+                || error.to_string().contains("Unresolved RetroArch option"),
+            "Unexpected rejection for {flag}: {error}"
+        );
+        ensure!(conflicting == unchanged, "Rejected launch mutated its plan");
+    }
+    let first = directory.join("preexisting-a.cfg");
+    let second = directory.join("preexisting-b.cfg");
+    fs::write(&first, "input_libretro_device_p1 = \"5\"\n")?;
+    fs::write(&second, "input_player1_b_btn = \"nul\"\n")?;
+    for flags in [
+        vec![
+            "--appendconfig".into(),
+            first.clone().into_os_string(),
+            "--appendconfig".into(),
+            second.clone().into_os_string(),
+        ],
+        vec![
+            format!("--appendconfig={}", first.display()).into(),
+            format!("--appendconfig={}", second.display()).into(),
+        ],
+    ] {
+        let mut conflicting = plan.clone();
+        conflicting
+            .arguments
+            .splice(boundary + 1..boundary + 1, flags);
+        let unchanged = conflicting.clone();
+        let error = prepare(&settings, platform, &option, &mut conflicting)
+            .err()
+            .context("Duplicate append configs unexpectedly prepared a launch")?;
+        ensure!(
+            error.to_string().contains("Multiple --appendconfig"),
+            "Unexpected duplicate-config error: {error}"
+        );
+        ensure!(
+            conflicting == unchanged,
+            "Rejected append configs mutated the plan"
+        );
+    }
+    plan.arguments.insert(
+        boundary + 1,
+        format!("--appendconfig={}|{}", first.display(), second.display()).into(),
+    );
+    // An explicit matching CLI device must still reach the real core. RetroArch
+    // applies this after reading Lunchpail's appended configuration.
+    plan.arguments.insert(boundary + 1, "--device=1:1".into());
+    let session = prepare(&settings, platform, &option, &mut plan)?
+        .context("Saved calibration did not prepare a launch")?;
+    let directory = session
+        ._directory
+        .as_ref()
+        .context("Expected a generated controller config directory")?;
+    let path = directory.path().join("controllers.cfg");
+    let config = fs::read_to_string(&path)?;
+    let numbering = JoydevMap::read(preferred_path)?;
+    ensure!(
+        cfg_value(&config, "input_player1_joypad_index")? == Some(numbering.index.to_string()),
+        "prepare selected the wrong physical joystick"
+    );
+    ensure!(
+        cfg_value(&config, "input_max_users")?.as_deref() == Some("1"),
+        "GBA launch did not restrict the selected calibration to its one port"
+    );
+    let expected_append = OsString::from(format!(
+        "--appendconfig={}|{}|{}",
+        first.display(),
+        second.display(),
+        path.display()
+    ));
+    ensure!(
+        plan.arguments
+            .iter()
+            .filter(|arg| *arg == &expected_append)
+            .count()
+            == 1,
+        "Production plan did not retain the existing config list with calibrated config last"
+    );
+    ensure!(
+        plan.arguments
+            .iter()
+            .any(|arg| arg
+                == &OsString::from(format!("--filesystem={}", directory.path().display()))),
+        "Production plan omitted its controller config filesystem grant"
+    );
+    ensure!(
+        plan.cleanup_paths.is_empty(),
+        "Unexpected diagnostic content transformation"
+    );
+    eprintln!(
+        "Saved-calibration oracle: {} -> {} ({})",
+        preferred.stable_id,
+        preferred_path.display(),
+        session.description
+    );
+    Ok((plan, session))
+}
+
+fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    ensure!(
+        !saved_launch || target == OracleTarget::Gba,
+        "Saved-launch oracle is currently GBA-specific"
+    );
+    let (core_env, core_name, rom_name, expected_hash) = match target {
+        OracleTarget::Gba => (
+            "LUNCHPAIL_ORACLE_MGBA_CORE",
+            "mgba_libretro.so",
+            "input.gba",
+            "768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4",
+        ),
+        OracleTarget::Nes => (
+            "LUNCHPAIL_ORACLE_NESTOPIA_CORE",
+            "nestopia_libretro.so",
+            "input.nes",
+            "f6e2a6f96bd73385663b732324bff7832c168c4c2c1811732f7b0300c0de8376",
+        ),
+        OracleTarget::Psx => (
+            "LUNCHPAIL_ORACLE_PSX_CORE",
+            "mednafen_psx_libretro.so",
+            "input.exe",
+            "c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674",
+        ),
+        OracleTarget::PsxHw => (
+            "LUNCHPAIL_ORACLE_PSX_HW_CORE",
+            "mednafen_psx_hw_libretro.so",
+            "input.exe",
+            "25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56",
+        ),
+    };
+    let core = PathBuf::from(std::env::var(core_env).context("Set trusted core path")?);
+    ensure!(core.is_absolute(), "Core path must be absolute");
+    let core_bytes = fs::read(&core)?;
+    ensure!(
+        format!("{:x}", Sha256::digest(&core_bytes)) == expected_hash,
+        "Unreviewed diagnostic core binary"
+    );
+    let display =
+        std::env::var("LUNCHPAIL_ORACLE_DISPLAY").context("Set a private X server display")?;
+    validate_private_display(
+        &display,
+        &std::env::var("DISPLAY")
+            .context("Desktop DISPLAY is required to rule out the user's display")?,
+    )?;
+    let socket = PathBuf::from(format!(
+        "/tmp/.X11-unix/X{}",
+        local_display_number(&display)?
+    ));
+    let _display_connection = std::os::unix::net::UnixStream::connect(&socket)
+        .with_context(|| format!("Private X server is not listening at {}", socket.display()))?;
+    let root = tempfile::Builder::new()
+        .prefix("lunchpail-retroarch-oracle-")
+        .tempdir()?;
+    let dir = root.path();
+    for name in [
+        "config", "data", "cache", "state", "saves", "states", "system", "logs",
+    ] {
+        fs::create_dir(dir.join(name))?;
+    }
+    fs::write(dir.join(core_name), core_bytes)?;
+    fs::write(
+        dir.join(rom_name),
+        match target {
+            OracleTarget::Gba => lunchpail_controller_probe::libretro_input::gba_diagnostic_rom(),
+            OracleTarget::Nes => lunchpail_controller_probe::libretro_input::nes_diagnostic_rom(),
+            OracleTarget::Psx | OracleTarget::PsxHw => {
+                lunchpail_controller_probe::libretro_input::psx_diagnostic_exe()
+            }
+        },
+    )?;
+    if target.is_psx() {
+        let bios = PathBuf::from(
+            std::env::var("LUNCHPAIL_ORACLE_PSX_BIOS_DIR")
+                .context("Set local PlayStation BIOS directory")?,
+        );
+        for name in ["scph5500.bin", "scph5501.bin", "scph5502.bin"] {
+            let source = bios.join(name);
+            ensure!(
+                fs::metadata(&source)?.len() == 512 * 1024,
+                "Unexpected BIOS size"
+            );
+            fs::copy(source, dir.join("system").join(name))?;
+        }
+    }
+    let (mut calibration, _) = super::tests::calibrated_layout("brawler64");
+    let mut index = 0;
+    for binding in calibration
+        .bindings
+        .values_mut()
+        .filter(|b| b.kind == "button")
+    {
+        // Nonstandard codes avoid desktop Guide/A/B hotkeys; permute their order
+        // so a writer assuming physical-label order cannot accidentally pass.
+        let native = NativeInput {
+            code: 0x10000 + 0x2c0 + (index * 7 + 3) % 17,
+            direction: 0,
+        };
+        binding.code = native.code;
+        binding.native = Some(native);
+        index += 1;
+    }
+    ensure!(index == 17, "Update fixture for changed Brawler64 controls");
+    fs::write(
+        dir.join("calibration.json"),
+        serde_json::to_vec(&calibration)?,
+    )?;
+    let calibration: Calibration =
+        serde_json::from_slice(&fs::read(dir.join("calibration.json"))?)?;
+    // Both pads remain alive through readback. Prefer the later discovery entry
+    // so the test cannot pass by blindly selecting the first calibrated joystick.
+    let mut other_pad = if saved_launch {
+        Some(VirtualPad::create(&calibration, true)?)
+    } else {
+        None
+    };
+    let (mut pad, mut path) = VirtualPad::create(&calibration, saved_launch)?;
+    if let Some((other, other_path)) = &mut other_pad {
+        let inventory = crate::controllers::list_local_controllers(&mut Vec::new());
+        let position = |path: &Path| {
+            inventory
+                .iter()
+                .position(|device| device.device_path == path)
+                .context("Oracle pad missing from production discovery")
+        };
+        if position(&path)? < position(other_path)? {
+            std::mem::swap(&mut pad, other);
+            std::mem::swap(&mut path, other_path);
+        }
+    }
+    let numbering = JoydevMap::read(&path)?;
+    let profile = match target {
+        OracleTarget::Gba => contract("mgba", "Nintendo Game Boy Advance"),
+        // Nestopia's ordinary two-pad contract is intentionally an explicit
+        // content-mode selection, so the default-contract lookup must not
+        // silently choose it. The oracle names the exact reviewed mode.
+        OracleTarget::Nes => catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "retroarch:nestopia:nes-2player"),
+        OracleTarget::Psx => catalog().launch_mode("mednafen_psx", "PSX", 1),
+        OracleTarget::PsxHw => catalog().launch_mode("mednafen_psx_hw", "PSX", 1),
+    }
+    .context("Missing diagnostic core contract")?;
+    if !saved_launch {
+        let mut mapping = player_config(&calibration, profile, &numbering, 1)?;
+        if target.is_psx() {
+            mapping.push_str(&write_core_options_snapshot(profile, "", dir)?);
+            mapping.push_str("input_libretro_device_p2 = \"0\"\ninput_max_users = \"1\"\n");
+        }
+        fs::write(dir.join("mapping.cfg"), mapping)?;
+    }
+    let mut config = String::from(
+        "stdin_cmd_enable = \"true\"\ninput_driver = \"x\"\ninput_joypad_driver = \"linuxraw\"\ninput_poll_type_behavior = \"0\"\nvideo_driver = \"glcore\"\naudio_enable = \"false\"\nvideo_fullscreen = \"false\"\npause_nonactive = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\nauto_overrides_enable = \"false\"\nauto_remaps_enable = \"false\"\ninput_autodetect_enable = \"false\"\nhistory_list_enable = \"false\"\ngame_specific_options = \"false\"\ncore_info_cache_enable = \"false\"\n",
+    );
+    config.push_str("global_core_options = \"true\"\ncontent_runtime_log = \"false\"\ncontent_runtime_log_aggregate = \"false\"\nvideo_context_driver = \"x\"\nvideo_vsync = \"false\"\n");
+    config.push_str("ui_companion_enable = \"false\"\nui_companion_start_on_boot = \"false\"\ndesktop_menu_enable = \"false\"\nrgui_show_start_screen = \"false\"\nsuspend_screensaver_enable = \"false\"\nmicrophone_enable = \"false\"\n");
+    for (key, path) in [
+        ("savefile_directory", "saves"),
+        ("savestate_directory", "states"),
+        ("system_directory", "system"),
+        ("cache_directory", "cache"),
+        ("log_dir", "logs"),
+        ("rgui_config_directory", "config"),
+        ("core_options_path", "config/options.cfg"),
+        ("content_history_path", "config/history.lpl"),
+        ("content_favorites_path", "config/favorites.lpl"),
+        ("content_music_history_path", "config/music.lpl"),
+        ("content_video_history_path", "config/video.lpl"),
+        ("content_image_history_path", "config/images.lpl"),
+        ("runtime_log_directory", "logs"),
+        ("input_remapping_directory", "config"),
+        ("playlist_directory", "data"),
+        ("screenshot_directory", "data"),
+        ("recording_output_directory", "data"),
+        ("recording_config_directory", "config"),
+    ] {
+        config.push_str(&format!("{key} = \"{}\"\n", dir.join(path).display()));
+    }
+    fs::write(dir.join("base.cfg"), config)?;
+    let (plan, calibrated_session) = if saved_launch {
+        let (_, other_path) = other_pad.as_ref().context("Missing second oracle pad")?;
+        let (plan, session) = saved_calibration_plan(dir, &calibration, &path, other_path)?;
+        (plan, Some(session))
+    } else {
+        (
+            LaunchPlan {
+                emulator_name: "RetroArch input oracle".into(),
+                program: "flatpak".into(),
+                arguments: vec![
+                    "run".into(),
+                    format!("--filesystem={}", dir.display()).into(),
+                    "org.libretro.RetroArch".into(),
+                    "--verbose".into(),
+                    "--sram-mode".into(),
+                    "noload-nosave".into(),
+                    "-c".into(),
+                    dir.join("base.cfg").into_os_string(),
+                    "--appendconfig".into(),
+                    dir.join("mapping.cfg").into_os_string(),
+                    "-L".into(),
+                    dir.join(core_name).into_os_string(),
+                    dir.join(rom_name).into_os_string(),
+                ],
+                current_directory: dir.to_owned(),
+                environment: Vec::new(),
+                cleanup_paths: Vec::new(),
+                retroarch_content: None,
+            },
+            None,
+        )
+    };
+    let generated_directory = calibrated_session
+        .as_ref()
+        .and_then(|session| session._directory.as_ref())
+        .map(|directory| directory.path().to_owned());
+    let boundary = plan
+        .arguments
+        .iter()
+        .position(|arg| arg == "org.libretro.RetroArch")
+        .context("Missing oracle Flatpak boundary")?;
+    ensure!(
+        plan.arguments.first().is_some_and(|arg| arg == "run"),
+        "Unexpected Flatpak plan"
+    );
+    ensure!(
+        plan.environment.is_empty(),
+        "Oracle isolation requires an unmodified launch environment"
+    );
+    let mut command = Command::new(&plan.program);
+    command
+        // Socket exposure is decided from the launcher's environment, before
+        // Flatpak applies --env options or the sandbox's env command runs.
+        .env("DISPLAY", &display)
+        .args([
+            "run",
+            "--unshare=network",
+            "--nosocket=wayland",
+            "--nodevice=all",
+            "--device=input",
+            "--device=shm",
+            "--nofilesystem=host:reset",
+            "--nofilesystem=home",
+            "--command=env",
+        ])
+        // Retain the production filesystem grants, including the launch-scoped
+        // controller config. Do not repair missing grants in the test wrapper.
+        .args(&plan.arguments[1..boundary])
+        .arg(format!("--env=DISPLAY={display}"))
+        .arg("org.libretro.RetroArch")
+        .arg("QT_QPA_PLATFORM=xcb")
+        .arg(format!("DISPLAY={display}"));
+    for (key, suffix) in [
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_STATE_HOME", "state"),
+    ] {
+        // Flatpak replaces --env=XDG_* before execution; set them after entry.
+        command.arg(format!("{key}={}", dir.join(suffix).display()));
+    }
+    command
+        .arg("/app/bin/retroarch")
+        .args(&plan.arguments[boundary + 1..])
+        .current_dir(&plan.current_directory)
+        .envs(plan.environment.iter().cloned())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .process_group(0);
+    let mut child = RetroArch(command.spawn()?);
+    let output = child.0.stdout.take().context("Missing stdout")?;
+    let (sender, replies) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(output)
+            .lines()
+            .map_while(std::result::Result::ok)
+        {
+            if line.starts_with("READ_CORE_MEMORY ") && sender.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let released = match target {
+        OracleTarget::Gba => 0x03ff,
+        OracleTarget::Nes => 0x00ff,
+        OracleTarget::Psx | OracleTarget::PsxHw => 0xffff,
+    };
+    // Software GL and a cold shader cache can make isolated Flatpak startup
+    // materially slower than an input transition once frames are running.
+    await_keys(
+        &mut child,
+        &replies,
+        released,
+        target,
+        Duration::from_secs(30),
+    )?;
+    if let Some((other, _)) = &mut other_pad {
+        // Keep conflicting inputs held across every selected-pad observation.
+        // An immediate released read alone could precede event consumption.
+        for id in ["a", "l"] {
+            other.button(
+                (calibration.bindings[id].native.as_ref().unwrap().code & 0xffff) as u16,
+                true,
+            )?;
+        }
+    }
+    // Expected bits come from console hardware protocols, not generated config.
+    let cases = match target {
+        OracleTarget::Psx | OracleTarget::PsxHw => vec![
+            (vec!["a"], 1 << 14),      // Cross
+            (vec!["b"], 1 << 15),      // Square
+            (vec!["c_down"], 1 << 13), // Circle
+            (vec!["c_left"], 1 << 12), // Triangle
+            (vec!["select"], 1),
+            (vec!["start"], 1 << 3),
+            (vec!["up"], 1 << 4),
+            (vec!["right"], 1 << 5),
+            (vec!["down"], 1 << 6),
+            (vec!["left"], 1 << 7),
+            (vec!["z"], 1 << 8),
+            (vec!["z_right"], 1 << 9),
+            (vec!["l"], 1 << 10),
+            (vec!["r"], 1 << 11),
+            (vec!["a", "b"], (1 << 14) | (1 << 15)),
+            (vec!["l", "r"], (1 << 10) | (1 << 11)),
+        ],
+        OracleTarget::Gba => vec![
+            (vec!["a"], 1),
+            (vec!["b"], 2),
+            (vec!["select"], 4),
+            (vec!["start"], 8),
+            (vec!["right"], 16),
+            (vec!["left"], 32),
+            (vec!["up"], 64),
+            (vec!["down"], 128),
+            (vec!["r"], 256),
+            (vec!["l"], 512),
+            (vec!["a", "b"], 3),
+            (vec!["l", "r"], 768),
+        ],
+        OracleTarget::Nes => vec![
+            (vec!["a"], 1),
+            (vec!["b"], 2),
+            (vec!["select"], 4),
+            (vec!["start"], 8),
+            (vec!["up"], 16),
+            (vec!["down"], 32),
+            (vec!["left"], 64),
+            (vec!["right"], 128),
+            (vec!["a", "b"], 3),
+            // Nestopia rejects impossible opposing directions; a diagonal still
+            // proves simultaneous direction routing without depending on that
+            // core policy.
+            (vec!["up", "right"], 144),
+        ],
+    };
+    for (controls, bits) in cases {
+        for id in &controls {
+            pad.button(
+                (calibration.bindings[*id].native.as_ref().unwrap().code & 0xffff) as u16,
+                true,
+            )?;
+        }
+        await_keys(
+            &mut child,
+            &replies,
+            released & !bits,
+            target,
+            Duration::from_secs(10),
+        )
+        .with_context(|| format!("Pressed {controls:?}"))?;
+        for id in &controls {
+            pad.button(
+                (calibration.bindings[*id].native.as_ref().unwrap().code & 0xffff) as u16,
+                false,
+            )?;
+        }
+        await_keys(
+            &mut child,
+            &replies,
+            released,
+            target,
+            Duration::from_secs(10),
+        )
+        .with_context(|| format!("Released {controls:?}"))?;
+    }
+    drop(child);
+    drop(calibrated_session);
+    if let Some(directory) = generated_directory {
+        ensure!(
+            !directory.exists(),
+            "Launch-scoped controller config survived teardown"
+        );
+    }
+    Ok(())
+}
+
+fn fbneo_six_button_static_profile_oracle() -> Result<()> {
+    use sha2::{Digest, Sha256};
+
+    const CORE_SHA256: &str = "3555759523d6da5f78012c6846921ac27884b03264604387d07a4877579a177e";
+    const SF2_SHA256: &str = "4abbfccd30caf163f18064bf8c27b2780f370d67d34ee802999dcbb7e6436a30";
+    const RETROARCH_SHA256: &str =
+        "2c58ad9ae854b3370ac139b7278711d3048927676ba026995a2d3f62887f13bb";
+    const FLATPAK_COMMIT: &str = "9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752";
+
+    let hash = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+    let core_source = PathBuf::from(
+        std::env::var("LUNCHPAIL_ORACLE_FBNEO_CORE").context("Set pinned FBNeo core path")?,
+    );
+    let content_source = PathBuf::from(
+        std::env::var("LUNCHPAIL_ORACLE_FBNEO_SF2").context("Set pinned SF2 archive path")?,
+    );
+    ensure!(
+        core_source.is_absolute() && content_source.is_absolute(),
+        "FBNeo oracle inputs must be absolute"
+    );
+    let core_bytes = fs::read(&core_source)?;
+    let content_bytes = fs::read(&content_source)?;
+    ensure!(
+        hash(&core_bytes) == CORE_SHA256,
+        "Unreviewed FBNeo core binary"
+    );
+    ensure!(
+        content_bytes.len() == 3_551_819 && hash(&content_bytes) == SF2_SHA256,
+        "Unreviewed SF2 archive"
+    );
+
+    let flatpak_commit = Command::new("flatpak")
+        .args(["info", "--show-commit", "org.libretro.RetroArch"])
+        .output()?;
+    ensure!(
+        flatpak_commit.status.success(),
+        "Could not resolve Flatpak commit"
+    );
+    ensure!(
+        String::from_utf8(flatpak_commit.stdout)?.trim() == FLATPAK_COMMIT,
+        "RetroArch Flatpak commit differs from the reviewed runtime"
+    );
+    let flatpak_location = Command::new("flatpak")
+        .args(["info", "--show-location", "org.libretro.RetroArch"])
+        .output()?;
+    ensure!(
+        flatpak_location.status.success(),
+        "Could not resolve Flatpak location"
+    );
+    let retroarch = PathBuf::from(String::from_utf8(flatpak_location.stdout)?.trim())
+        .join("files/bin/retroarch");
+    ensure!(
+        hash(&fs::read(&retroarch)?) == RETROARCH_SHA256,
+        "RetroArch executable differs from the reviewed runtime"
+    );
+
+    let display =
+        std::env::var("LUNCHPAIL_ORACLE_DISPLAY").context("Set a private X server display")?;
+    validate_private_display(
+        &display,
+        &std::env::var("DISPLAY")
+            .context("Desktop DISPLAY is required to rule out the user's display")?,
+    )?;
+    let socket = PathBuf::from(format!(
+        "/tmp/.X11-unix/X{}",
+        local_display_number(&display)?
+    ));
+    let _display_connection = std::os::unix::net::UnixStream::connect(&socket)
+        .with_context(|| format!("Private X server is not listening at {}", socket.display()))?;
+
+    let evidence = PathBuf::from(
+        std::env::var("LUNCHPAIL_ORACLE_EVIDENCE")
+            .context("Set a new retained evidence directory")?,
+    );
+    ensure!(evidence.is_absolute(), "Evidence path must be absolute");
+    fs::create_dir(&evidence)?;
+    let parent = evidence
+        .parent()
+        .context("Evidence directory has no parent")?;
+    let root = tempfile::Builder::new()
+        .prefix("lunchpail-fbneo-static-")
+        .tempdir_in(parent)?;
+    let dir = root.path();
+    for name in [
+        "config", "data", "cache", "state", "saves", "states", "system", "logs",
+    ] {
+        fs::create_dir(dir.join(name))?;
+    }
+    let core = dir.join("fbneo_libretro.so");
+    let content = dir.join("sf2.zip");
+    fs::write(&core, core_bytes)?;
+    fs::write(&content, content_bytes)?;
+
+    let (mut calibration, _) = super::tests::calibrated_layout("brawler64");
+    let mut index = 0_u32;
+    for binding in calibration
+        .bindings
+        .values_mut()
+        .filter(|binding| binding.kind == "button")
+    {
+        let native = NativeInput {
+            code: 0x10000 + 0x2c0 + (index * 7 + 3) % 17,
+            direction: 0,
+        };
+        binding.code = native.code;
+        binding.native = Some(native);
+        index += 1;
+    }
+    ensure!(index == 17, "Update fixture for changed Brawler64 controls");
+    let (mut pad, pad_path) = VirtualPad::create(&calibration, true)?;
+    let numbering = JoydevMap::read(&pad_path)?;
+    let mut warnings = Vec::new();
+    let inventory = crate::controllers::list_local_controllers(&mut warnings);
+    let discovered = inventory
+        .iter()
+        .filter(|device| device.device_path == pad_path)
+        .collect::<Vec<_>>();
+    ensure!(
+        discovered.len() == 1 && discovered[0].is_virtual,
+        "Production discovery did not resolve the oracle pad exactly once: {warnings:?}"
+    );
+
+    let store = crate::settings::SettingsStore::at(dir.join("lunchpail-state.db"))?;
+    let mut settings = AppSettings::default();
+    settings.controller_mapping.calibrated_launch = true;
+    settings
+        .controller_mapping
+        .calibrations
+        .insert(discovered[0].stable_id.clone(), calibration.clone());
+    settings.controller_mapping.preferred_devices.insert(
+        crate::controllers::system_layout("Arcade").to_owned(),
+        discovered[0].stable_id.clone(),
+    );
+    store.save(&settings)?;
+    let settings = store.load()?;
+    let option = RomEmulatorOption::retroarch(
+        "oracle-fbneo".into(),
+        "FinalBurn Neo".into(),
+        "fbneo",
+        EmulatorExecutable::Flatpak {
+            command: "flatpak".into(),
+            app_id: "org.libretro.RetroArch".into(),
+        },
+        core.clone(),
+        true,
+    );
+    let mut plan = crate::emulator::build_rom_launch_plan(&content, "Arcade", &option)?;
+    let session = prepare(&settings, "Arcade", &option, &mut plan)?
+        .context("Saved calibration did not prepare the FBNeo launch")?;
+    let boundary = plan
+        .arguments
+        .iter()
+        .position(|argument| argument == "org.libretro.RetroArch")
+        .context("Prepared plan lost the production Flatpak boundary")?;
+    plan.arguments.splice(
+        boundary + 1..boundary + 1,
+        [
+            "--verbose".into(),
+            "--sram-mode".into(),
+            "noload-nosave".into(),
+            "-c".into(),
+            dir.join("base.cfg").into_os_string(),
+        ],
+    );
+    let static_profile =
+        contract("fbneo", "Arcade").context("Missing default FBNeo Arcade controller contract")?;
+    ensure!(
+        static_profile.id == "retroarch:fbneo:arcade-6"
+            && static_profile
+                .retroarch_launch
+                .as_ref()
+                .is_some_and(|launch| launch.device == 261),
+        "Production selection did not resolve the static six-button contract"
+    );
+    let generated_directory = session
+        ._directory
+        .as_ref()
+        .context("Missing launch-scoped controller configuration")?
+        .path()
+        .to_owned();
+    let controller_path = generated_directory.join("controllers.cfg");
+    let controller_config = fs::read_to_string(&controller_path)?;
+    ensure!(
+        cfg_value(&controller_config, "input_player1_joypad_index")?
+            == Some(numbering.index.to_string()),
+        "Production preparation selected the wrong joydev index"
+    );
+    ensure!(
+        cfg_value(&controller_config, "input_libretro_device_p1")?.as_deref() == Some("261"),
+        "Production preparation did not select FBNeo device 261"
+    );
+    ensure!(
+        cfg_value(&controller_config, "input_max_users")?.as_deref() == Some("1"),
+        "Production preparation did not restrict input to the connected calibrated pad"
+    );
+    for suffix in [
+        "up", "down", "left", "right", "y", "x", "l", "b", "a", "r", "start", "select",
+    ] {
+        let key = format!("input_player1_{suffix}_btn");
+        ensure!(
+            cfg_value(&controller_config, &key)?.is_some_and(|value| value != "nul"),
+            "Production six-button config omitted {key}"
+        );
+    }
+    ensure!(
+        plan.arguments.iter().any(|argument| argument
+            == &OsString::from(format!("--filesystem={}", generated_directory.display()))),
+        "Production argv omitted the launch-scoped config grant"
+    );
+
+    let mut base_config = String::from(
+        "stdin_cmd_enable = \"true\"\nnetwork_cmd_enable = \"false\"\ninput_driver = \"x\"\ninput_joypad_driver = \"linuxraw\"\ninput_poll_type_behavior = \"0\"\nvideo_driver = \"glcore\"\nvideo_context_driver = \"x\"\naudio_driver = \"sdl2\"\naudio_enable = \"true\"\nvideo_fullscreen = \"false\"\npause_nonactive = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\nauto_overrides_enable = \"false\"\nauto_remaps_enable = \"false\"\ninput_autodetect_enable = \"false\"\nhistory_list_enable = \"false\"\ngame_specific_options = \"false\"\ncore_info_cache_enable = \"false\"\nglobal_core_options = \"true\"\ncontent_runtime_log = \"false\"\ncontent_runtime_log_aggregate = \"false\"\nvideo_vsync = \"false\"\nui_companion_enable = \"false\"\ndesktop_menu_enable = \"false\"\nsuspend_screensaver_enable = \"false\"\nmicrophone_enable = \"false\"\ngamemode_enable = \"false\"\n",
+    );
+    for (key, value) in [
+        ("savefile_directory", dir.join("saves")),
+        ("savestate_directory", dir.join("states")),
+        ("system_directory", dir.join("system")),
+        ("cache_directory", dir.join("cache")),
+        ("log_dir", dir.join("logs")),
+        ("core_options_path", dir.join("config/options.cfg")),
+        ("content_history_path", dir.join("config/history.lpl")),
+        ("playlist_directory", dir.join("data")),
+        ("screenshot_directory", dir.join("data")),
+        ("runtime_log_directory", dir.join("logs")),
+    ] {
+        base_config.push_str(&format!("{key} = \"{}\"\n", value.display()));
+    }
+    ensure!(
+        cfg_value(&base_config, "gamemode_enable")?.as_deref() == Some("false"),
+        "Isolated oracle must never request privileged GameMode CPU changes"
+    );
+    fs::write(dir.join("base.cfg"), &base_config)?;
+
+    ensure!(
+        plan.program == Path::new("flatpak"),
+        "Unexpected production launcher"
+    );
+    ensure!(
+        plan.environment.is_empty(),
+        "Expected an unmodified launch environment"
+    );
+    let mut command = Command::new(&plan.program);
+    let stderr_path = evidence.join("frontend-stderr.log");
+    command
+        .env("DISPLAY", &display)
+        .args([
+            "run",
+            "--unshare=network",
+            "--nosocket=wayland",
+            "--nodevice=all",
+            "--device=input",
+            "--device=shm",
+            "--nofilesystem=host:reset",
+            "--nofilesystem=home",
+            "--command=env",
+        ])
+        .args(&plan.arguments[1..boundary])
+        .arg(format!("--env=DISPLAY={display}"))
+        .arg("org.libretro.RetroArch")
+        .arg("QT_QPA_PLATFORM=xcb")
+        .arg("SDL_AUDIODRIVER=dummy")
+        .arg(format!("DISPLAY={display}"));
+    for (key, suffix) in [
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_STATE_HOME", "state"),
+    ] {
+        command.arg(format!("{key}={}", dir.join(suffix).display()));
+    }
+    command
+        .arg("/app/bin/retroarch")
+        .args(&plan.arguments[boundary + 1..])
+        .current_dir(&plan.current_directory)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(File::create(&stderr_path)?))
+        .process_group(0);
+    let mut child = RetroArch(command.spawn()?);
+    let stdout = child.0.stdout.take().context("Missing stdout")?;
+    let (sender, replies) = mpsc::channel();
+    let stdout_thread = std::thread::spawn(move || {
+        let mut lines = Vec::new();
+        for line in BufReader::new(stdout)
+            .lines()
+            .map_while(std::result::Result::ok)
+        {
+            if (line.starts_with("GET_STATUS ") || line.starts_with("READ_CORE_RAM "))
+                && sender.send(line.clone()).is_err()
+            {
+                break;
+            }
+            lines.push(line);
+        }
+        lines
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let status = loop {
+        child
+            .0
+            .stdin
+            .as_mut()
+            .context("Missing stdin")?
+            .write_all(b"GET_STATUS\n")?;
+        match replies.recv_timeout(Duration::from_millis(250)) {
+            Ok(reply) if reply.starts_with("GET_STATUS PLAYING ") => break reply,
+            Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("RetroArch command response stream closed")
+            }
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "RetroArch did not expose running FBNeo content"
+        );
+    };
+
+    let controls = [
+        ("Coin", "select"),
+        ("Start", "start"),
+        ("Up", "up"),
+        ("Down", "down"),
+        ("Left", "left"),
+        ("Right", "right"),
+        ("Weak Punch", "b"),
+        ("Medium Punch", "c_up"),
+        ("Strong Punch", "l"),
+        ("Weak Kick", "a"),
+        ("Medium Kick", "c_right"),
+        ("Strong Kick", "r"),
+    ];
+    let mut samples = Vec::new();
+    for (label, source) in controls {
+        let code = (calibration.bindings[source]
+            .native
+            .as_ref()
+            .context("Oracle source has no native code")?
+            .code
+            & 0xffff) as u16;
+        pad.button(code, true)?;
+        std::thread::sleep(Duration::from_millis(100));
+        child
+            .0
+            .stdin
+            .as_mut()
+            .context("Missing stdin")?
+            .write_all(b"READ_CORE_RAM 0 32\n")?;
+        let sample_deadline = Instant::now() + Duration::from_secs(3);
+        let reply = loop {
+            match replies.recv_timeout(Duration::from_millis(250)) {
+                Ok(reply) if reply.starts_with("READ_CORE_RAM 0 ") => break reply,
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    anyhow::bail!("RetroArch RAM response stream closed while pressing {label}")
+                }
+            }
+            ensure!(
+                Instant::now() < sample_deadline,
+                "No core-RAM response while pressing {label}"
+            );
+        };
+        let bytes = reply
+            .split_whitespace()
+            .skip(2)
+            .map(|value| u8::from_str_radix(value, 16))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ensure!(
+            bytes.len() == 32,
+            "Short core-RAM response while pressing {label}"
+        );
+        pad.button(code, false)?;
+        std::thread::sleep(Duration::from_millis(100));
+        samples.push(serde_json::json!({
+            "control": label,
+            "source": source,
+            "native_code": code,
+            "core_ram_sample_sha256": hash(&bytes),
+        }));
+    }
+
+    drop(child);
+    let stdout_lines = stdout_thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("RetroArch stdout collector panicked"))?;
+    let log = stdout_lines
+        .into_iter()
+        .chain(fs::read_to_string(&stderr_path)?.lines().map(str::to_owned))
+        .collect::<Vec<_>>()
+        .join("\n");
+    ensure!(
+        log.contains("[FBNeo] Running v1.0.0.03 260417 GITe923538")
+            && log.contains("Driver sf2 was successfully started")
+            && log.contains("Lunchpail Steam-compatible virtual gamepad oracle")
+            && !log.contains("Unknown device type"),
+        "Runtime log did not prove the pinned FBNeo/SF2/device path"
+    );
+    fs::write(evidence.join("frontend.log"), &log)?;
+    let report = serde_json::json!({
+        "status": "pass",
+        "flatpak": {
+            "app_id": "org.libretro.RetroArch",
+            "version": "1.22.2",
+            "commit": FLATPAK_COMMIT,
+            "retroarch_sha256": RETROARCH_SHA256,
+        },
+        "core": {
+            "name": "FinalBurn Neo",
+            "version": "v1.0.0.03 260417 GITe923538",
+            "sha256": CORE_SHA256,
+        },
+        "content": {
+            "name": "sf2.zip",
+            "bytes": 3_551_819,
+            "sha256": SF2_SHA256,
+        },
+        "profile": "retroarch:fbneo:arcade-6",
+        "selected_device": 261,
+        "private_display": display,
+        "flatpak_home_unshared": true,
+        "gamemode_disabled": true,
+        "production_status": status,
+        "joydev_index": numbering.index,
+        "controller_config_sha256": hash(controller_config.as_bytes()),
+        "frontend_log_sha256": hash(log.as_bytes()),
+        "pressed_and_released": samples,
+    });
+    fs::write(
+        evidence.join("report.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    drop(session);
+    ensure!(
+        !generated_directory.exists(),
+        "Launch-scoped controller config survived teardown"
+    );
+    Ok(())
+}

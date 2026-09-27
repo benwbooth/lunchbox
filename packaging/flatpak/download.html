@@ -2,7 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install Lunchbox</title>
+<title>Install Lunchpail</title>
 <style>
   :root { color-scheme: dark; font: 18px/1.6 system-ui, sans-serif; background: #101721; color: #e4edf5; }
   body { max-width: 760px; margin: 8vh auto; padding: 0 24px 48px; }
@@ -14,25 +14,27 @@
   code { font-size: .85em; }
   .button { display: inline-block; background: #25865f; color: white; padding: .6em 1em; border-radius: 8px; text-decoration: none; }
 </style>
-<h1>Lunchbox</h1>
+<h1>Lunchpail</h1>
 <p>Your retro game collection, ready to play.</p>
 <p>A free, open-source game library and emulator frontend for Windows, macOS, and Linux.</p>
 <h2>Linux · Flatpak</h2>
-<p><a class="button" href="lunchbox.flatpakref">Install Lunchbox</a></p>
+<p><a class="button" href="lunchpail.flatpakref">Install Lunchpail</a></p>
 <p>Open this file in Discover or another Flatpak-compatible software manager.
-It adds the signed Lunchbox update source and the required runtime source.</p>
+It adds the signed Lunchpail update source and the required runtime source.</p>
 <p>Or, with <a href="https://flatpak.org/setup/">Flatpak installed</a>, run:</p>
-<pre><code>flatpak install --user https://benwbooth.github.io/lunchbox/lunchbox.flatpakref
+<pre><code>flatpak install --user https://benwbooth.github.io/lunchpail/lunchpail.flatpakref
 flatpak run io.github.benwbooth.Lunchbox</code></pre>
+<p>The current stable release predates the rename and retains its original app ID.
+The installer follows the published release; future packages use Lunchpail.</p>
 <p>Updates appear in your software manager. From the terminal, use <code>flatpak update --user</code>.</p>
-<p>For an existing Flatpak setup, you can also <a href="lunchbox.flatpakrepo">add the repository</a> separately.</p>
+<p>For an existing Flatpak setup, you can also <a href="lunchpail.flatpakrepo">add the repository</a> separately.</p>
 <h2>macOS · Homebrew</h2>
 <p>Apple Silicon, macOS 13 or later:</p>
-<pre><code>brew install --cask benwbooth/lunchbox/lunchbox</code></pre>
-<p>Update with <code>brew update &amp;&amp; brew upgrade --cask lunchbox</code>.</p>
+<pre><code>brew install --cask benwbooth/lunchpail/lunchpail</code></pre>
+<p>Update with <code>brew update &amp;&amp; brew upgrade --cask lunchpail</code>.</p>
 <h2>Other downloads</h2>
-<p><a href="https://github.com/benwbooth/lunchbox/releases/latest">Windows MSI / ZIP, macOS DMG, Linux AppImage / Flatpak bundle</a></p>
-<p><a href="https://github.com/benwbooth/lunchbox#install">All installation instructions, including Nix</a> ·
-<a href="https://github.com/benwbooth/lunchbox/tree/main/docs">User guide</a></p>
+<p><a href="https://github.com/benwbooth/lunchpail/releases/latest">Windows MSI / ZIP, macOS DMG, Linux AppImage / Flatpak bundle</a></p>
+<p><a href="https://github.com/benwbooth/lunchpail#install">All installation instructions, including Nix</a> ·
+<a href="https://github.com/benwbooth/lunchpail/tree/main/docs">User guide</a></p>
 <p>Games and BIOS files are not included.</p>
 </html>

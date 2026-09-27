@@ -1,10 +1,10 @@
-# Back up or move your Lunchbox profile
+# Back up or move your Lunchpail profile
 
-A Lunchbox profile backup preserves your library setup. It is not a backup
+A Lunchpail profile backup preserves your library setup. It is not a backup
 of everything needed to play your games.
 
 Use the profile backup controls in Settings to export a
-`.lunchbox-profile` file.
+`.lunchpail-profile` file.
 
 ## What is included?
 
@@ -25,7 +25,7 @@ Back up game files separately and use [Save backups](saves.md) for progress.
 ## Restore a profile
 
 Open the restore controls in Settings and review the selected archive.
-The restore is staged for the next Lunchbox launch; it does not replace the
+The restore is staged for the next Lunchpail launch; it does not replace the
 open profile halfway through a session.
 
 Keep a backup of your current profile before switching. A pending restore can
@@ -35,8 +35,8 @@ be cancelled before it is applied.
 
 1. Export the profile on the old computer.
 2. Copy your game files and save backups separately.
-3. Install Lunchbox and the required emulators on the new computer.
-4. Restore the profile and reopen Lunchbox.
+3. Install Lunchpail and the required emulators on the new computer.
+4. Restore the profile and reopen Lunchpail.
 5. Reconnect any service accounts, then check game and media folders.
 
 Paths can differ across computers and operating systems. Use Library Audit

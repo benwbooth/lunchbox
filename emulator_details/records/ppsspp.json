@@ -3,7 +3,7 @@
   "slug": "ppsspp",
   "emulator": "PPSSPP",
   "sources": [
-    { "kind": "source", "repo": "hrydgard/ppsspp", "commit": "e49c0bd8836a8a8f678565357773386f1174d3f5", "role": "controller contract + memstick roots, folder and file naming (tag v1.19.3, same pin as https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md)" },
+    { "kind": "source", "repo": "hrydgard/ppsspp", "commit": "e49c0bd8836a8a8f678565357773386f1174d3f5", "role": "controller contract + memstick roots, folder and file naming (tag v1.19.3, same pin as https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md)" },
     { "kind": "docs", "url": "https://www.ppsspp.org/docs/faq/", "role": "memstick layout: PSP/SAVEDATA and PSP/PPSSPP_STATE; platform roots" },
     { "kind": "docs", "url": "https://www.ppsspp.org/docs/reference/mac/", "role": "macOS data in ~/.config/ppsspp with PSP/SYSTEM/ppsspp.ini and PSP/PPSSPP_STATE/" },
     { "kind": "docs", "url": "https://www.ppsspp.org/docs/getting-started/save-data-and-storage-windows/", "role": "Windows memstick selection (memstick next to exe, installed.txt, Documents fallback)" },
@@ -24,15 +24,15 @@
             "source:ppsspp/Core/System.cpp GetSysDirectory: DIRECTORY_SYSTEM = <memstick>/PSP/SYSTEM",
             "source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni ([ControlMapping], psp_button_names) and MultiInputMapping::FromConfigString/ToConfigString",
             "source:ppsspp/Common/Input/InputState.cpp InputMapping::ToConfigString \"%d-%d\"; Common/Input/InputState.h DEVICE_ID_KEYBOARD = 1, DEVICE_ID_PAD_0 = 10",
-            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md (pinned source contracts SDL/SDLJoystick.cpp, Common/Input/InputState.h/.cpp, Common/Input/KeyCodes.h, Core/KeyMap.cpp; SDL backend uses device index plus ten; requires all sixteen PSP gameplay inputs)",
-            "repo:crates/lunchbox-app/src/controller_ppsspp/configuration.rs (prepares ppsspp.ini, controls.ini and <game_id>_ppsspp.ini under PSP/SYSTEM; never invents platform defaults)"
+            "repo:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md (pinned source contracts SDL/SDLJoystick.cpp, Common/Input/InputState.h/.cpp, Common/Input/KeyCodes.h, Core/KeyMap.cpp; SDL backend uses device index plus ten; requires all sixteen PSP gameplay inputs)",
+            "repo:crates/lunchpail-app/src/controller_ppsspp/configuration.rs (prepares ppsspp.ini, controls.ini and <game_id>_ppsspp.ini under PSP/SYSTEM; never invents platform defaults)"
           ]
         },
         {
           "purpose": "input",
           "path": "~/.config/ppsspp/PSP/SYSTEM/controls.ini (same PSP/SYSTEM root as ppsspp.ini)",
           "naming": "Single [ControlMapping] section keyed by PSP button names; values are comma-separated <deviceId>-<keyCode> mappings with colon-joined multi-mappings. Keyboard device id is 1; SDL joypads are 10..19. Per-game overrides are <GAMEID>_ppsspp.ini",
-          "evidence": ["source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni and Common/Input/InputState.cpp ToConfigString @e49c0bd8836a8a8f678565357773386f1174d3f5", "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md"]
+          "evidence": ["source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni and Common/Input/InputState.cpp ToConfigString @e49c0bd8836a8a8f678565357773386f1174d3f5", "repo:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md"]
         },
         {
           "purpose": "saves",
@@ -66,7 +66,7 @@
             "source:ppsspp/Core/ConfigValues.h PSP_DEFAULT_FIRMWARE = 660; Core/Config.cpp ConfigSetting(\"PSPFirmwareVersion\", ...)",
             "source:ppsspp/Core/HLE/sceFont.cpp fontPath \"flash0:/font/\" and fontOverridePath \"ms0:/PSP/flash0/font/\"",
             "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/ (\"you need a PSP update. You can download 6.61 directly from Sony. Next, just open the update in PPSSPP, which will offer to install it for you\" - marked for version 1.21, after the pin)",
-            "repo:crates/lunchbox-app/src/firmware.rs and crates/lunchbox-db (no ppsspp firmware_rules entries; PPSSPP needs no user firmware)"
+            "repo:crates/lunchpail-app/src/firmware.rs and crates/lunchpail-db (no ppsspp firmware_rules entries; PPSSPP needs no user firmware)"
           ]
         },
         {
@@ -77,7 +77,7 @@
           "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "Lunchbox launches the SDL build with HOME/XDG_CONFIG_HOME deliberately unchanged and Bubblewrap-overlays only PSP/SYSTEM inside the child namespace (crates/lunchbox-app/src/controller_ppsspp/native_command.rs, configuration.rs), so native SAVEDATA/PPSSPP_STATE stay in ~/.config/ppsspp; the launcher re-verifies the resolved search directory XDG_CONFIG_HOME|~/.config + /ppsspp/PSP/SYSTEM before applying a saved setup."
+      "notes": "Lunchpail launches the SDL build with HOME/XDG_CONFIG_HOME deliberately unchanged and Bubblewrap-overlays only PSP/SYSTEM inside the child namespace (crates/lunchpail-app/src/controller_ppsspp/native_command.rs, configuration.rs), so native SAVEDATA/PPSSPP_STATE stay in ~/.config/ppsspp; the launcher re-verifies the resolved search directory XDG_CONFIG_HOME|~/.config + /ppsspp/PSP/SYSTEM before applying a saved setup."
     },
     "linux-flatpak": {
       "paths": [
@@ -105,7 +105,7 @@
           "evidence": [
             "source:ppsspp/Core/Dialog/SavedataParam.cpp GetSaveDir = GetGameName + saveDirName; savePath \"ms0:/PSP/SAVEDATA/\"",
             "source:ppsspp/Core/HLE/sceIo.cpp ms0: mounted at g_Config.memStickDirectory",
-            "repo:crates/lunchbox-app/src/firmware.rs (flatpak roots are resolved as ~/.var/app/<app-id>/config elsewhere in Lunchbox)"
+            "repo:crates/lunchpail-app/src/firmware.rs (flatpak roots are resolved as ~/.var/app/<app-id>/config elsewhere in Lunchpail)"
           ]
         },
         {
@@ -136,7 +136,7 @@
           "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "The Flathub sandbox grants --filesystem=host:ro (read-only visibility), so the writable memstick root necessarily lands in the app-scoped XDG_CONFIG_HOME; Lunchbox has no containerized launch adapter for PPSSPP yet (controller_ppsspp/native_command.rs requires a native Linux executable)."
+      "notes": "The Flathub sandbox grants --filesystem=host:ro (read-only visibility), so the writable memstick root necessarily lands in the app-scoped XDG_CONFIG_HOME; Lunchpail has no containerized launch adapter for PPSSPP yet (controller_ppsspp/native_command.rs requires a native Linux executable)."
     },
     "windows": {
       "paths": [
@@ -149,7 +149,7 @@
             "docs:https://www.ppsspp.org/docs/getting-started/save-data-and-storage-windows/ (\"No installed.txt: Memory Stick is in a subfolder called memstick right next to the EXE file. installed.txt is empty: %userprofile%\\Documents\\PPSSPP. installed.txt contains a path: Memory Stick is in that path\")",
             "docs:https://www.ppsspp.org/docs/faq/ (\"Windows: Either in the directory memstick in PPSSPP, or in your documents directory\")",
             "source:ppsspp/Core/KeyMap.cpp XInput default mapping selection (SetDefaultKeyMap(DEFAULT_MAPPING_XINPUT) for Xbox-named pads on Windows)",
-            "repo:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md (pinned controls.ini writer preserves existing hotkeys and unrelated INI sections)"
+            "repo:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PPSSPP_STANDALONE_PROGRESS.md (pinned controls.ini writer preserves existing hotkeys and unrelated INI sections)"
           ]
         },
         {
@@ -197,7 +197,7 @@
           "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "The portable/portable-path rules (memstick dir, installed.txt, read-only fallback to Documents) live entirely in Windows/main.cpp InitSysDirectories; Lunchbox currently has no Windows launch adapter for PPSSPP (controller_ppsspp/native_command.rs rejects non-native routing), so these are capture-only facts."
+      "notes": "The portable/portable-path rules (memstick dir, installed.txt, read-only fallback to Documents) live entirely in Windows/main.cpp InitSysDirectories; Lunchpail currently has no Windows launch adapter for PPSSPP (controller_ppsspp/native_command.rs rejects non-native routing), so these are capture-only facts."
     },
     "macos": {
       "paths": [

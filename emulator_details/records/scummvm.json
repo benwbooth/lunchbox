@@ -6,7 +6,7 @@
     { "kind": "source", "repo": "scummvm/scummvm", "commit": "3f6428df202e2c044ef53208acba0f665ea92096", "role": "config/save path resolution and savegame naming" },
     { "kind": "docs", "url": "https://docs.scummvm.org/en/latest/advanced_topics/configuration_file.html", "role": "scummvm.ini locations" },
     { "kind": "docs", "url": "https://docs.scummvm.org/en/latest/use_scummvm/save_load_games.html", "role": "savegame locations and autosave" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
     { "kind": "flatpak", "id": "org.scummvm.ScummVM", "url": "https://flathub.org/apps/org.scummvm.ScummVM", "role": "flatpak existence" }
   ],
   "platforms": {
@@ -15,13 +15,13 @@
         {
           "purpose": "config",
           "path": "$XDG_CONFIG_HOME/scummvm/scummvm.ini, default ~/.config/scummvm/scummvm.ini (legacy ~/.scummvmrc still honored; -c <file> selects a private config)",
-          "evidence": ["source:backends/platform/sdl/posix/posix.cpp OSystem_POSIX::getDefaultConfigFileName (XDG_CONFIG_HOME, ~/.scummvmrc legacy)", "docs:configuration_file Linux section", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (-c launch with private XDG_CONFIG_HOME)"]
+          "evidence": ["source:backends/platform/sdl/posix/posix.cpp OSystem_POSIX::getDefaultConfigFileName (XDG_CONFIG_HOME, ~/.scummvmrc legacy)", "docs:configuration_file Linux section", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (-c launch with private XDG_CONFIG_HOME)"]
         },
         {
           "purpose": "input",
           "path": "$XDG_CONFIG_HOME/scummvm/scummvm.ini, default ~/.config/scummvm/scummvm.ini (or -c <file> private config)",
           "naming": "[keymapper] and per-target INI domains store keymap_<keymap-id>_<action-id> = <space-separated hardware input ids>; default engine keymap actions include LCLK, RCLK, PAUSE, MENU, SKIP, SKLI, PIND, RETURN, UP, DOWN, LEFT and RIGHT",
-          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp keymap_ serialization @3f6428df202e2c044ef53208acba0f665ea92096", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp keymap_ serialization @3f6428df202e2c044ef53208acba0f665ea92096", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -33,17 +33,17 @@
           "purpose": "states",
           "path": "None — ScummVM has no save-state facility; progress is kept only through the engine savegames above",
           "naming": "Not applicable: no state files exist; the engine-default keymap exposes no state actions",
-          "evidence": ["docs:save_load_games (documents only in-game saves/autosave)", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (engine-default keymap action list has no save-state action)"]
+          "evidence": ["docs:save_load_games (documents only in-game saves/autosave)", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (engine-default keymap action list has no save-state action)"]
         },
         {
           "purpose": "bios",
           "path": "No BIOS required; a few engines want extra data files (extras) reachable via the extrapath setting / Paths tab in addition to the game data",
           "naming": "No external BIOS filename or canonical checksum: optional engine data is an extrapath directory, whose exact files are engine/game-specific",
-          "evidence": ["docs:configuration_file paths table (extrapath: \"Extra path for additional game data\")", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["docs:configuration_file paths table (extrapath: \"Extra path for additional game data\")", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         { "purpose": "keys", "path": "not applicable", "naming": "ScummVM does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:ScummVM source tree @3f6428df202e2c044ef53208acba0f665ea92096"] }
       ],
-      "notes": "Lunchbox launches with -c <ini> and a private XDG_CONFIG_HOME so the ini and keymap domains stay in the session while savepath continues to point at the user's save directory."
+      "notes": "Lunchpail launches with -c <ini> and a private XDG_CONFIG_HOME so the ini and keymap domains stay in the session while savepath continues to point at the user's save directory."
     },
     "linux-flatpak": {
       "paths": [
@@ -56,7 +56,7 @@
           "purpose": "input",
           "path": "~/.var/app/org.scummvm.ScummVM/config/scummvm/scummvm.ini",
           "naming": "Same [keymapper] and per-target keymap_<keymap-id>_<action-id> = <hardware ids> grammar as native; default actions are engine-default_* entries",
-          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md", "flathub:org.scummvm.ScummVM"]
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md", "flathub:org.scummvm.ScummVM"]
         },
         {
           "purpose": "saves",
@@ -68,7 +68,7 @@
           "purpose": "states",
           "path": "None — no save states on any platform",
           "naming": "Not applicable: no state files exist",
-          "evidence": ["docs:save_load_games", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["docs:save_load_games", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "bios",
@@ -90,7 +90,7 @@
           "purpose": "input",
           "path": "%APPDATA%\\ScummVM\\scummvm.ini (portable mode: scummvm.ini next to the executable)",
           "naming": "Same [keymapper] and per-target keymap_<keymap-id>_<action-id> = <hardware ids> grammar; engine-default actions include LCLK/RCLK, PAUSE, MENU, SKIP/SKLI, PIND, RETURN and directions",
-          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -102,7 +102,7 @@
           "purpose": "states",
           "path": "None — no save states",
           "naming": "Not applicable: no state files exist",
-          "evidence": ["docs:save_load_games", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["docs:save_load_games", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "bios",
@@ -136,7 +136,7 @@
           "purpose": "states",
           "path": "None — no save states",
           "naming": "Not applicable: no state files exist",
-          "evidence": ["docs:save_load_games", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["docs:save_load_games", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "bios",

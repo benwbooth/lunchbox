@@ -81,7 +81,7 @@
           "naming": "PlayStation needs no keys; reviewed input/settings surface defines no key files."
         }
       ],
-      "notes": "Lunchbox launches with a private data root; native saves stay in their configured locations."
+      "notes": "Lunchpail launches with a private data root; native saves stay in their configured locations."
     },
     "macos": {
       "paths": [

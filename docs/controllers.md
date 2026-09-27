@@ -1,6 +1,6 @@
 # Set up controllers
 
-There are two separate jobs: controlling Lunchbox and controlling the game.
+There are two separate jobs: controlling Lunchpail and controlling the game.
 A pad can work in the library before its emulator mapping is configured.
 
 ## Choose the players
@@ -75,7 +75,7 @@ that route, leave Steam running and select the intended virtual pad. Do not
 assign both the physical and virtual versions as separate players.
 
 If each press happens twice, check the controller's mode and any software that
-also sends keyboard or mouse input. Use Lunchbox's input test to identify which
+also sends keyboard or mouse input. Use Lunchpail's input test to identify which
 device is producing events before changing the game mapping.
 
 ## If a pad is missing or the wrong one controls the game
@@ -90,7 +90,7 @@ device is producing events before changing the game mapping.
 A saved controller that is disconnected can remain in your preferences.
 Choose a connected replacement rather than deleting all your mappings.
 
-## Navigating Lunchbox
+## Navigating Lunchpail
 
 Use the D-pad or left stick to move, the south face button to select, and the
 east face button to go back. Bumpers page lists; supported triggers jump to

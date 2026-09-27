@@ -1,0 +1,254 @@
+import QtQuick
+import QtQuick.Controls
+import QtTest
+import "../../qml" as Lunchpail
+
+TestCase {
+    id: testCase
+    name: "MomentumScrollSurfaces"
+    when: windowShown
+    visible: true
+    width: 900
+    height: 700
+
+    Lunchpail.MomentumListView {
+        id: list
+        defaultWheelMomentum: true
+        x: 0; y: 0; width: 240; height: 200
+        clip: true
+        model: 100
+        delegate: Rectangle { width: ListView.view.verticalContentWidth; height: 35 }
+        ScrollBar.vertical: Lunchpail.LbScrollBar { policy: ScrollBar.AlwaysOn }
+    }
+    Lunchpail.MomentumGridView {
+        id: grid
+        defaultWheelMomentum: true
+        x: 260; y: 0; width: 240; height: 200
+        clip: true
+        model: 100
+        cellWidth: verticalContentWidth / 3; cellHeight: 80
+        delegate: Rectangle { width: 70; height: 70 }
+        ScrollBar.vertical: Lunchpail.LbScrollBar { policy: ScrollBar.AlwaysOn }
+    }
+    Lunchpail.MomentumFlickable {
+        id: flick
+        x: 520; y: 0; width: 240; height: 200
+        blockNativeWheel: true
+        clip: true
+        contentWidth: width; contentHeight: 2000
+        ScrollBar.vertical: Lunchpail.LbScrollBar { policy: ScrollBar.AlwaysOn }
+        Rectangle { width: 220; height: 2000 }
+    }
+    Lunchpail.MomentumScrollView {
+        id: scrollView
+        x: 0; y: 250; width: 260; height: 200
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+        Column {
+            width: scrollView.availableWidth
+            Repeater {
+                model: 50
+                delegate: Rectangle { width: 220; height: 30 }
+            }
+        }
+    }
+    Lunchpail.MomentumScrollView {
+        id: nestedScroll
+        x: 300; y: 250; width: 260; height: 200
+        Column {
+            width: nestedScroll.availableWidth
+            Rectangle { width: parent.width; height: 20 }
+            Lunchpail.MomentumListView {
+                id: nestedList
+                width: parent.width
+                height: 120
+                clip: true
+                model: 100
+                delegate: Rectangle { width: ListView.view.width; height: 30 }
+            }
+            Lunchpail.MomentumListView {
+                id: nestedHorizontalList
+                width: parent.width
+                height: 80
+                clip: true
+                orientation: ListView.Horizontal
+                model: 20
+                delegate: Rectangle { width: 80; height: 70 }
+            }
+            Rectangle { width: parent.width; height: 500 }
+        }
+    }
+    Lunchpail.MomentumScrollView {
+        id: textScroll
+        x: 590; y: 250; width: 260; height: 200
+        TextArea {
+            id: longText
+            width: textScroll.availableWidth
+            text: Array(80).fill("A long line of editor text").join("\n")
+        }
+    }
+    Lunchpail.MomentumScrollView {
+        id: shortNestedScroll
+        x: 300; y: 470; width: 260; height: 120
+        Column {
+            width: shortNestedScroll.availableWidth
+            Lunchpail.MomentumListView {
+                id: shortNestedList
+                width: parent.width
+                height: 80
+                model: 2
+                delegate: Rectangle { width: ListView.view.width; height: 30 }
+            }
+            Rectangle { width: parent.width; height: 500 }
+        }
+    }
+    Lunchpail.MomentumListView {
+        id: horizontalList
+        x: 0; y: 470; width: 260; height: 100
+        orientation: ListView.Horizontal
+        clip: true
+        model: 20
+        delegate: Rectangle { width: 80; height: 90 }
+    }
+    Lunchpail.MomentumFlickable {
+        id: horizontalFlick
+        x: 0; y: 590; width: 260; height: 90
+        clip: true
+        contentWidth: 1500
+        contentHeight: height
+        Rectangle { width: 1500; height: 90 }
+    }
+    Item {
+        id: gutterFixture
+        x: 590; y: 470; width: 260; height: 120
+        Lunchpail.MomentumFlickable {
+            id: gutterList
+            width: parent.width - 20
+            height: parent.height
+            blockNativeWheel: true
+            contentWidth: width
+            contentHeight: gutterContent.height
+            Column {
+                id: gutterContent
+                width: gutterList.width
+                Repeater {
+                    model: 100
+                    delegate: Rectangle {
+                        width: gutterContent.width
+                        height: 24 + (index % 5) * 17
+                    }
+                }
+            }
+            ScrollBar.vertical: Lunchpail.LbScrollBar {
+                id: gutterBar
+                parent: gutterFixture
+                x: gutterFixture.width - width
+                y: 0
+                height: gutterFixture.height
+                width: 10
+                policy: ScrollBar.AlwaysOn
+                visible: gutterList.contentHeight > gutterList.height
+            }
+        }
+    }
+
+    function test_wheel_momentum_and_scrollbar_gutters() {
+        verify(flick.defaultWheelMomentum)
+        verify(scrollView.defaultWheelMomentum)
+        verify(nestedList.defaultWheelMomentum)
+        verify(list.verticalScrollBarGutter > 0)
+        verify(list.itemAtIndex(0).width < list.ScrollBar.vertical.x)
+        verify(grid.verticalScrollBarGutter > 0)
+        const rightCard = grid.itemAtIndex(2)
+        verify(rightCard.x + rightCard.width <= grid.ScrollBar.vertical.x)
+        verify(flick.verticalScrollBarGutter > 0)
+        verify(scrollView.rightPadding >= scrollView.effectiveScrollBarWidth)
+        verify(scrollView.availableWidth <= scrollView.width - scrollView.effectiveScrollBarWidth)
+        verify(gutterBar.x >= gutterList.x + gutterList.width + 8)
+        compare(gutterBar.height, gutterList.height)
+        verify(gutterBar.visible)
+        verify(gutterBar.contentItem.radius > 0)
+        mouseWheel(gutterList, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        const gutterStart = gutterList.contentY
+        verify(gutterStart > 0)
+        mouseWheel(list, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        mouseWheel(grid, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        mouseWheel(flick, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        mouseWheel(scrollView, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(list.contentY > 0)
+        verify(grid.contentY > 0)
+        verify(flick.contentY > 0)
+        verify(scrollView.contentItem.contentY > 0)
+        const first = list.contentY
+        wait(100)
+        verify(list.contentY > first)
+    }
+
+    function test_nested_wheel_moves_only_inner_list() {
+        nestedList.contentY = 0
+        nestedScroll.contentItem.contentY = 0
+        mouseWheel(nestedList, 90, 60, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(nestedList.contentY > 0)
+        compare(nestedScroll.contentItem.contentY, 0)
+    }
+
+    function test_inner_list_at_bottom_passes_wheel_to_outer_scroll() {
+        nestedList.contentY = nestedList.contentHeight - nestedList.height
+        nestedScroll.contentItem.contentY = 0
+        mouseWheel(nestedList, 90, 60, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(nestedScroll.contentItem.contentY > 0)
+    }
+
+    function test_text_area_scroll_view_uses_direct_wheel() {
+        mouseWheel(longText, 90, 90, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(textScroll.contentItem.contentY > 0)
+    }
+
+    function test_short_inner_list_leaves_wheel_to_outer_scroll() {
+        mouseWheel(shortNestedList, 90, 40, 0, -120, Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(shortNestedScroll.contentItem.contentY > 0)
+    }
+
+    function test_horizontal_list_inherits_length_scaled_momentum() {
+        mouseWheel(horizontalList, 90, 40, 0, -120,
+                   Qt.LeftButton, Qt.NoModifier)
+        verify(horizontalList.contentX > 0)
+        const immediate = horizontalList.contentX
+        wait(100)
+        verify(horizontalList.contentX > immediate)
+    }
+
+    function test_horizontal_flickable_inherits_length_scaled_momentum() {
+        mouseWheel(horizontalFlick, 90, 40, 0, -120,
+                   Qt.LeftButton, Qt.NoModifier)
+        verify(horizontalFlick.contentX > 0)
+        const immediate = horizontalFlick.contentX
+        wait(100)
+        verify(horizontalFlick.contentX > immediate)
+    }
+
+    function test_horizontal_edge_passes_wheel_to_outer_pane() {
+        nestedHorizontalList.contentX = nestedHorizontalList.contentWidth
+                                        - nestedHorizontalList.width
+        nestedScroll.contentItem.contentY = 0
+        mouseWheel(nestedHorizontalList, 90, 35, 0, -120,
+                   Qt.LeftButton, Qt.NoModifier)
+        wait(60)
+        verify(nestedScroll.contentItem.contentY > 0)
+    }
+
+    function test_shared_vertical_profiles_scale_trackpad_momentum() {
+        for (const view of [list, grid, flick, scrollView.contentItem, gutterList]) {
+            const handler = findChild(view, "momentumWheelHandler")
+            verify(handler, "Each vertical surface must use the shared trackpad profile")
+            verify(handler.momentumLengthFactor() > 1,
+                   "Long scroll regions should coast farther, not just the desktop grid")
+            verify(handler.effectiveFriction() < handler.frictionPerSecond)
+        }
+    }
+}

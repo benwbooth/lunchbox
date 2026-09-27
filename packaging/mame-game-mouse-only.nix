@@ -3,7 +3,7 @@
 # Opt-in core artifact only. Does not select a runtime, forward clicks, or
 # establish isolation from saved native UI sequences.
 libretro.mame.overrideAttrs (old: {
-  pname = "lunchbox-mame-game-mouse-only";
+  pname = "lunchpail-mame-game-mouse-only";
   version = "unstable-4fc9a931-mouse2";
   src = fetchurl {
     url = "https://codeload.github.com/libretro/mame/tar.gz/4fc9a9312baaf34963847f884961ad9793fbbc1d";
@@ -13,8 +13,8 @@ libretro.mame.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [ ./mame-game-mouse-only.patch ];
   postPatch = (old.postPatch or "") + ''
     substituteInPlace src/osd/modules/input/input_retro.cpp \
-      --replace-fail '#define LUNCHBOX_MAME_GAME_MOUSE_ONLY 0' \
-                     '#define LUNCHBOX_MAME_GAME_MOUSE_ONLY 1'
+      --replace-fail '#define LUNCHPAIL_MAME_GAME_MOUSE_ONLY 0' \
+                     '#define LUNCHPAIL_MAME_GAME_MOUSE_ONLY 1'
   '';
   # The inherited wrapper selects stock retroarch-bare. Install only the core:
   # the owned relative launch path must select its compatible frontend itself.

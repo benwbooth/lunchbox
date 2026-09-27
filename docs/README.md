@@ -1,6 +1,6 @@
-# Lunchbox user guide
+# Lunchpail user guide
 
-Lunchbox brings your games, emulators, artwork, and controllers into one library.
+Lunchpail brings your games, emulators, artwork, and controllers into one library.
 You can use it at your desk or browse the same collection in Couch Mode.
 
 New here? Start with [installation](installing.md), then
@@ -32,11 +32,11 @@ New here? Start with [installation](installing.md), then
 ## Help and maintenance
 
 - [Troubleshooting](troubleshooting.md)
-- [Move or back up your Lunchbox profile](profile-backups.md)
-- [Build Lunchbox from source](building.md)
+- [Move or back up your Lunchpail profile](profile-backups.md)
+- [Build Lunchpail from source](building.md)
 
 These guides describe the current source version. An older release may not
-include every feature shown here; its [release notes](https://github.com/benwbooth/lunchbox/releases)
+include every feature shown here; its [release notes](https://github.com/benwbooth/lunchpail/releases)
 are the best place to check.
 
 Games and BIOS files are not included. Use content you have the right to use.

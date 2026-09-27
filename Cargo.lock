@@ -2664,7 +2664,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "lunchbox-app"
+name = "lunchpail-app"
 version = "0.1.2"
 dependencies = [
  "anyhow",
@@ -2690,8 +2690,8 @@ dependencies = [
  "lava_torrent",
  "libc",
  "libchdman-rs",
- "lunchbox-controller-probe",
- "lunchbox-patching",
+ "lunchpail-controller-probe",
+ "lunchpail-patching",
  "md-5 0.10.6",
  "opendal",
  "png",
@@ -2722,7 +2722,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunchbox-controller-probe"
+name = "lunchpail-controller-probe"
 version = "0.1.2"
 dependencies = [
  "anyhow",
@@ -2740,7 +2740,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunchbox-db"
+name = "lunchpail-db"
 version = "0.1.2"
 dependencies = [
  "anyhow",
@@ -2765,7 +2765,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lunchbox-patching"
+name = "lunchpail-patching"
 version = "0.1.2"
 dependencies = [
  "anyhow",

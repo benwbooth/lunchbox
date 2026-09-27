@@ -31,7 +31,7 @@
           "naming": "Key = value config; machine/disktype/joystick selections persist here.",
           "evidence": [
             "source:main.c lines 523-535,197-230 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
-            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+            "repo:crates/lunchpail-app/src/controller_oricutron_native.rs"
           ]
         },
         {
@@ -41,7 +41,7 @@
           "naming": "SDL joystick slots with slot-equals-instance identity; fixed axis/hat/button interpretation.",
           "evidence": [
             "source:joystick.c SDL runtime-index selection @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
-            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+            "repo:crates/lunchpail-app/src/controller_oricutron_native.rs"
           ]
         },
         {
@@ -95,7 +95,7 @@
           "naming": "Key = value config; machine/disktype/joystick selections persist here.",
           "evidence": [
             "source:main.c lines 523-535,197-230 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
-            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+            "repo:crates/lunchpail-app/src/controller_oricutron_native.rs"
           ]
         },
         {
@@ -105,7 +105,7 @@
           "naming": "SDL joystick slots with slot-equals-instance identity; fixed axis/hat/button interpretation.",
           "evidence": [
             "source:joystick.c SDL runtime-index selection @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
-            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+            "repo:crates/lunchpail-app/src/controller_oricutron_native.rs"
           ]
         },
         {
@@ -159,7 +159,7 @@
           "naming": "Key = value config; machine/disktype/joystick selections persist here. Bundled builds resolve the program root to the .app parent and chdir to Resources.",
           "evidence": [
             "source:main.c lines 523-535,197-230 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
-            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+            "repo:crates/lunchpail-app/src/controller_oricutron_native.rs"
           ]
         },
         {
@@ -169,7 +169,7 @@
           "naming": "SDL joystick slots with slot-equals-instance identity; fixed axis/hat/button interpretation.",
           "evidence": [
             "source:joystick.c SDL runtime-index selection @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
-            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+            "repo:crates/lunchpail-app/src/controller_oricutron_native.rs"
           ]
         },
         {

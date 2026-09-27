@@ -1,6 +1,6 @@
 # Data licenses and redistribution
 
-The Lunchbox source code is licensed under MIT. Data embedded in a generated database retains the
+The Lunchpail source code is licensed under MIT. Data embedded in a generated database retains the
 terms of its provider; the code license does not replace those terms.
 
 ## Currently imported redistributable sources
@@ -20,7 +20,7 @@ terms of its provider; the code license does not replace those terms.
   redistributed with it.
 
 - **DOSBox default controller mapper (derived runtime data)** — the baseline at
-  `crates/lunchbox-app/data/controllers/dosbox-default-mapper.map` is generated
+  `crates/lunchpail-app/data/controllers/dosbox-default-mapper.map` is generated
   from the pinned DOSBox-X `CreateDefaultBinds`/`DefaultKeys` tables
   (`src/gui/mapper.cpp`, commit
   `532909c4e84160a5ac2185fbf9c4c97dbe07f85d`) together with SDL's public
@@ -28,38 +28,38 @@ terms of its provider; the code license does not replace those terms.
   functional keyboard/joystick event names and numeric scancodes; no game,
   firmware or provider data. DOSBox-X is GPL-2.0-or-later
   (<https://github.com/joncampbell123/dosbox-x>); the derived table is used to
-  preserve the emulator's own default keyboard bindings when Lunchbox patches
+  preserve the emulator's own default keyboard bindings when Lunchpail patches
   only the emulated joystick events. DOSBox Staging shares the same mapper
   grammar (<https://github.com/dosbox-staging/dosbox-staging>).
 
-- **Lunchbox emulator catalog** — maintained in this repository and distributed under MIT.
+- **Lunchpail emulator catalog** — maintained in this repository and distributed under MIT.
 - **Libretro Database** — distributed under CC BY-SA 4.0. The exact upstream revision, source URL,
   archive SHA-256, and license are recorded in `sources/libretro.json` and in every generated
   database's `source_snapshots` table. Upstream project: <https://github.com/libretro/libretro-database>.
   License: <https://creativecommons.org/licenses/by-sa/4.0/>.
 
 Any redistributed database containing Libretro-derived records must retain attribution, identify
-the pinned revision, link the license, indicate that Lunchbox normalized the data, and be shared
+the pinned revision, link the license, indicate that Lunchpail normalized the data, and be shared
 under terms compatible with CC BY-SA 4.0.
 
 - **EmulationWiki recommendation order** — per-system emulator comparison tables published under
   Creative Commons Attribution Share Alike (version as published on the wiki; "Content is available
-  under Creative Commons Attribution Share Alike unless otherwise noted"). Lunchbox imports only a
+  under Creative Commons Attribution Share Alike unless otherwise noted"). Lunchpail imports only a
   bounded, hand-curated ranking snapshot (`sources/emulationwiki-recommendations.json`, one entry
   per supported emulator with the source page URL and retrieval date); each import records a
   `source_snapshots` row, and the app credits the wiki wherever rankings are displayed. Curated
-  ranks and verdicts are Lunchbox's reading of the tables, not a copy of their prose. Upstream
+  ranks and verdicts are Lunchpail's reading of the tables, not a copy of their prose. Upstream
   project: <https://emulation.gametechwiki.com/>.
 
 ## Approved for future redistributable use, but not imported
 
-- **Wikidata structured data** — made available under CC0 1.0. Lunchbox may import a bounded,
+- **Wikidata structured data** — made available under CC0 1.0. Lunchpail may import a bounded,
   reproducibly pinned set of facts and external-ID links in a future build. No Wikidata records are
   present in the current artifact. Policy: <https://www.wikidata.org/wiki/Wikidata:Licensing>.
 
 ## Runtime-only metadata services
 
-- **progetto-SNAPS Mature.ini (AntoPISA)** — Lunchbox downloads the adult-content
+- **progetto-SNAPS Mature.ini (AntoPISA)** — Lunchpail downloads the adult-content
   classification list to the user's metadata cache. It is not bundled in the
   executable or public database. The pinned MAME 0.289 snapshot is from
   `AntoPISA/MAME_SupportFiles` commit `bca9d8a74079f74a4a40298e06bf1634c820c7cb`,
@@ -82,9 +82,9 @@ under terms compatible with CC BY-SA 4.0.
 - **Minerva** — acquisition records remain subject to provider-specific terms and are fetched at
   runtime.
 - **PleasureDome** — pinball and OpenBOR `.torrent` catalogs are user-fetched and their trackers
-  require the user's own account passkey, so Lunchbox never bundles them and never places them in
-  the public `lunchbox.db.7z` artifact. A user may import a local catalog
-  (`lunchbox-db import-pleasuredome`) that records torrent URLs, file names, collection labels,
+  require the user's own account passkey, so Lunchpail never bundles them and never places them in
+  the public `lunchpail.db.7z` artifact. A user may import a local catalog
+  (`lunchpail-db import-pleasuredome`) that records torrent URLs, file names, collection labels,
   counts and sizes only — the same shape as the Minerva catalog. No torrent bytes, datfile, table,
   ROM or artwork is committed. Upstream: <https://pleasuredome.github.io/pleasuredome/>.
 
@@ -92,7 +92,7 @@ Local collection paths, hashes, and user-created provisional records are private
 are stored only in a writable user database and are never included in the public artifact.
 
 Runtime-only data may be cached in a user's local database subject to provider terms. It is excluded
-from the public `lunchbox.db.7z` artifact.
+from the public `lunchpail.db.7z` artifact.
 
 ## Sources requiring legal review
 
@@ -103,4 +103,4 @@ provide the reuse and redistribution grant this project would need. A public API
 file is not itself a data license.
 
 The complete reviewed provider registry is `sources/metadata-providers.json`; the rationale and
-integration notes are preserved in the [archived metadata reference](https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/METADATA_BACKBONE.md).
+integration notes are preserved in the [archived metadata reference](https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/METADATA_BACKBONE.md).

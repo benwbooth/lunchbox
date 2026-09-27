@@ -21,7 +21,7 @@
     },
     {
       "kind": "contract",
-      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAGNAVOX_ODYSSEY_DS_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAGNAVOX_ODYSSEY_DS_CONTROLLER_BOUNDARY.md",
       "role": "Nintendo DS-only controller and persistence boundary"
     }
   ],
@@ -60,5 +60,5 @@
       ]
     }
   },
-  "notes": "GameBrew documents Nintendo DS controls only: R/L changes the player under control and A resets the ball; chips 1-4 provide the listed mini-games. No host config, controller serialization, save-game or save-state path, BIOS/firmware path, or cryptographic-key contract can be derived for Lunchbox's four desktop hosts. The linked archive was not treated as a desktop artifact."
+  "notes": "GameBrew documents Nintendo DS controls only: R/L changes the player under control and A resets the ball; chips 1-4 provide the listed mini-games. No host config, controller serialization, save-game or save-state path, BIOS/firmware path, or cryptographic-key contract can be derived for Lunchpail's four desktop hosts. The linked archive was not treated as a desktop artifact."
 }

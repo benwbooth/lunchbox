@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keep a live Lunchbox running while you edit code.
+# Keep a live Lunchpail running while you edit code.
 #
 # The app is only rebuilt and swapped when the new binary is ready: the old
 # instance keeps serving until then, so it is down for roughly a second per
@@ -41,13 +41,13 @@ stop_app() {
 
 start_app() {
   # Qt/QML diagnostics go to the same log so a broken binding is visible.
-  QT_LOGGING_TO_CONSOLE=1 target/debug/lunchbox >>"${LUNCHBOX_DEV_LOG:-/tmp/lunchbox-dev.log}" 2>&1 &
+  QT_LOGGING_TO_CONSOLE=1 target/debug/lunchpail >>"${LUNCHPAIL_DEV_LOG:-/tmp/lunchpail-dev.log}" 2>&1 &
   app_pid=$!
 }
 
 # Returns non-zero when the build fails.
 build() {
-  cargo build -p lunchbox-app --bin lunchbox "${ocr_feature_args[@]}"
+  cargo build -p lunchpail-app -p lunchpail-controller-probe --bin lunchpail --bin lunchpail-controller-probe "${ocr_feature_args[@]}"
 }
 
 # Swaps the app for the freshly built binary.
@@ -61,7 +61,7 @@ trap stop_app EXIT INT TERM
 echo "[dev] first build; the app starts as soon as it is ready"
 if build; then
   start_app
-  echo "[dev] running target/debug/lunchbox (pid $app_pid)"
+  echo "[dev] running target/debug/lunchpail (pid $app_pid)"
 else
   echo "[dev] build failed; fix the error and save to retry" >&2
 fi
@@ -74,10 +74,10 @@ watchexec --restart --shell=none \
   --watch Cargo.toml \
   --watch Cargo.lock \
   --exts rs,qml,json,toml,lock,h,cpp,slang,slangp,lua \
-  -- bash -c 'ocr_feature_args=(); if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then ocr_feature_args=(--features rocm-ocr); fi; if cargo build -p lunchbox-app --bin lunchbox "${ocr_feature_args[@]}"; then echo LUNCHBOX_DEV_BUILT; fi' \
+  -- bash -c 'ocr_feature_args=(); if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then ocr_feature_args=(--features rocm-ocr); fi; if cargo build -p lunchpail-app -p lunchpail-controller-probe --bin lunchpail --bin lunchpail-controller-probe "${ocr_feature_args[@]}"; then echo LUNCHPAIL_DEV_BUILT; fi' \
   | while IFS= read -r line; do
       printf '[dev] %s\n' "$line"
-      if [[ "$line" == LUNCHBOX_DEV_BUILT ]]; then
+      if [[ "$line" == LUNCHPAIL_DEV_BUILT ]]; then
         swap
         echo "[dev] restarted (pid $app_pid)"
       fi

@@ -32,7 +32,7 @@ should leave black areas rather than stretch. Native ultrawide artwork can
 fill more of the screen.
 
 The game should fit the opening in the bezel. Some ultrawide profiles need
-fullscreen; Lunchbox reports when a selected profile cannot be used in the
+fullscreen; Lunchpail reports when a selected profile cannot be used in the
 current window mode.
 
 ## Cut-off text or a squashed picture
@@ -57,6 +57,6 @@ is much more useful than a cropped game image.
 Bezel artwork comes from its respective creators, including
 [The Bezel Project](https://github.com/thebezelproject) and
 [Duimon's 21:9 collection](https://github.com/Duimon/Duimon-Mega-Bezel-Potato-21x9).
-Duimon's collection is licensed CC BY-NC-ND 4.0. Lunchbox fetches those images
+Duimon's collection is licensed CC BY-NC-ND 4.0. Lunchpail fetches those images
 on demand rather than bundling or modifying them. Check each pack's license
-before sharing its artwork outside Lunchbox.
+before sharing its artwork outside Lunchpail.

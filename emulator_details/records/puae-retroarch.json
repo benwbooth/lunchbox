@@ -17,7 +17,7 @@
     },
     {
       "kind": "contract",
-      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PUAE_CONTROLLER_CONTRACT.md",
+      "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/PUAE_CONTROLLER_CONTRACT.md",
       "role": "shared PUAE boundary; no duplicate writer"
     }
   ],
@@ -36,7 +36,7 @@
         },
         {
           "purpose": "input",
-          "path": "RetroArch per-port input_playerN_* bindings plus PUAE's six frontend ports; Lunchbox's native launch resolves and guards model-specific PUAE mappings.",
+          "path": "RetroArch per-port input_playerN_* bindings plus PUAE's six frontend ports; Lunchpail's native launch resolves and guards model-specific PUAE mappings.",
           "naming": "PUAE mapper selects ordinary joystick, CD32/CD32FR gamepad, or mouse semantics from core options; host autoconfig remains frontend-owned; no native launch integration under this identity.",
           "status": "captured",
           "evidence": [

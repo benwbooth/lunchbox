@@ -1,0 +1,3984 @@
+use std::borrow::Cow;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use anyhow::{Context, Result, bail};
+use directories::ProjectDirs;
+use rusqlite::{Connection, OpenFlags, params};
+
+use crate::list_view::{ListColumn, ListColumnFilter, ListMetadata, ListMetadataBuilder};
+use crate::settings::GameMetadataOverride;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Game {
+    pub id: String,
+    pub launchbox_db_id: i64,
+    pub media_id: i64,
+    pub title: String,
+    pub platform: String,
+    pub status: String,
+    pub local: bool,
+    pub downloadable: bool,
+    pub non_retail: bool,
+    pub has_non_retail_release: bool,
+    pub adult: bool,
+    pub release_regions: u64,
+    pub cooperative: String,
+    pub(crate) search_key: String,
+}
+
+/// Media providers can search by exact title/platform even when a source row
+/// has no LaunchBox ID. Keep those caches stable and disjoint from real IDs.
+pub(crate) fn stable_media_id(launchbox_db_id: i64, game_uid: &str) -> i64 {
+    if launchbox_db_id > 0 {
+        return launchbox_db_id;
+    }
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    const SYNTHETIC_MARKER: u64 = 1 << 51;
+    let hash = game_uid.as_bytes().iter().fold(FNV_OFFSET, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(FNV_PRIME)
+    });
+    i64::try_from(SYNTHETIC_MARKER | (hash & (SYNTHETIC_MARKER - 1)))
+        .expect("synthetic media IDs remain exactly representable in QML")
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Platform {
+    pub name: String,
+    pub game_count: usize,
+    pub(crate) search_key: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Catalog {
+    pub games: Vec<Game>,
+    pub platforms: Vec<Platform>,
+    pub(crate) list_metadata: ListMetadata,
+    pub local_file_count: usize,
+    pub offer_count: usize,
+    pub emulator_count: usize,
+    pub source_label: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct CatalogPreview {
+    pub catalog: Catalog,
+    pub total_game_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CatalogPreviewFocus {
+    pub platform: String,
+    pub game_uid: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Filter {
+    pub search: String,
+    pub platform: String,
+    pub availability: String,
+    pub tag: String,
+    pub hide_non_retail: bool,
+    pub hide_adult: bool,
+    pub release_region_mask: u64,
+    pub include_adult_releases: bool,
+    pub include_non_retail_releases: bool,
+    pub favorite_game_ids: Arc<HashSet<String>>,
+    pub collection_game_ids: Arc<HashSet<String>>,
+    pub collection_game_order: Arc<std::collections::HashMap<String, usize>>,
+    pub recent_game_order: Arc<std::collections::HashMap<String, i64>>,
+    pub display_titles: Arc<std::collections::HashMap<String, String>>,
+    pub game_tags: Arc<HashMap<String, Vec<String>>>,
+    pub game_custom_fields: Arc<HashMap<String, Vec<String>>>,
+    pub metadata_overrides: Arc<HashMap<String, GameMetadataOverride>>,
+    pub list_column_filters: Arc<HashMap<ListColumn, ListColumnFilter>>,
+    pub sort_field: String,
+    pub sort_descending: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ListFacetValue {
+    pub value: String,
+    pub game_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ListFacetResult {
+    pub values: Vec<ListFacetValue>,
+    pub total_distinct: usize,
+}
+
+pub fn requested_database_path() -> Option<PathBuf> {
+    requested_path("--database", "LUNCHPAIL_DATABASE")
+        .filter(|path| !path.as_os_str().is_empty())
+        .or_else(|| {
+            [
+                PathBuf::from("build/lunchpail.db"),
+                PathBuf::from("lunchpail.db"),
+                PathBuf::from("build/lunchbox.db"),
+                PathBuf::from("lunchbox.db"),
+            ]
+            .into_iter()
+            .find(|path| path.is_file())
+        })
+        .or_else(|| {
+            let executable = env::current_exe().ok()?;
+            executable
+                .parent()?
+                .join("../share/lunchpail/lunchpail.db")
+                .canonicalize()
+                .ok()
+        })
+        .or_else(|| {
+            crate::app_paths::project_dirs()
+                .map(|dirs| dirs.data_dir().join("lunchpail.db"))
+                .filter(|path| path.is_file())
+        })
+}
+
+pub(crate) fn requested_discovery_database_path() -> Option<PathBuf> {
+    requested_path("--games-database", "LUNCHPAIL_GAMES_DATABASE").or_else(|| {
+        existing_path([
+            PathBuf::from("lunchpail-games.db"),
+            PathBuf::from("lunchbox-games.db"),
+            PathBuf::from("db/games.db"),
+            legacy_data_path("games.db"),
+            project_data_path("games.db"),
+        ])
+    })
+}
+
+pub(crate) fn requested_minerva_database_path() -> Option<PathBuf> {
+    requested_path("--minerva-database", "LUNCHPAIL_MINERVA_DATABASE").or_else(|| {
+        existing_path([
+            PathBuf::from("minerva.db"),
+            PathBuf::from("db/minerva.db"),
+            legacy_data_path("minerva.db"),
+            project_data_path("minerva.db"),
+        ])
+    })
+}
+
+/// The PleasureDome pinball catalog, modelled on the Minerva catalog: torrents
+/// whose platform rows point at the `Pinball` and `OpenBOR` shelves. Supplied by
+/// the user because the sets are not redistributable and their trackers need the
+/// user's own passkey.
+pub(crate) fn requested_pleasuredome_database_path() -> Option<PathBuf> {
+    requested_path("--pleasuredome-database", "LUNCHPAIL_PLEASUREDOME_DATABASE").or_else(|| {
+        existing_path([
+            PathBuf::from("pleasuredome.db"),
+            PathBuf::from("db/pleasuredome.db"),
+            legacy_data_path("pleasuredome.db"),
+            project_data_path("pleasuredome.db"),
+        ])
+    })
+}
+
+fn requested_user_database_path() -> Option<PathBuf> {
+    requested_path("--user-database", "LUNCHPAIL_USER_DATABASE")
+        .or_else(|| existing_path([legacy_data_path("user.db"), project_data_path("user.db")]))
+}
+
+pub(crate) fn requested_path(argument_name: &str, environment_name: &str) -> Option<PathBuf> {
+    let equals_prefix = format!("{argument_name}=");
+    let mut arguments = env::args_os().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == argument_name {
+            return arguments.next().map(PathBuf::from);
+        }
+        if let Some(argument) = argument.to_str()
+            && let Some(path) = argument.strip_prefix(&equals_prefix)
+        {
+            return Some(PathBuf::from(path));
+        }
+    }
+
+    env::var_os(environment_name)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+pub(crate) fn requested_value(argument_name: &str, environment_name: &str) -> Option<String> {
+    let equals_prefix = format!("{argument_name}=");
+    let mut arguments = env::args().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == argument_name {
+            return arguments.next().filter(|value| !value.is_empty());
+        }
+        if let Some(value) = argument.strip_prefix(&equals_prefix) {
+            return (!value.is_empty()).then(|| value.to_owned());
+        }
+    }
+
+    env::var(environment_name)
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
+fn existing_path<const N: usize>(paths: [PathBuf; N]) -> Option<PathBuf> {
+    paths.into_iter().find(|path| path.is_file())
+}
+
+fn legacy_data_path(file_name: &str) -> PathBuf {
+    directories::BaseDirs::new()
+        .map(|dirs| dirs.data_dir().join("lunchpail").join(file_name))
+        .unwrap_or_else(|| PathBuf::from(file_name))
+}
+
+fn project_data_path(file_name: &str) -> PathBuf {
+    crate::app_paths::project_dirs()
+        .map(|dirs| dirs.data_dir().join(file_name))
+        .unwrap_or_else(|| PathBuf::from(file_name))
+}
+
+pub fn load(path: &Path) -> Result<Catalog> {
+    let connection = open_read_only(path, "Lunchpail database")?;
+    validate_canonical_schema(&connection)?;
+    if let Err(error) = crate::arcade::initialize(&connection) {
+        eprintln!("LUNCHPAIL_ARCADE_IDENTITIES_UNAVAILABLE {error:#}");
+    }
+    if let Err(error) = crate::arcade_content::initialize(&connection) {
+        eprintln!("LUNCHPAIL_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
+    }
+    if let Err(error) = crate::release_content::initialize(&connection) {
+        eprintln!("LUNCHPAIL_NON_RETAIL_METADATA_UNAVAILABLE {error:#}");
+    }
+
+    if let Some(discovery_path) = requested_discovery_database_path() {
+        return load_discovery_catalog(
+            &connection,
+            &discovery_path,
+            requested_minerva_database_path().as_deref(),
+            requested_pleasuredome_database_path().as_deref(),
+            requested_user_database_path().as_deref(),
+        );
+    }
+
+    load_canonical_catalog(&connection)
+}
+
+/// Load enough of the discovery catalog to paint and interact with the first
+/// screen while the complete in-memory search index is built. This is never a
+/// substitute for the full load: the library model replaces it atomically.
+pub fn load_preview(path: &Path, focus: &CatalogPreviewFocus) -> Result<Option<CatalogPreview>> {
+    let canonical = open_read_only(path, "Lunchpail database")?;
+    validate_canonical_schema(&canonical)?;
+    if let Err(error) = crate::arcade::initialize(&canonical) {
+        eprintln!("LUNCHPAIL_ARCADE_IDENTITIES_UNAVAILABLE {error:#}");
+    }
+    if let Err(error) = crate::arcade_content::initialize(&canonical) {
+        eprintln!("LUNCHPAIL_ARCADE_ADULT_METADATA_UNAVAILABLE {error:#}");
+    }
+    if let Err(error) = crate::release_content::initialize(&canonical) {
+        eprintln!("LUNCHPAIL_NON_RETAIL_METADATA_UNAVAILABLE {error:#}");
+    }
+    let Some(discovery_path) = requested_discovery_database_path() else {
+        return Ok(None);
+    };
+    let native_state_path = crate::settings::state_database_path()?;
+    load_preview_from_sources(
+        &canonical,
+        &discovery_path,
+        requested_minerva_database_path().as_deref(),
+        requested_pleasuredome_database_path().as_deref(),
+        requested_user_database_path().as_deref(),
+        native_state_path
+            .is_file()
+            .then_some(native_state_path.as_path()),
+        focus,
+    )
+    .map(Some)
+}
+
+fn load_preview_from_sources(
+    canonical: &Connection,
+    discovery_path: &Path,
+    minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
+    user_path: Option<&Path>,
+    native_state_path: Option<&Path>,
+    focus: &CatalogPreviewFocus,
+) -> Result<CatalogPreview> {
+    let discovery = open_read_only(&discovery_path, "Lunchpail discovery database")?;
+    validate_discovery_schema(&discovery)?;
+    let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
+    let minerva = load_download_coverage(minerva_path, pleasuredome_path, native_state_path)?;
+    let total_game_count =
+        count(&discovery, "games", "1")?.saturating_add(installed.local_only_games.len());
+    let order = if column_exists(&discovery, "games", "sort_title")? {
+        "coalesce(nullif(g.sort_title, ''), g.title)"
+    } else {
+        "g.title"
+    };
+    let release_type = optional_game_column(&discovery, "release_type")?;
+    let version = optional_game_column(&discovery, "version")?;
+    let esrb = optional_game_column(&discovery, "esrb")?;
+    let genre = optional_game_column(&discovery, "genre")?;
+    let query = format!(
+        "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
+                coalesce(g.launchbox_db_id, 0), {release_type}, {version}, {esrb}, {genre}
+         FROM games g
+         JOIN platforms p ON p.id = g.platform_id
+         WHERE (?1 = '' OR p.name = ?1)
+         ORDER BY (g.id = ?2) DESC, {order} COLLATE NOCASE, g.id
+         LIMIT 240"
+    );
+    let mut statement = discovery.prepare(&query)?;
+    let rows = statement.query_map(params![focus.platform, focus.game_uid], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
+        ))
+    })?;
+    let mut games = Vec::with_capacity(240 + installed.local_only_games.len());
+    let mut list_metadata = ListMetadataBuilder::with_capacity(games.capacity());
+    for row in rows {
+        let (id, title, platform, status, database_id, release_type, version, esrb, genre) = row?;
+        let local = installed.is_local(&id, &title, &platform, database_id);
+        let non_retail = is_non_retail_game_on_platform(
+            &title,
+            &platform,
+            release_type.as_deref(),
+            version.as_deref(),
+        );
+        let adult = is_adult_game_on_platform(&title, &platform, esrb.as_deref(), genre.as_deref());
+        let release_regions = release_region_membership(&title, None);
+        let media_id = stable_media_id(database_id, &id);
+        games.push(Game {
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            downloadable: !local
+                && minerva
+                    .platform_names
+                    .contains(&normalize_platform_key(&platform)),
+            id,
+            launchbox_db_id: database_id,
+            media_id,
+            title,
+            platform,
+            status,
+            local,
+            non_retail,
+            has_non_retail_release: non_retail,
+            adult,
+            release_regions,
+            cooperative: "unknown".to_owned(),
+        });
+        list_metadata.push_empty();
+    }
+    for game in &installed.local_only_games {
+        games.push(game.clone());
+        list_metadata.push_empty();
+    }
+    apply_alternate_release_regions(&discovery, &mut games)?;
+    let linked_release_families = load_linked_release_families(
+        &discovery,
+        (!focus.platform.trim().is_empty()).then_some(focus.platform.as_str()),
+    )?;
+    let mut list_metadata = list_metadata.finish();
+    apply_release_families(&mut games, &mut list_metadata, &linked_release_families);
+
+    let canonical_aliases = canonical_platform_aliases(&canonical)?;
+    let mut platform_statement = discovery.prepare(
+        "SELECT p.name, count(g.id)
+         FROM platforms p
+         LEFT JOIN games g ON g.platform_id = p.id
+         GROUP BY p.id, p.name
+         HAVING count(g.id) > 0
+         ORDER BY p.name COLLATE NOCASE",
+    )?;
+    let platform_rows = platform_statement.query_map([], |row| {
+        let name = row.get::<_, String>(0)?;
+        let aliases = canonical_aliases
+            .get(&normalize_platform_key(&name))
+            .map(String::as_str);
+        Ok(Platform {
+            search_key: platform_search_key(&name, aliases),
+            name,
+            game_count: row.get(1)?,
+        })
+    })?;
+    let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for local_game in &installed.local_only_games {
+        let name = canonical_platform_name(&local_game.platform);
+        if let Some(platform) = platforms.iter_mut().find(|platform| platform.name == name) {
+            platform.game_count = platform.game_count.saturating_add(1);
+        } else {
+            platforms.push(Platform {
+                name: name.to_owned(),
+                game_count: 1,
+                search_key: platform_search_key(name, None),
+            });
+        }
+    }
+    platforms.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    apply_grouped_platform_counts_from_sql(&mut platforms);
+    validate_unique_media_ids(&games)?;
+
+    Ok(CatalogPreview {
+        catalog: Catalog {
+            games,
+            platforms,
+            list_metadata,
+            local_file_count: installed.file_count,
+            offer_count: minerva.offer_count,
+            emulator_count: count(&canonical, "emulators", "1")?,
+            source_label: format!("Discovery catalog: {}", discovery_path.display()),
+        },
+        total_game_count,
+    })
+}
+
+pub(crate) fn open_read_only(path: &Path, description: &str) -> Result<Connection> {
+    let connection = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .with_context(|| format!("opening {description} {}", path.display()))?;
+    connection.busy_timeout(std::time::Duration::from_secs(2))?;
+    connection.execute_batch(
+        "PRAGMA foreign_keys = ON;\n\
+         PRAGMA query_only = ON;\n\
+         PRAGMA trusted_schema = OFF;\n\
+         PRAGMA temp_store = MEMORY;\n\
+         PRAGMA cache_size = -16384;\n\
+         PRAGMA mmap_size = 268435456;",
+    )?;
+    Ok(connection)
+}
+
+fn validate_canonical_schema(connection: &Connection) -> Result<()> {
+    let schema_version: i64 = connection
+        .query_row(
+            "SELECT coalesce(max(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )
+        .context("reading Lunchpail schema version")?;
+    if schema_version != 6 {
+        bail!("unsupported Lunchpail schema version {schema_version}; expected version 6");
+    }
+    Ok(())
+}
+
+fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
+    let game_type = if column_exists(connection, "games", "game_type")? {
+        "games.game_type"
+    } else {
+        "NULL"
+    };
+    let query = format!(
+        "WITH local_games AS (\n\
+             SELECT DISTINCT releases.game_id\n\
+             FROM local_files\n\
+             JOIN release_artifacts USING (artifact_id)\n\
+             JOIN releases ON releases.id = release_artifacts.release_id\n\
+             WHERE local_files.availability = 'present'\n\
+         ), offer_games AS (\n\
+             SELECT DISTINCT releases.game_id\n\
+             FROM acquisition_offers\n\
+             JOIN release_artifacts USING (artifact_id)\n\
+             JOIN releases ON releases.id = release_artifacts.release_id\n\
+             WHERE acquisition_offers.availability <> 'unavailable'\n\
+         )\n\
+         SELECT games.id, games.canonical_title,\n\
+                coalesce(platforms.canonical_name, ''), games.status,\n\
+                local_games.game_id IS NOT NULL, offer_games.game_id IS NOT NULL, {game_type}\n\
+         FROM games\n\
+         LEFT JOIN releases ON releases.id = (\n\
+             SELECT candidate.id FROM releases AS candidate\n\
+             WHERE candidate.game_id = games.id\n\
+             ORDER BY candidate.status = 'canonical' DESC, candidate.id\n\
+             LIMIT 1\n\
+         )\n\
+         LEFT JOIN platforms ON platforms.id = releases.platform_id\n\
+         LEFT JOIN local_games ON local_games.game_id = games.id\n\
+         LEFT JOIN offer_games ON offer_games.game_id = games.id\n\
+         WHERE games.status NOT IN ('deprecated', 'merged')\n\
+         ORDER BY coalesce(nullif(games.sort_title, ''), games.canonical_title) COLLATE NOCASE,\n\
+                  games.id",
+    );
+    let mut statement = connection.prepare(&query)?;
+    let game_rows = statement.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let platform: String = row.get(2)?;
+        let game_type: Option<String> = row.get(6)?;
+        let non_retail =
+            is_non_retail_game_on_platform(&title, &platform, game_type.as_deref(), None);
+        let adult = is_adult_game_on_platform(&title, &platform, None, None);
+        let release_regions = release_region_membership(&title, None);
+        Ok(Game {
+            media_id: stable_media_id(0, &id),
+            id,
+            launchbox_db_id: 0,
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            title,
+            platform,
+            status: row.get(3)?,
+            local: row.get(4)?,
+            downloadable: row.get(5)?,
+            non_retail,
+            has_non_retail_release: non_retail,
+            adult,
+            release_regions,
+            cooperative: "unknown".to_owned(),
+        })
+    })?;
+    let mut games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut list_metadata = ListMetadataBuilder::with_capacity(games.len());
+    for _ in &games {
+        list_metadata.push_empty();
+    }
+
+    let has_platform_aliases = table_exists(connection, "platform_aliases")?;
+    let alias_column = if has_platform_aliases {
+        "coalesce(group_concat(DISTINCT platform_aliases.alias), '')"
+    } else {
+        "''"
+    };
+    let alias_join = if has_platform_aliases {
+        "LEFT JOIN platform_aliases ON platform_aliases.platform_id = platforms.id"
+    } else {
+        ""
+    };
+    let platform_query = format!(
+        "SELECT platforms.canonical_name, count(DISTINCT games.id),\n\
+                {alias_column}\n\
+         FROM platforms\n\
+         {alias_join}\n\
+         LEFT JOIN releases ON releases.platform_id = platforms.id\n\
+         LEFT JOIN games ON games.id = releases.game_id\n\
+                          AND games.status NOT IN ('deprecated', 'merged')\n\
+         WHERE platforms.status <> 'deprecated'\n\
+         GROUP BY platforms.id, platforms.canonical_name\n\
+         ORDER BY platforms.canonical_name COLLATE NOCASE"
+    );
+    let mut platform_statement = connection.prepare(&platform_query)?;
+    let platform_rows = platform_statement.query_map([], |row| {
+        let name = row.get::<_, String>(0)?;
+        let aliases = row.get::<_, String>(2)?;
+        Ok(Platform {
+            search_key: platform_search_key(&name, Some(&aliases)),
+            name,
+            game_count: row.get(1)?,
+        })
+    })?;
+    let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut list_metadata = list_metadata.finish();
+    apply_release_families(
+        &mut games,
+        &mut list_metadata,
+        &LinkedReleaseFamilies::default(),
+    );
+    apply_grouped_platform_counts(&games, &mut platforms);
+    validate_unique_media_ids(&games)?;
+
+    Ok(Catalog {
+        games,
+        platforms,
+        list_metadata,
+        local_file_count: count(connection, "local_files", "availability = 'present'")?,
+        offer_count: count(
+            connection,
+            "acquisition_offers",
+            "availability <> 'unavailable'",
+        )?,
+        emulator_count: count(connection, "emulators", "1")?,
+        source_label: "Lunchpail canonical catalog".to_owned(),
+    })
+}
+
+#[derive(Default)]
+struct InstalledGames {
+    database_ids: HashSet<i64>,
+    game_uids: HashSet<String>,
+    /// LaunchBox IDs from the native state database, scoped by the exact
+    /// installed platform. State rows record whichever discovery snapshot
+    /// the download was queued from, and a bare ID can drift across
+    /// platforms between snapshots, so it must never light a foreign card.
+    state_database_platforms: HashMap<i64, HashSet<String>>,
+    /// Exact (platform, title) pairs from the native state database. Both
+    /// sides are trimmed and case-folded only; no tag stripping or fuzzy
+    /// similarity is applied, so a pair can only relight its exact card.
+    state_exact_pairs: HashSet<(String, String)>,
+    local_only_games: Vec<Game>,
+    native_file_paths: HashSet<PathBuf>,
+    file_count: usize,
+}
+
+fn installed_platform_key(platform: &str) -> String {
+    platform.trim().to_lowercase()
+}
+
+fn installed_title_key(title: &str) -> String {
+    title.trim().to_lowercase()
+}
+
+impl InstalledGames {
+    fn is_local(&self, id: &str, title: &str, platform: &str, database_id: i64) -> bool {
+        if self.game_uids.contains(id) {
+            return true;
+        }
+        let platform_key = installed_platform_key(platform);
+        if database_id > 0 {
+            // The canonical user database keeps stable IDs, so a bare match
+            // there is exact. State rows are snapshot-bound and stay scoped.
+            if self.database_ids.contains(&database_id) {
+                return true;
+            }
+            if self
+                .state_database_platforms
+                .get(&database_id)
+                .is_some_and(|platforms| platforms.contains(&platform_key))
+            {
+                return true;
+            }
+        }
+        self.state_exact_pairs
+            .contains(&(platform_key, installed_title_key(title)))
+    }
+
+    fn add_state_identity(
+        &mut self,
+        database_id: i64,
+        game_uid: Option<String>,
+        title: &str,
+        platform: &str,
+    ) {
+        self.file_count = self.file_count.saturating_add(1);
+        if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+            self.game_uids.insert(game_uid);
+        }
+        let platform_key = installed_platform_key(platform);
+        let title_key = installed_title_key(title);
+        if platform_key.is_empty() || title_key.is_empty() {
+            return;
+        }
+        if database_id > 0 {
+            self.state_database_platforms
+                .entry(database_id)
+                .or_default()
+                .insert(platform_key.clone());
+        }
+        self.state_exact_pairs.insert((platform_key, title_key));
+    }
+}
+
+#[derive(Default)]
+struct MinervaCoverage {
+    platform_names: HashSet<String>,
+    offer_count: usize,
+}
+
+fn load_discovery_catalog(
+    canonical: &Connection,
+    discovery_path: &Path,
+    minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
+    user_path: Option<&Path>,
+) -> Result<Catalog> {
+    let native_state_path = crate::settings::state_database_path()?;
+    load_discovery_catalog_with_native_state(
+        canonical,
+        discovery_path,
+        minerva_path,
+        pleasuredome_path,
+        user_path,
+        native_state_path
+            .is_file()
+            .then_some(native_state_path.as_path()),
+    )
+}
+
+/// Reads a nullable text column as a borrowed slice, avoiding a `String`
+/// allocation per row for values that repeat across games.
+fn text_column<'a>(row: &'a rusqlite::Row<'_>, index: usize) -> Option<&'a str> {
+    match row.get_ref(index) {
+        Ok(rusqlite::types::ValueRef::Text(text)) => std::str::from_utf8(text).ok(),
+        _ => None,
+    }
+}
+
+fn load_discovery_catalog_with_native_state(
+    canonical: &Connection,
+    discovery_path: &Path,
+    minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
+    user_path: Option<&Path>,
+    native_state_path: Option<&Path>,
+) -> Result<Catalog> {
+    let discovery = open_read_only(discovery_path, "Lunchpail discovery database")?;
+    validate_discovery_schema(&discovery)?;
+    let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
+    let minerva = load_download_coverage(minerva_path, pleasuredome_path, native_state_path)?;
+
+    let game_capacity = count(&discovery, "games", "1")?;
+    let mut games = Vec::with_capacity(game_capacity);
+    let mut list_metadata = ListMetadataBuilder::with_capacity(game_capacity);
+    let release_type = optional_game_column(&discovery, "release_type")?;
+    let esrb = optional_game_column(&discovery, "esrb")?;
+    let genre = optional_game_column(&discovery, "genre")?;
+    let cooperative = optional_game_column(&discovery, "cooperative")?;
+    let developer = optional_game_column(&discovery, "developer")?;
+    let publisher = optional_game_column(&discovery, "publisher")?;
+    let release_date = optional_game_column(&discovery, "release_date")?;
+    let release_year = optional_game_column(&discovery, "release_year")?;
+    let players = optional_game_column(&discovery, "players")?;
+    let rating = optional_game_column(&discovery, "rating")?;
+    let sort_title = optional_game_column(&discovery, "sort_title")?;
+    let series = optional_game_column(&discovery, "series")?;
+    let region = optional_game_column(&discovery, "region")?;
+    let play_mode = optional_game_column(&discovery, "play_mode")?;
+    let version = optional_game_column(&discovery, "version")?;
+    let notes = optional_game_column(&discovery, "notes")?;
+    let query = format!(
+        "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
+                coalesce(g.launchbox_db_id, 0), {release_type}, {esrb}, {genre},
+                {cooperative}, {developer}, {publisher}, {release_date},
+                {release_year}, {players}, {rating}, {sort_title}, {series}, {region},
+                {play_mode}, {version},
+                CASE
+                    WHEN lower(trim(coalesce(g.status, ''))) IN
+                         ('', 'canonical', 'deprecated', 'merged') THEN NULL
+                    ELSE trim(g.status)
+                END,
+                {notes}
+         FROM games g
+         JOIN platforms p ON p.id = g.platform_id
+         ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id"
+    );
+    let mut statement = discovery.prepare(&query)?;
+    let mut rows = statement.query([])?;
+    // Platforms repeat across rows; derive their normalized and lowercased
+    // forms once per distinct platform instead of per game.
+    let mut platform_forms: HashMap<String, (String, bool)> = HashMap::new();
+    while let Some(row) = rows.next()? {
+        // Metadata text columns are read as borrowed values and interned
+        // directly; only the per-game identity strings are materialized.
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let platform: String = row.get(2)?;
+        let status: String = row.get(3)?;
+        let database_id: i64 = row.get(4)?;
+        let release_type = text_column(&row, 5);
+        let esrb = text_column(&row, 6);
+        let genre = text_column(&row, 7);
+        let region = text_column(&row, 17);
+        let cooperative: Option<i64> = row.get(8)?;
+        let local = installed.is_local(&id, &title, &platform, database_id);
+        let (platform_lower, minerva_covered) = {
+            let entry = platform_forms.entry(platform.clone());
+            let (lower, covered) = entry.or_insert_with(|| {
+                (
+                    platform.to_lowercase(),
+                    minerva
+                        .platform_names
+                        .contains(&normalize_platform_key(&platform)),
+                )
+            });
+            (lower.as_str(), *covered)
+        };
+        let non_retail =
+            is_non_retail_game_on_platform(&title, &platform, release_type, text_column(row, 19));
+        let adult = is_adult_game_on_platform(&title, &platform, esrb.as_deref(), genre.as_deref());
+        let release_regions = release_region_membership(&title, region.as_deref());
+        let media_id = stable_media_id(database_id, &id);
+        let mut search_key = String::with_capacity(title.len() + platform_lower.len() + 1);
+        search_key.extend(title.chars().flat_map(char::to_lowercase));
+        search_key.push('\n');
+        search_key.push_str(platform_lower);
+        games.push(Game {
+            id,
+            launchbox_db_id: database_id,
+            media_id,
+            search_key,
+            title,
+            platform,
+            status,
+            local,
+            downloadable: minerva_covered && !local,
+            non_retail,
+            has_non_retail_release: non_retail,
+            adult,
+            release_regions,
+            cooperative: cooperative_status(cooperative).to_owned(),
+        });
+        let release_year: Option<i64> = row.get(12)?;
+        let rating: Option<f64> = row.get(14)?;
+        list_metadata.push_text(
+            text_column(&row, 15),
+            text_column(&row, 9),
+            text_column(&row, 10),
+            text_column(&row, 11),
+            genre.as_deref(),
+            text_column(&row, 13),
+            esrb.as_deref(),
+            release_type.as_deref(),
+            text_column(&row, 16),
+            region.as_deref(),
+            text_column(&row, 18),
+            text_column(&row, 19),
+            text_column(&row, 20),
+            text_column(&row, 21),
+            i32::try_from(release_year.unwrap_or_default()).unwrap_or_default(),
+            rating,
+        )?;
+    }
+    for game in &installed.local_only_games {
+        games.push(game.clone());
+        list_metadata.push_empty();
+    }
+    apply_alternate_release_regions(&discovery, &mut games)?;
+    let linked_release_families = load_linked_release_families(&discovery, None)?;
+    let mut list_metadata = list_metadata.finish();
+    apply_release_families(&mut games, &mut list_metadata, &linked_release_families);
+
+    let canonical_aliases = canonical_platform_aliases(canonical)?;
+    let mut platform_statement = discovery.prepare(
+        "SELECT p.name, count(g.id)
+         FROM platforms p
+         LEFT JOIN games g ON g.platform_id = p.id
+         GROUP BY p.id, p.name
+         HAVING count(g.id) > 0
+         ORDER BY p.name COLLATE NOCASE",
+    )?;
+    let platform_rows = platform_statement.query_map([], |row| {
+        let name = row.get::<_, String>(0)?;
+        let aliases = canonical_aliases
+            .get(&normalize_platform_key(&name))
+            .map(String::as_str);
+        Ok(Platform {
+            search_key: platform_search_key(&name, aliases),
+            name,
+            game_count: row.get(1)?,
+        })
+    })?;
+    let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for local_game in &installed.local_only_games {
+        let name = canonical_platform_name(&local_game.platform);
+        if let Some(platform) = platforms.iter_mut().find(|platform| platform.name == name) {
+            platform.game_count = platform.game_count.saturating_add(1);
+        } else {
+            platforms.push(Platform {
+                name: name.to_owned(),
+                game_count: 1,
+                search_key: platform_search_key(name, None),
+            });
+        }
+    }
+    platforms.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    apply_grouped_platform_counts(&games, &mut platforms);
+    validate_unique_media_ids(&games)?;
+
+    Ok(Catalog {
+        games,
+        platforms,
+        list_metadata,
+        local_file_count: installed.file_count,
+        offer_count: minerva.offer_count,
+        emulator_count: count(canonical, "emulators", "1")?,
+        source_label: format!("Discovery catalog: {}", discovery_path.display()),
+    })
+}
+
+fn validate_unique_media_ids(games: &[Game]) -> Result<()> {
+    let mut identities = HashMap::with_capacity(games.len());
+    for game in games {
+        if game.media_id <= 0 {
+            bail!("catalog game {} has no usable media identity", game.id);
+        }
+        if let Some(existing) = identities.insert(game.media_id, game.id.as_str())
+            && existing != game.id
+        {
+            bail!(
+                "catalog media identity collision between {existing} and {}",
+                game.id
+            );
+        }
+    }
+    Ok(())
+}
+
+fn canonical_platform_aliases(connection: &Connection) -> Result<HashMap<String, String>> {
+    let mut aliases = HashMap::new();
+    if !table_exists(connection, "platforms")? || !table_exists(connection, "platform_aliases")? {
+        return Ok(aliases);
+    }
+    let mut statement = connection.prepare(
+        "SELECT p.canonical_name, coalesce(group_concat(a.alias, ','), '')
+         FROM platforms p
+         LEFT JOIN platform_aliases a ON a.platform_id = p.id
+         WHERE p.status <> 'deprecated'
+         GROUP BY p.id, p.canonical_name",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (name, values) = row?;
+        aliases.insert(normalize_platform_key(&name), values);
+    }
+    Ok(aliases)
+}
+
+fn platform_search_key(name: &str, database_aliases: Option<&str>) -> String {
+    let mut key = name.to_lowercase();
+    if let Some(aliases) = database_aliases.filter(|aliases| !aliases.trim().is_empty()) {
+        key.push('\n');
+        key.push_str(&aliases.to_lowercase());
+    }
+    if let Some(aliases) = legacy_platform_search_aliases(name) {
+        key.push('\n');
+        key.push_str(&aliases.to_lowercase());
+    }
+    key
+}
+
+pub(crate) fn legacy_platform_search_aliases(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "Nintendo Entertainment System" => "NES,Famicom,FC",
+        "Super Nintendo Entertainment System" => "SNES,Super Famicom,SFC,snesna",
+        "Nintendo 64" => "N64",
+        "Nintendo GameCube" => "GC,NGC,GameCube",
+        "Nintendo Game Boy" => "GB,Game Boy",
+        "Nintendo Game Boy Color" => "GBC,Game Boy Color",
+        "Nintendo Game Boy Advance" => "GBA,Game Boy Advance",
+        "Nintendo DS" => "NDS,DS",
+        "Nintendo 3DS" => "3DS,N3DS",
+        "Nintendo Wii U" => "Wii U,WiiU",
+        "Nintendo Switch" => "Switch,NS",
+        "Nintendo Virtual Boy" => "VB,Virtual Boy,virtualboy",
+        "Sega Master System" => "SMS,Master System,mastersystem",
+        "Sega Genesis" => "MD,Mega Drive,Genesis,megadrive",
+        "Sega CD" => "SCD,Mega CD,Sega CD,segacd,megacd",
+        "Sega 32X" => "32X,sega32x",
+        "Sega Saturn" => "SS,Saturn",
+        "Sega Dreamcast" => "DC,Dreamcast",
+        "Sega Game Gear" => "GG,Game Gear,gamegear",
+        "Sony Playstation" => "PS1,PSX,PS,PlayStation",
+        "Sony Playstation 2" => "PS2,PlayStation 2",
+        "Sony Playstation 3" => "PS3,PlayStation 3",
+        "Sony PSP" => "PSP,PlayStation Portable",
+        "Sony Playstation Vita" => "PSV,Vita,PS Vita,psvita",
+        "NEC TurboGrafx-16" => "PCE,PC Engine,TG16,TurboGrafx-16,pcengine",
+        "NEC TurboGrafx-CD" => "PCECD,PC Engine CD,TG-CD,TurboGrafx-CD,pcenginecd",
+        "NEC PC-98" => "PC98,PC-98",
+        "SNK Neo Geo Pocket" => "NGP,Neo Geo Pocket",
+        "SNK Neo Geo Pocket Color" => "NGPC,Neo Geo Pocket Color",
+        "SNK Neo Geo AES" => "AES,MVS,Neo Geo,neogeo",
+        "SNK Neo Geo CD" => "Neo Geo CD,neogeocd,neogeocdjp",
+        "Atari 2600" => "2600,VCS,atari2600",
+        "Atari 5200" => "5200,atari5200",
+        "Atari 7800" => "7800,atari7800",
+        "Atari Jaguar" => "Jaguar,Jag,atarijaguar",
+        "Atari Jaguar CD" => "Jaguar CD,atarijaguarcd",
+        "Commodore 64" => "C64",
+        "Commodore VIC-20" => "VIC-20,VIC20",
+        "Commodore 16" => "C16",
+        "MS-DOS" => "DOS",
+        "Microsoft Xbox 360" => "X360,360,Xbox 360,xbox360",
+        "Sinclair ZX Spectrum" => "ZX,ZX Spectrum,zxspectrum",
+        "Amstrad CPC" => "CPC,amstradcpc",
+        "Arcade" => "MAME,arcade,fbneo",
+        "Arcade Laserdisc" => "Laserdisc,Daphne,Singe,arcade laserdisc",
+        "Arcade Pinball" => "Pinball,arcade pinball,MAME pinball",
+        "Panasonic 3DO" => "3DO",
+        "Philips CD-i" => "CD-i,CDi,cdimono1",
+        "Bandai WonderSwan" => "WS,WonderSwan",
+        "Bandai WonderSwan Color" => "WSC,WonderSwan Color,wonderswancolor",
+        "Coleco ColecoVision" => "Coleco,ColecoVision",
+        "GCE Vectrex" => "Vectrex",
+        "Sharp X68000" => "X68000",
+        "ScummVM" => "ScummVM",
+        _ => return None,
+    })
+}
+
+fn validate_discovery_schema(connection: &Connection) -> Result<()> {
+    for (table, column) in [
+        ("games", "launchbox_db_id"),
+        ("games", "platform_id"),
+        ("platforms", "name"),
+    ] {
+        if !column_exists(connection, table, column)? {
+            bail!("discovery database is missing required column {table}.{column}");
+        }
+    }
+    Ok(())
+}
+
+fn optional_game_column(connection: &Connection, column: &str) -> Result<&'static str> {
+    if column_exists(connection, "games", column)? {
+        Ok(match column {
+            "release_type" => "g.release_type",
+            "esrb" => "g.esrb",
+            "genre" => "g.genre",
+            "cooperative" => "g.cooperative",
+            "developer" => "g.developer",
+            "publisher" => "g.publisher",
+            "release_date" => "g.release_date",
+            "release_year" => "g.release_year",
+            "players" => "g.players",
+            "rating" => "g.rating",
+            "sort_title" => "g.sort_title",
+            "series" => "g.series",
+            "region" => "g.region",
+            "play_mode" => "g.play_mode",
+            "version" => "g.version",
+            "notes" => "g.notes",
+            _ => unreachable!("optional game columns are fixed by the caller"),
+        })
+    } else {
+        Ok("NULL")
+    }
+}
+
+#[derive(Default)]
+struct LinkedReleaseFamilies {
+    /// A value of zero records an ambiguous title that must never be linked
+    /// automatically.
+    aliases: HashMap<String, i64>,
+    canonical_titles: HashMap<i64, String>,
+}
+
+impl LinkedReleaseFamilies {
+    fn record_alias(
+        &mut self,
+        platform: &str,
+        alternate_title: &str,
+        database_id: i64,
+        canonical_title: &str,
+    ) {
+        if database_id <= 0 {
+            return;
+        }
+        self.canonical_titles
+            .entry(database_id)
+            .or_insert_with(|| canonical_title.trim().to_owned());
+        let key = release_family_title_key(platform, alternate_title);
+        if key.ends_with('\0') {
+            return;
+        }
+        self.aliases
+            .entry(key)
+            .and_modify(|existing| {
+                if *existing != database_id {
+                    *existing = 0;
+                }
+            })
+            .or_insert(database_id);
+    }
+
+    fn linked_id_for_key(&self, key: &str) -> Option<i64> {
+        self.aliases
+            .get(key)
+            .copied()
+            .filter(|database_id| *database_id > 0)
+    }
+}
+
+/// Loads only explicit LaunchBox alternate-name relationships. Ambiguous
+/// aliases on the same platform are retained as a fail-closed marker rather
+/// than guessed from title similarity.
+fn load_linked_release_families(
+    connection: &Connection,
+    platform: Option<&str>,
+) -> Result<LinkedReleaseFamilies> {
+    if !table_exists(connection, "game_alternate_names")?
+        || !column_exists(connection, "game_alternate_names", "launchbox_db_id")?
+        || !column_exists(connection, "game_alternate_names", "alternate_name")?
+    {
+        return Ok(LinkedReleaseFamilies::default());
+    }
+
+    let mut families = LinkedReleaseFamilies::default();
+    let query = if platform.is_some() {
+        "SELECT a.launchbox_db_id, g.title, p.name, a.alternate_name
+         FROM platforms p
+         JOIN games g ON g.platform_id = p.id
+         JOIN game_alternate_names a ON a.launchbox_db_id = g.launchbox_db_id
+         WHERE p.name = ?1
+           AND a.launchbox_db_id > 0
+           AND trim(coalesce(a.alternate_name, '')) <> ''"
+    } else {
+        "SELECT a.launchbox_db_id, g.title, p.name, a.alternate_name
+         FROM game_alternate_names a
+         JOIN games g ON g.launchbox_db_id = a.launchbox_db_id
+         JOIN platforms p ON p.id = g.platform_id
+         WHERE a.launchbox_db_id > 0
+           AND trim(coalesce(a.alternate_name, '')) <> ''"
+    };
+    let mut statement = connection.prepare(query)?;
+    let mut rows = if let Some(platform) = platform {
+        statement.query([platform])?
+    } else {
+        statement.query([])?
+    };
+    while let Some(row) = rows.next()? {
+        let database_id: i64 = row.get(0)?;
+        let canonical_title: &str = text_column(row, 1).unwrap_or_default();
+        let platform: &str = text_column(row, 2).unwrap_or_default();
+        let alternate_title: &str = text_column(row, 3).unwrap_or_default();
+        families.record_alias(platform, alternate_title, database_id, canonical_title);
+    }
+    Ok(families)
+}
+
+fn release_family_title_key(platform: &str, title: &str) -> String {
+    format!(
+        "{}\0{}",
+        platform.trim().to_lowercase(),
+        crate::tags::normalize_title_for_matching(title)
+    )
+}
+
+fn record_unique_family_owner(owners: &mut HashMap<String, i64>, key: String, database_id: i64) {
+    owners
+        .entry(key)
+        .and_modify(|existing| {
+            if *existing != database_id {
+                *existing = 0;
+            }
+        })
+        .or_insert(database_id);
+}
+
+/// Groups release families (same game across regions/versions) in a single
+/// pass, records each family's distinct-title variant count on its
+/// representative row, and collapses the family to that representative.
+///
+/// Rows that share a platform and a byte-identical title (modulo trimming
+/// and case) are the same game even when the provider attached distinct
+/// LaunchBox IDs, so they collapse into one card too. Near-matches that
+/// only agree after tag stripping ("3-D Maze" vs "3D Maze") stay separate:
+/// those can be genuinely different games, and guessing would invent
+/// identity links.
+fn apply_release_families(
+    games: &mut Vec<Game>,
+    metadata: &mut ListMetadata,
+    linked_families: &LinkedReleaseFamilies,
+) {
+    let title_keys = games
+        .iter()
+        .map(|game| release_family_title_key(&game.platform, &game.title))
+        .collect::<Vec<_>>();
+    let strict_keys = games
+        .iter()
+        .map(|game| {
+            format!(
+                "{}\0{}",
+                game.platform.trim().to_lowercase(),
+                game.title.trim().to_lowercase()
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut canonical_title_owners = HashMap::<String, i64>::new();
+    let mut strict_title_owners = HashMap::<String, i64>::new();
+    // LaunchBox ID to the strict key of its exact-titled row. An ID claimed
+    // by several strict keys (snapshot drift across platforms) stays out:
+    // alias-linked rows only follow unambiguous IDs into strict families.
+    let mut lbid_strict_keys = HashMap::<i64, Option<String>>::new();
+    for (index, game) in games.iter().enumerate() {
+        if game.launchbox_db_id <= 0 {
+            continue;
+        }
+        record_unique_family_owner(
+            &mut canonical_title_owners,
+            title_keys[index].clone(),
+            game.launchbox_db_id,
+        );
+        record_unique_family_owner(
+            &mut strict_title_owners,
+            strict_keys[index].clone(),
+            game.launchbox_db_id,
+        );
+        lbid_strict_keys
+            .entry(game.launchbox_db_id)
+            .and_modify(|existing| {
+                if existing.as_deref() != Some(strict_keys[index].as_str()) {
+                    *existing = None;
+                }
+            })
+            .or_insert_with(|| Some(strict_keys[index].clone()));
+    }
+
+    let family_ids = games
+        .iter()
+        .enumerate()
+        .map(|(index, game)| {
+            if game.launchbox_db_id > 0 {
+                return game.launchbox_db_id;
+            }
+            let title_key = &title_keys[index];
+            if linked_families.aliases.contains_key(title_key) {
+                return linked_families
+                    .linked_id_for_key(title_key)
+                    .unwrap_or_default();
+            }
+            canonical_title_owners
+                .get(title_key)
+                .copied()
+                .filter(|database_id| *database_id > 0)
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+
+    let mut family_order = Vec::<String>::new();
+    let mut family_members = HashMap::<String, Vec<usize>>::new();
+    for (index, title_key) in title_keys.into_iter().enumerate() {
+        // record_unique_family_owner marks contested strict titles with 0,
+        // which is exactly the provider-duplicate signal: one platform, one
+        // identical title, several IDs. Rows linked to a contested ID by an
+        // explicit provider alias follow it into the strict family.
+        let contested_key = if games[index].launchbox_db_id > 0 {
+            (strict_title_owners
+                .get(&strict_keys[index])
+                .copied()
+                .unwrap_or_default()
+                == 0)
+                .then(|| strict_keys[index].clone())
+        } else if family_ids[index] > 0 {
+            lbid_strict_keys
+                .get(&family_ids[index])
+                .and_then(|key| key.clone())
+                .filter(|key| strict_title_owners.get(key).copied().unwrap_or_default() == 0)
+        } else {
+            None
+        };
+        let key = if let Some(strict_key) = contested_key {
+            format!("strict:{strict_key}")
+        } else if family_ids[index] > 0 {
+            format!("linked:{}", family_ids[index])
+        } else {
+            title_key
+        };
+        if !family_members.contains_key(&key) {
+            family_order.push(key.clone());
+        }
+        family_members.entry(key).or_default().push(index);
+    }
+
+    let mut retained = Vec::with_capacity(family_order.len());
+    let mut full_titles = Vec::with_capacity(family_order.len());
+    for key in &family_order {
+        let Some(members) = family_members.get(key) else {
+            continue;
+        };
+        // The overwhelming majority of families are single releases; keep
+        // them without ranking or flag merging, but still present a clean,
+        // canonical card title.
+        if members.len() == 1 {
+            let representative = members[0];
+            let family_id = family_ids[representative];
+            let preferred_title = linked_families
+                .canonical_titles
+                .get(&family_id)
+                .map(String::as_str)
+                .unwrap_or(&games[representative].title);
+            let display_title = crate::game_details::catalog_display_title(preferred_title);
+            if !games[representative]
+                .search_key
+                .contains(&display_title.to_lowercase())
+            {
+                games[representative].search_key.push('\n');
+                games[representative]
+                    .search_key
+                    .push_str(&display_title.to_lowercase());
+            }
+            full_titles.push(games[representative].title.clone());
+            games[representative].title = display_title;
+            retained.push(representative);
+            continue;
+        }
+        let representative = members
+            .iter()
+            .copied()
+            .min_by(|left, right| {
+                representative_rank(&games[*left]).cmp(&representative_rank(&games[*right]))
+            })
+            .unwrap_or(members[0]);
+        let local = members.iter().any(|index| games[*index].local);
+        let downloadable = members.iter().any(|index| games[*index].downloadable);
+        let non_retail = members.iter().all(|index| games[*index].non_retail);
+        let has_non_retail_release = members
+            .iter()
+            .any(|index| games[*index].has_non_retail_release);
+        let adult = members.iter().any(|index| games[*index].adult);
+        let release_regions = members
+            .iter()
+            .fold(0_u64, |mask, index| mask | games[*index].release_regions);
+        let cooperative = if members
+            .iter()
+            .any(|index| games[*index].cooperative == "yes")
+        {
+            Some("yes")
+        } else {
+            None
+        };
+        let mut distinct_titles = HashSet::with_capacity(members.len());
+        for index in members {
+            distinct_titles.insert(games[*index].title.trim().to_lowercase());
+        }
+        let family_id = family_ids[representative];
+        let preferred_title = members
+            .iter()
+            .find(|index| family_id > 0 && games[**index].launchbox_db_id == family_id)
+            .map(|index| games[*index].title.as_str())
+            .or_else(|| {
+                linked_families
+                    .canonical_titles
+                    .get(&family_id)
+                    .map(String::as_str)
+            })
+            .unwrap_or(&games[representative].title);
+        let display_title = crate::game_details::catalog_display_title(preferred_title);
+        let search_additions: Vec<String> = distinct_titles
+            .iter()
+            .filter(|title| !games[representative].search_key.contains(title.as_str()))
+            .cloned()
+            .collect();
+        let variant_count = distinct_titles.len();
+        full_titles.push(games[representative].title.clone());
+        let representative_game = &mut games[representative];
+        representative_game.local = local;
+        representative_game.downloadable = downloadable;
+        representative_game.non_retail = non_retail;
+        representative_game.has_non_retail_release = has_non_retail_release;
+        representative_game.adult = adult;
+        representative_game.release_regions = release_regions;
+        representative_game.title = display_title;
+        if let Some(cooperative) = cooperative {
+            representative_game.cooperative = cooperative.to_owned();
+        }
+        for title in search_additions {
+            representative_game.search_key.push('\n');
+            representative_game.search_key.push_str(&title);
+        }
+        let display_search = representative_game.title.to_lowercase();
+        if !representative_game.search_key.contains(&display_search) {
+            representative_game.search_key.push('\n');
+            representative_game.search_key.push_str(&display_search);
+        }
+        metadata.set_variant_count(representative, variant_count);
+        retained.push(representative);
+    }
+    // Rebuild in place by moving the retained games out, avoiding a clone
+    // of every game in the catalog.
+    let mut collapsed = Vec::with_capacity(retained.len());
+    for index in &retained {
+        collapsed.push(std::mem::take(&mut games[*index]));
+    }
+    metadata.retain_rows(&retained);
+    disambiguate_display_titles(&mut collapsed, &full_titles);
+    *games = collapsed;
+}
+
+/// Region stripping can render two different releases identically (a base
+/// game and its "(USA)" regional row). Two cards on one platform must never
+/// share a display title, so colliding cards fall back to their full source
+/// titles. Nothing is invented: the qualifier was always in the row.
+fn disambiguate_display_titles(games: &mut [Game], full_titles: &[String]) {
+    let mut groups = HashMap::<(String, String), Vec<usize>>::new();
+    for (position, game) in games.iter().enumerate() {
+        groups
+            .entry((
+                game.platform.trim().to_lowercase(),
+                game.title.trim().to_lowercase(),
+            ))
+            .or_default()
+            .push(position);
+    }
+    for positions in groups.into_values().filter(|group| group.len() > 1) {
+        for position in positions {
+            let full = full_titles
+                .get(position)
+                .map(String::as_str)
+                .unwrap_or_default()
+                .trim();
+            if full.is_empty() || full.eq_ignore_ascii_case(games[position].title.trim()) {
+                continue;
+            }
+            games[position].title = full.to_owned();
+            if !games[position].search_key.contains(&full.to_lowercase()) {
+                games[position].search_key.push('\n');
+                games[position].search_key.push_str(&full.to_lowercase());
+            }
+        }
+    }
+}
+
+fn representative_rank(game: &Game) -> (u8, u8, u8, String, String) {
+    let base = crate::game_details::catalog_release_base(&game.title)
+        .unwrap_or_else(|| game.title.trim().to_owned());
+    (
+        u8::from(!game.local),
+        u8::from(!game.title.trim().eq_ignore_ascii_case(base.trim())),
+        u8::from(game.launchbox_db_id <= 0),
+        game.title.to_lowercase(),
+        game.id.clone(),
+    )
+}
+
+/// Platform names that describe the same system are one shelf. The launch
+/// database regions its Atari 400/800/XL/XE 8-bit line as `Atari 800`, while
+/// the Libretro database names the same hardware `Atari - 8-bit Family`; both
+/// cover the same machines (and the same `.atr`/`.xex`/`.xfd` software), so
+/// games declared under a variant must group and count under the canonical
+/// name instead of creating a second platform entry. The remaining entries
+/// are the same Libretro `Manufacturer - Model` convention duplicating a
+/// shelf the launch database already provides under its common name. Only
+/// source-declared equivalences belong here, and the canonical name must be
+/// the base system users see in the platform list.
+const PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[
+    ("Atari - 8-bit Family", "Atari 800"),
+    ("Commodore - CD32", "Commodore Amiga CD32"),
+    ("Commodore - CDTV", "Commodore CDTV"),
+    ("Commodore - Plus-4", "Commodore Plus 4"),
+    ("Magnavox - Odyssey2", "Magnavox Odyssey 2"),
+    ("NEC - PC Engine SuperGrafx", "PC Engine SuperGrafx"),
+    (
+        "Nintendo - Family Computer Disk System",
+        "Nintendo Famicom Disk System",
+    ),
+    ("Philips - Videopac+", "Philips Videopac+"),
+    ("Sega - Mega-CD - Sega CD", "Sega CD"),
+    ("Sega - Naomi", "Sega Naomi"),
+    ("Sega - Naomi 2", "Sega Naomi 2"),
+    ("The 3DO Company - 3DO", "3DO Interactive Multiplayer"),
+];
+
+fn canonical_platform_name(name: &str) -> &str {
+    PLATFORM_EQUIVALENTS
+        .iter()
+        .find(|(variant, _)| variant.eq_ignore_ascii_case(name))
+        .map_or(name, |(_, canonical)| *canonical)
+}
+
+fn apply_grouped_platform_counts(games: &[Game], platforms: &mut Vec<Platform>) {
+    let mut counts = HashMap::<String, usize>::new();
+    for game in games {
+        *counts
+            .entry(canonical_platform_name(&game.platform).to_lowercase())
+            .or_default() += 1;
+    }
+    // A variant never survives as its own shelf once its games group into the
+    // canonical platform; otherwise the sidebar would list the same system
+    // twice, one empty.
+    platforms.retain(|platform| {
+        canonical_platform_name(&platform.name).eq_ignore_ascii_case(&platform.name)
+    });
+    for platform in platforms {
+        platform.game_count = counts
+            .get(&platform.name.to_lowercase())
+            .copied()
+            .unwrap_or_default();
+    }
+}
+
+/// The preview's grouping pass: the same alias folding as
+/// `apply_grouped_platform_counts`, but the counts stay the database's own
+/// per-platform totals (summed across folded rows). The preview loads only a
+/// row-limited game slice, so recounting from those games would zero every
+/// platform outside the slice; the full load corrects the authoritative
+/// recount when it replaces the preview.
+fn apply_grouped_platform_counts_from_sql(platforms: &mut Vec<Platform>) {
+    let mut totals = HashMap::<String, usize>::new();
+    for platform in platforms.iter() {
+        *totals
+            .entry(canonical_platform_name(&platform.name).to_lowercase())
+            .or_default() += platform.game_count;
+    }
+    platforms.retain(|platform| {
+        canonical_platform_name(&platform.name).eq_ignore_ascii_case(&platform.name)
+    });
+    for platform in platforms.iter_mut() {
+        platform.game_count = totals
+            .get(&platform.name.to_lowercase())
+            .copied()
+            .unwrap_or_default();
+    }
+}
+
+fn cooperative_status(value: Option<i64>) -> &'static str {
+    match value {
+        Some(1) => "yes",
+        Some(0) => "no",
+        _ => "unknown",
+    }
+}
+
+fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
+    let native_state_path = crate::settings::state_database_path()?;
+    load_installed_games_with_native_state(
+        path,
+        native_state_path
+            .is_file()
+            .then_some(native_state_path.as_path()),
+    )
+}
+
+fn load_installed_games_with_native_state(
+    path: Option<&Path>,
+    native_state_path: Option<&Path>,
+) -> Result<InstalledGames> {
+    let mut installed = InstalledGames::default();
+    if let Some(path) = path {
+        let connection = open_read_only(path, "Lunchpail user database")?;
+        if table_exists(&connection, "game_files")? {
+            let has_game_uid = column_exists(&connection, "game_files", "game_uid")?;
+            let query = if has_game_uid {
+                "SELECT launchbox_db_id, game_uid FROM game_files"
+            } else {
+                "SELECT launchbox_db_id, NULL FROM game_files"
+            };
+            let mut statement = connection.prepare(query)?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+            })?;
+            for row in rows {
+                add_installed_identity(&mut installed, row?);
+            }
+        }
+    }
+    if let Some(native_state_path) = native_state_path {
+        load_native_installed_games_at(&mut installed, native_state_path)?;
+    }
+    Ok(installed)
+}
+
+pub(crate) fn installed_game_flags(identities: &[(String, i64)]) -> Result<Vec<bool>> {
+    let installed = load_installed_games(requested_user_database_path().as_deref())?;
+    Ok(identities
+        .iter()
+        .map(|(game_uid, launchbox_db_id)| {
+            installed.game_uids.contains(game_uid)
+                || (*launchbox_db_id > 0 && installed.database_ids.contains(launchbox_db_id))
+        })
+        .collect())
+}
+
+pub(crate) fn game_availability_flags(
+    identities: &[(String, i64, String)],
+) -> Result<Vec<(bool, bool)>> {
+    let installed = load_installed_games(requested_user_database_path().as_deref())?;
+    let state_path = crate::settings::state_database_path().ok();
+    let state_path = state_path.filter(|path| path.is_file());
+    let minerva = load_download_coverage(
+        requested_minerva_database_path().as_deref(),
+        requested_pleasuredome_database_path().as_deref(),
+        state_path.as_deref(),
+    )?;
+    Ok(identities
+        .iter()
+        .map(|(game_uid, launchbox_db_id, platform)| {
+            let local = installed.game_uids.contains(game_uid)
+                || (*launchbox_db_id > 0 && installed.database_ids.contains(launchbox_db_id));
+            let downloadable = !local
+                && minerva
+                    .platform_names
+                    .contains(&normalize_platform_key(platform));
+            (local, downloadable)
+        })
+        .collect())
+}
+
+fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -> Result<()> {
+    let connection = open_read_only(path, "Lunchpail state database")?;
+    if !table_exists(&connection, "installed_games")? {
+        return Ok(());
+    }
+    // Title and platform are NOT NULL in current schemas, but older state
+    // databases may predate them; fall back to ID-only identity then.
+    let has_title = column_exists(&connection, "installed_games", "title")?;
+    let has_platform = column_exists(&connection, "installed_games", "platform")?;
+    let title_select = if has_title { "title" } else { "NULL" };
+    let platform_select = if has_platform { "platform" } else { "NULL" };
+    let query = format!(
+        "SELECT launchbox_db_id, game_uid, file_path, import_source, {title_select}, {platform_select} \
+         FROM installed_games"
+    );
+    let mut statement = connection.prepare(&query)?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+        ))
+    })?;
+    for row in rows {
+        let (database_id, game_uid, file_path, import_source, title, platform) = row?;
+        let file_path = PathBuf::from(file_path);
+        if import_source != "local"
+            && file_path.is_file()
+            && installed.native_file_paths.insert(file_path)
+        {
+            installed.add_state_identity(
+                database_id,
+                game_uid,
+                title.as_deref().unwrap_or_default(),
+                platform.as_deref().unwrap_or_default(),
+            );
+        }
+    }
+    drop(statement);
+
+    if !table_exists(&connection, "local_rom_files")? {
+        return Ok(());
+    }
+    let mut statement = connection.prepare(
+        "SELECT id, path_display, path_bytes, path_encoding, game_uid,
+                launchbox_db_id, display_title, platform
+         FROM local_rom_files
+         WHERE included=1 AND availability='present'
+         ORDER BY display_title COLLATE NOCASE, id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Vec<u8>>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, display, bytes, encoding, game_uid, database_id, title, platform) = row?;
+        let path = crate::local_import::decode_path(bytes, &encoding, display);
+        if !path.is_file() || !installed.native_file_paths.insert(path) {
+            continue;
+        }
+        installed.file_count = installed.file_count.saturating_add(1);
+        // ROM-scan matches can be fuzzy-derived, so the LaunchBox ID stays
+        // scoped to the scanned platform instead of lighting every platform
+        // that reuses the ID across snapshots.
+        if database_id > 0 {
+            installed
+                .state_database_platforms
+                .entry(database_id)
+                .or_default()
+                .insert(installed_platform_key(&platform));
+        }
+        if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+            installed.game_uids.insert(game_uid);
+        } else {
+            let non_retail = is_non_retail_game_on_platform(&title, &platform, None, None);
+            let adult = is_adult_game_on_platform(&title, &platform, None, None);
+            let release_regions = release_region_membership(&title, None);
+            let game_uid = format!("local-file:{id}");
+            installed.local_only_games.push(Game {
+                media_id: stable_media_id(0, &game_uid),
+                id: game_uid,
+                launchbox_db_id: 0,
+                search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+                title,
+                platform,
+                status: "local-only".to_owned(),
+                local: true,
+                downloadable: false,
+                non_retail,
+                has_non_retail_release: non_retail,
+                adult,
+                release_regions,
+                cooperative: "unknown".to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn add_installed_identity(
+    installed: &mut InstalledGames,
+    (database_id, game_uid): (i64, Option<String>),
+) {
+    installed.file_count = installed.file_count.saturating_add(1);
+    if database_id > 0 {
+        installed.database_ids.insert(database_id);
+    }
+    if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+        installed.game_uids.insert(game_uid);
+    }
+}
+
+fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
+    load_torrent_catalog_coverage(
+        path,
+        "Minerva catalog",
+        "minerva_torrents",
+        "minerva_torrent_platforms",
+        "minerva_platform",
+    )
+}
+
+/// Every platform a download source can provide, from the pinned Minerva
+/// catalog, the user's PleasureDome catalog, and any registered local torrent
+/// catalog. Platform identity is an exact normalized key in all three.
+fn load_download_coverage(
+    minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
+    native_state_path: Option<&Path>,
+) -> Result<MinervaCoverage> {
+    let mut coverage = load_minerva_coverage(minerva_path)?;
+    let pleasuredome = load_pleasuredome_coverage(pleasuredome_path)?;
+    coverage.offer_count = coverage
+        .offer_count
+        .saturating_add(pleasuredome.offer_count);
+    coverage.platform_names.extend(pleasuredome.platform_names);
+    coverage
+        .platform_names
+        .extend(load_registered_torrent_platforms(native_state_path)?);
+    Ok(coverage)
+}
+
+/// Platform coverage from the PleasureDome pinball catalog, if the user supplied
+/// one. Same table shape as Minerva, so the reader is shared.
+fn load_pleasuredome_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
+    load_torrent_catalog_coverage(
+        path,
+        "PleasureDome catalog",
+        "pleasuredome_torrents",
+        "pleasuredome_torrent_platforms",
+        "pleasuredome_platform",
+    )
+}
+
+fn load_torrent_catalog_coverage(
+    path: Option<&Path>,
+    label: &str,
+    torrents_table: &str,
+    platforms_table: &str,
+    provider_platform_column: &str,
+) -> Result<MinervaCoverage> {
+    let Some(path) = path else {
+        return Ok(MinervaCoverage::default());
+    };
+    let connection = open_read_only(path, label)?;
+    for table in [torrents_table, platforms_table] {
+        if !table_exists(&connection, table)? {
+            bail!("{label} is missing required table {table}");
+        }
+    }
+
+    let mut coverage = MinervaCoverage {
+        offer_count: count(&connection, torrents_table, "1")?,
+        ..MinervaCoverage::default()
+    };
+    let mut statement = connection.prepare(&format!(
+        "SELECT tp.lunchbox_platform_name, tp.{provider_platform_column},
+                coalesce(t.collection, '')
+         FROM {platforms_table} tp
+         JOIN {torrents_table} t ON t.id=tp.torrent_id"
+    ))?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, Option<String>>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut atari_800_fallback = false;
+    let mut arcade_fallback = false;
+    for row in rows {
+        let (mapped_name, provider_name, collection) = row?;
+        if is_merged_mame_source(&collection, &provider_name) {
+            continue;
+        }
+        if let Some(name) = mapped_name.filter(|name| !name.trim().is_empty()) {
+            coverage
+                .platform_names
+                .insert(normalize_platform_key(&name));
+        }
+        let provider_key = normalize_platform_key(&provider_name);
+        coverage.platform_names.insert(provider_key.clone());
+        atari_800_fallback |= provider_key == "atari" && collection == "TOSEC";
+        arcade_fallback |= collection == "MAME"
+            && matches!(provider_key.as_str(), "roms-split" | "roms-non-merged");
+    }
+
+    // Preserve the two explicit fallbacks used by the legacy frontend. These
+    // are provider mappings, not inferred game identity links.
+    if atari_800_fallback {
+        coverage.platform_names.insert("atari-800".to_owned());
+    }
+    if arcade_fallback {
+        coverage.platform_names.insert("arcade".to_owned());
+    }
+
+    Ok(coverage)
+}
+
+/// Merged archives combine parent and clone ROMs instead of providing one
+/// independently downloadable game. Hide this provider category, not games
+/// whose titles happen to contain "merged" or existing local installations.
+pub(crate) fn is_merged_mame_source(collection: &str, provider_platform: &str) -> bool {
+    collection.trim().eq_ignore_ascii_case("MAME")
+        && matches!(
+            normalize_platform_key(provider_platform).as_str(),
+            "roms-merged" | "software-list-roms-merged"
+        )
+}
+
+/// Normalized platform keys covered by a user-registered local torrent catalog,
+/// whether it came from a provider manifest (for example PleasureDome) or a
+/// single manual torrent. Registration is always an explicit user action with
+/// an exact platform key, so an ad-hoc torrent cannot silently make an
+/// unrelated platform look downloadable.
+fn load_registered_torrent_platforms(state_path: Option<&Path>) -> Result<HashSet<String>> {
+    let Some(state_path) = state_path.filter(|path| path.is_file()) else {
+        return Ok(HashSet::new());
+    };
+    let connection = open_read_only(state_path, "Lunchpail state database")?;
+    if !table_exists(&connection, "registered_torrent_catalogs")? {
+        return Ok(HashSet::new());
+    }
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT platform_key FROM registered_torrent_catalogs
+         WHERE platform_key IS NOT NULL AND platform_key <> ''",
+    )?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<rusqlite::Result<HashSet<_>>>()?)
+}
+
+pub(crate) fn normalize_platform_key(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut separator = false;
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() {
+            if separator && !normalized.is_empty() {
+                normalized.push('-');
+            }
+            normalized.push(character);
+            separator = false;
+        } else {
+            separator = true;
+        }
+    }
+    normalized
+}
+
+fn table_exists(connection: &Connection, table: &str) -> Result<bool> {
+    let count: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?1",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(count == 1)
+}
+
+fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<bool> {
+    let query = format!(
+        "SELECT count(*) FROM pragma_table_info('{}') WHERE name=?1",
+        table.replace('\'', "''")
+    );
+    let count: i64 = connection.query_row(&query, [column], |row| row.get(0))?;
+    Ok(count == 1)
+}
+
+fn count(connection: &Connection, table: &str, predicate: &str) -> Result<usize> {
+    let query = format!("SELECT count(*) FROM {table} WHERE {predicate}");
+    let value: i64 = connection.query_row(&query, [], |row| row.get(0))?;
+    usize::try_from(value).context("database count exceeded addressable memory")
+}
+
+fn release_region_membership(title: &str, metadata_region: Option<&str>) -> u64 {
+    let mut mask = 0_u64;
+    if let Some(region) = metadata_region.filter(|region| !region.trim().is_empty()) {
+        mask |= crate::region_priority::regions_mask(region);
+    }
+    let (_, tags) = crate::tags::parse_title_tags(title);
+    for tag in tags
+        .iter()
+        .filter(|tag| tag.category == crate::tags::TagCategory::Region)
+    {
+        mask |= crate::region_priority::regions_mask(&tag.text);
+    }
+    // Kana is unambiguous Japanese-language evidence. Han characters alone
+    // are deliberately not treated as Japanese because the same code points
+    // are also used by Chinese titles. Romanized text is likewise not guessed;
+    // exact linked alternate-title region metadata is applied separately.
+    if title.chars().any(is_japanese_kana) {
+        mask |= crate::region_priority::region_bit("Japan").unwrap_or_default();
+    }
+    mask
+}
+
+fn is_japanese_kana(character: char) -> bool {
+    matches!(
+        character as u32,
+        0x3040..=0x309f // Hiragana
+            | 0x30a0..=0x30ff // Katakana
+            | 0x31f0..=0x31ff // Katakana phonetic extensions
+            | 0xff66..=0xff9f // Half-width Katakana
+    )
+}
+
+/// Adds region evidence from alternate titles that are exactly linked through
+/// LaunchBox's positive database ID. This recovers localized and romanized
+/// names without inferring identity or guessing a language from Latin text.
+fn apply_alternate_release_regions(connection: &Connection, games: &mut [Game]) -> Result<()> {
+    if !table_exists(connection, "game_alternate_names")?
+        || !column_exists(connection, "game_alternate_names", "launchbox_db_id")?
+        || !column_exists(connection, "game_alternate_names", "region")?
+    {
+        return Ok(());
+    }
+
+    let mut regions_by_id = HashMap::<i64, u64>::new();
+    let mut statement = connection.prepare(
+        "SELECT launchbox_db_id, trim(region)
+         FROM game_alternate_names
+         WHERE launchbox_db_id > 0 AND trim(coalesce(region, '')) <> ''",
+    )?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let database_id: i64 = row.get(0)?;
+        let region: &str = text_column(row, 1).unwrap_or_default();
+        let mask = release_region_membership("", Some(region));
+        regions_by_id
+            .entry(database_id)
+            .and_modify(|regions| *regions |= mask)
+            .or_insert(mask);
+    }
+
+    for game in games {
+        if game.launchbox_db_id <= 0 {
+            continue;
+        }
+        game.release_regions |= regions_by_id
+            .get(&game.launchbox_db_id)
+            .copied()
+            .unwrap_or_default();
+    }
+    Ok(())
+}
+
+pub(crate) fn is_non_retail_game(title: &str, release_type: Option<&str>) -> bool {
+    crate::release_content::explicit(title, release_type, None)
+}
+
+pub(crate) fn is_non_retail_game_on_platform(
+    title: &str,
+    platform: &str,
+    release_type: Option<&str>,
+    version: Option<&str>,
+) -> bool {
+    crate::release_content::is_non_retail(title, platform, release_type, version)
+}
+
+fn contains_ascii_phrase(text: &str, phrase: &str) -> bool {
+    text.as_bytes()
+        .windows(phrase.len())
+        .any(|window| window.eq_ignore_ascii_case(phrase.as_bytes()))
+}
+
+fn contains_adult_token(text: &str) -> bool {
+    text.split(|character: char| !character.is_alphanumeric())
+        .any(|part| {
+            ["adult", "hentai", "erotic", "porn", "sex"]
+                .iter()
+                .any(|token| part.eq_ignore_ascii_case(token))
+        })
+}
+
+pub(crate) fn is_adult_game_on_platform(
+    title: &str,
+    platform: &str,
+    esrb: Option<&str>,
+    genre: Option<&str>,
+) -> bool {
+    is_adult_game(title, esrb, genre) || crate::arcade_content::is_adult(title, platform)
+}
+
+pub(crate) fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
+    if esrb.is_some_and(|value| {
+        let value = value.trim();
+        value
+            .as_bytes()
+            .get(..2)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"ao"))
+            || contains_ascii_phrase(value, "adults only")
+    }) {
+        return true;
+    }
+    if contains_ascii_phrase(title, "adults only")
+        || genre.is_some_and(|value| contains_ascii_phrase(value, "adults only"))
+    {
+        return true;
+    }
+
+    contains_adult_token(title) || genre.is_some_and(contains_adult_token)
+}
+
+pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
+    let search = filter.search.trim().to_lowercase();
+    let selected_tag = filter.tag.trim().to_lowercase();
+    let mut indices = catalog
+        .games
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| {
+            game_matches_filter(catalog, filter, *index, None, &search, &selected_tag)
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    // Recently Played is an automatic chronological collection, not another
+    // view of the saved alphabetical/column sort. Leave that preference intact
+    // for the library and other collections.
+    if filter.availability == "recent" {
+        indices.sort_by(|left, right| compare_games(catalog, filter, *left, *right));
+        return indices;
+    }
+    if let Some(column) = ListColumn::parse(&filter.sort_field) {
+        let mut keyed = indices
+            .into_iter()
+            .map(|index| {
+                let key = catalog.list_metadata.sort_key(
+                    index,
+                    &catalog.games[index],
+                    column,
+                    &filter.metadata_overrides,
+                );
+                (index, key)
+            })
+            .collect::<Vec<_>>();
+        keyed.sort_by(|(left_index, left_key), (right_index, right_key)| {
+            let left_game = &catalog.games[*left_index];
+            let right_game = &catalog.games[*right_index];
+            let ordering = left_key
+                .compare(right_key)
+                .then_with(|| {
+                    title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+                })
+                .then_with(|| left_game.id.cmp(&right_game.id));
+            if filter.sort_descending {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        });
+        return keyed.into_iter().map(|(index, _)| index).collect();
+    }
+    indices.sort_by(|left, right| {
+        let ordering = compare_games(catalog, filter, *left, *right);
+        if filter.sort_descending {
+            ordering.reverse()
+        } else {
+            ordering
+        }
+    });
+    indices
+}
+
+pub(crate) fn list_facet_values(
+    catalog: &Catalog,
+    filter: &Filter,
+    column: ListColumn,
+    query: &str,
+    limit: usize,
+) -> ListFacetResult {
+    let query = query.trim().to_lowercase();
+    let search = filter.search.trim().to_lowercase();
+    let selected_tag = filter.tag.trim().to_lowercase();
+    let mut counts = HashMap::<String, usize>::new();
+    for index in 0..catalog.games.len() {
+        if !game_matches_filter(catalog, filter, index, Some(column), &search, &selected_tag) {
+            continue;
+        }
+        let value = catalog.list_metadata.filter_value(
+            index,
+            &catalog.games[index],
+            column,
+            &filter.metadata_overrides,
+        );
+        if !query.is_empty() && !value.to_lowercase().contains(&query) {
+            continue;
+        }
+        let count = counts.entry(value).or_default();
+        *count = count.saturating_add(1);
+    }
+    let total_distinct = counts.len();
+    let mut values = counts
+        .into_iter()
+        .map(|(value, game_count)| ListFacetValue { value, game_count })
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| {
+        left.value
+            .to_lowercase()
+            .cmp(&right.value.to_lowercase())
+            .then_with(|| left.value.cmp(&right.value))
+    });
+    values.truncate(limit);
+    ListFacetResult {
+        values,
+        total_distinct,
+    }
+}
+
+fn game_matches_filter(
+    catalog: &Catalog,
+    filter: &Filter,
+    index: usize,
+    ignored_list_column: Option<ListColumn>,
+    search: &str,
+    selected_tag: &str,
+) -> bool {
+    let Some(game) = catalog.games.get(index) else {
+        return false;
+    };
+    let release_region_matches =
+        filter.release_region_mask == 0 || filter.release_region_mask & game.release_regions != 0;
+    let release_category_matches = (!filter.include_adult_releases || game.adult)
+        && (!filter.include_non_retail_releases || game.has_non_retail_release)
+        && (!filter.hide_non_retail || !game.non_retail)
+        && (!filter.hide_adult || !game.adult);
+    (search.is_empty()
+        || game.search_key.contains(&search)
+        || filter
+            .display_titles
+            .get(&game.id)
+            .is_some_and(|title| title.to_lowercase().contains(&search))
+        || catalog
+            .list_metadata
+            .matches_search(index, game, &filter.metadata_overrides, &search)
+        || filter
+            .game_tags
+            .get(&game.id)
+            .is_some_and(|tags| tags.iter().any(|tag| tag.to_lowercase().contains(&search)))
+        || filter
+            .game_custom_fields
+            .get(&game.id)
+            .is_some_and(|fields| {
+                fields
+                    .iter()
+                    .any(|field| field.to_lowercase().contains(&search))
+            }))
+        && (filter.platform.is_empty()
+            || canonical_platform_name(&game.platform) == filter.platform)
+        && (selected_tag.is_empty()
+            || filter
+                .game_tags
+                .get(&game.id)
+                .is_some_and(|tags| tags.iter().any(|tag| tag.to_lowercase() == selected_tag)))
+        && release_region_matches
+        && release_category_matches
+        && match filter.availability.as_str() {
+            "local" => game.local,
+            "downloadable" => game.downloadable && !game.local,
+            "favorites" => filter.favorite_game_ids.contains(&game.id),
+            "recent" => filter.recent_game_order.contains_key(&game.id),
+            availability if availability.starts_with("collection:") => {
+                filter.collection_game_ids.contains(&game.id)
+            }
+            _ => true,
+        }
+        && filter
+            .list_column_filters
+            .iter()
+            .all(|(column, selection)| {
+                ignored_list_column == Some(*column)
+                    || selection.matches(&catalog.list_metadata.filter_value(
+                        index,
+                        game,
+                        *column,
+                        &filter.metadata_overrides,
+                    ))
+            })
+}
+
+fn compare_games(catalog: &Catalog, filter: &Filter, left: usize, right: usize) -> Ordering {
+    let left_game = &catalog.games[left];
+    let right_game = &catalog.games[right];
+    let identity_tie_break = || left_game.id.cmp(&right_game.id);
+    match filter.sort_field.as_str() {
+        _ if filter.availability == "recent" => filter
+            .recent_game_order
+            .get(&right_game.id)
+            .cmp(&filter.recent_game_order.get(&left_game.id))
+            .then_with(|| {
+                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+            })
+            .then_with(identity_tie_break),
+        _ if filter.availability.starts_with("collection:") => filter
+            .collection_game_order
+            .get(&left_game.id)
+            .cmp(&filter.collection_game_order.get(&right_game.id))
+            .then_with(|| {
+                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+            })
+            .then_with(identity_tie_break),
+        _ => title_sort_key(left_game, filter)
+            .cmp(&title_sort_key(right_game, filter))
+            .then_with(identity_tie_break),
+    }
+}
+
+fn title_sort_key<'a>(game: &'a Game, filter: &'a Filter) -> Cow<'a, str> {
+    if let Some(title) = filter.display_titles.get(&game.id) {
+        Cow::Owned(title.to_lowercase())
+    } else {
+        Cow::Borrowed(
+            game.search_key
+                .split_once('\n')
+                .map(|(title, _)| title)
+                .unwrap_or(&game.search_key),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::list_view::MetadataInput;
+
+    fn fixture_catalog() -> Catalog {
+        Catalog {
+            games: vec![
+                Game {
+                    id: "metroid".into(),
+                    launchbox_db_id: 1,
+                    media_id: 1,
+                    title: "Metroid".into(),
+                    platform: "Nintendo Entertainment System".into(),
+                    status: "canonical".into(),
+                    local: true,
+                    downloadable: false,
+                    non_retail: false,
+                    has_non_retail_release: false,
+                    adult: false,
+                    release_regions: 0,
+                    cooperative: "no".into(),
+                    search_key: "metroid\nnintendo entertainment system".into(),
+                },
+                Game {
+                    id: "outrun".into(),
+                    launchbox_db_id: 2,
+                    media_id: 2,
+                    title: "OutRun".into(),
+                    platform: "Arcade".into(),
+                    status: "canonical".into(),
+                    local: false,
+                    downloadable: true,
+                    non_retail: false,
+                    has_non_retail_release: false,
+                    adult: false,
+                    release_regions: 0,
+                    cooperative: "unknown".into(),
+                    search_key: "outrun\narcade".into(),
+                },
+            ],
+            ..Catalog::default()
+        }
+    }
+
+    #[test]
+    fn platform_search_combines_catalog_aliases_and_legacy_abbreviations() {
+        let key = platform_search_key(
+            "Nintendo Entertainment System",
+            Some("Nintendo Family Computer,Famicom"),
+        );
+        for query in [
+            "nintendo entertainment",
+            "family computer",
+            "famicom",
+            "nes",
+        ] {
+            assert!(key.contains(query), "missing platform query {query:?}");
+        }
+        assert!(platform_search_key("Unknown Console", None).contains("unknown console"));
+    }
+
+    #[test]
+    fn media_ids_cover_unlinked_catalog_rows_without_impersonating_provider_ids() {
+        assert_eq!(stable_media_id(511, "ignored"), 511);
+        let first = stable_media_id(0, "stable-game-uid");
+        assert_eq!(first, stable_media_id(0, "stable-game-uid"));
+        assert_ne!(first, stable_media_id(0, "another-game-uid"));
+        assert!((1_i64 << 51..1_i64 << 52).contains(&first));
+    }
+
+    #[test]
+    fn combines_search_platform_and_availability_without_fuzzy_identity_logic() {
+        let catalog = fixture_catalog();
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "nintendo".into(),
+                    platform: "Nintendo Entertainment System".into(),
+                    availability: "local".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "metrooid".into(),
+                    ..Filter::default()
+                }
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "recent".into(),
+                    recent_game_order: Arc::new(std::collections::HashMap::from([
+                        ("metroid".to_owned(), 10),
+                        ("outrun".to_owned(), 20),
+                    ])),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+    }
+
+    #[test]
+    fn recent_collection_is_always_newest_first_without_changing_other_sorts() {
+        let catalog = fixture_catalog();
+        for field in ["default", "title", "platform", "publisher"] {
+            for descending in [false, true] {
+                let mut filter = Filter {
+                    availability: "recent".into(),
+                    recent_game_order: Arc::new(HashMap::from([
+                        ("metroid".into(), 10),
+                        ("outrun".into(), 20),
+                    ])),
+                    sort_field: field.into(),
+                    sort_descending: descending,
+                    ..Filter::default()
+                };
+                assert_eq!(
+                    filter_indices(&catalog, &filter),
+                    vec![1, 0],
+                    "{field}, {descending}"
+                );
+                // A new session moves that exact game to the front.
+                Arc::make_mut(&mut filter.recent_game_order).insert("metroid".into(), 30);
+                assert_eq!(filter_indices(&catalog, &filter), vec![0, 1]);
+                // Equal timestamps have a stable title/identity tie-break.
+                Arc::make_mut(&mut filter.recent_game_order).insert("outrun".into(), 30);
+                assert_eq!(filter_indices(&catalog, &filter), vec![0, 1]);
+                filter.search = "outrun".into();
+                assert_eq!(filter_indices(&catalog, &filter), vec![1]);
+                filter.search.clear();
+                filter.platform = "Nintendo Entertainment System".into();
+                assert_eq!(filter_indices(&catalog, &filter), vec![0]);
+                filter.platform.clear();
+                filter.recent_game_order = Arc::new(HashMap::new());
+                assert!(filter_indices(&catalog, &filter).is_empty());
+            }
+        }
+        let mut filter = Filter {
+            sort_field: "title".into(),
+            sort_descending: true,
+            ..Filter::default()
+        };
+        assert_eq!(filter_indices(&catalog, &filter), vec![1, 0]);
+        filter.availability = "favorites".into();
+        filter.favorite_game_ids = Arc::new(HashSet::from(["metroid".into()]));
+        assert_eq!(filter_indices(&catalog, &filter), vec![0]);
+        Arc::make_mut(&mut filter.favorite_game_ids).clear();
+        assert!(filter_indices(&catalog, &filter).is_empty());
+    }
+
+    #[test]
+    fn exact_column_filters_compose_and_facets_ignore_their_own_selection() {
+        let catalog = fixture_catalog();
+        let platform_filter = ListColumnFilter {
+            mode: crate::list_view::ListColumnFilterMode::Include,
+            values: HashSet::from(["Arcade".to_owned()]),
+        };
+        let filter = Filter {
+            list_column_filters: Arc::new(HashMap::from([(ListColumn::Platform, platform_filter)])),
+            ..Filter::default()
+        };
+        assert_eq!(filter_indices(&catalog, &filter), vec![1]);
+
+        let facets = list_facet_values(&catalog, &filter, ListColumn::Platform, "", 10);
+        assert_eq!(facets.total_distinct, 2);
+        assert_eq!(
+            facets
+                .values
+                .iter()
+                .map(|facet| (facet.value.as_str(), facet.game_count))
+                .collect::<Vec<_>>(),
+            vec![("Arcade", 1), ("Nintendo Entertainment System", 1)]
+        );
+
+        let filtered_facets =
+            list_facet_values(&catalog, &filter, ListColumn::Platform, "nintendo", 10);
+        assert_eq!(filtered_facets.total_distinct, 1);
+        assert_eq!(filtered_facets.values[0].game_count, 1);
+    }
+
+    #[test]
+    fn select_none_is_an_explicit_empty_result() {
+        let catalog = fixture_catalog();
+        let filter = Filter {
+            list_column_filters: Arc::new(HashMap::from([(
+                ListColumn::Availability,
+                ListColumnFilter::none(),
+            )])),
+            ..Filter::default()
+        };
+        assert!(filter_indices(&catalog, &filter).is_empty());
+    }
+
+    #[test]
+    fn display_title_overrides_are_searchable_and_sortable_without_replacing_identity() {
+        let catalog = fixture_catalog();
+        let display_titles = Arc::new(std::collections::HashMap::from([
+            ("metroid".to_owned(), "Zebes Adventure".to_owned()),
+            ("outrun".to_owned(), "Arcade Racer".to_owned()),
+        ]));
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "zebes".into(),
+                    display_titles: Arc::clone(&display_titles),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    display_titles,
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+        assert_eq!(catalog.games[0].title, "Metroid");
+        assert_eq!(catalog.games[0].id, "metroid");
+    }
+
+    #[test]
+    fn explicit_library_sorting_is_deterministic_and_composes_with_filters() {
+        let mut catalog = fixture_catalog();
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "platform".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "availability".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![0, 1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "availability".into(),
+                    sort_descending: true,
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+
+        catalog.games[0].id = "z-metroid".into();
+        catalog.games[0].platform = "Shared Platform".into();
+        catalog.games[0].search_key = "metroid\nshared platform".into();
+        catalog.games[1].id = "a-outrun".into();
+        catalog.games[1].platform = "Shared Platform".into();
+        catalog.games[1].search_key = "outrun\nshared platform".into();
+        let mut metadata = ListMetadataBuilder::with_capacity(2);
+        metadata
+            .push(MetadataInput {
+                publisher: Some("Zeta".into()),
+                ..MetadataInput::default()
+            })
+            .unwrap();
+        metadata
+            .push(MetadataInput {
+                publisher: Some("Alpha".into()),
+                ..MetadataInput::default()
+            })
+            .unwrap();
+        catalog.list_metadata = metadata.finish();
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "platform".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![0, 1],
+            "equal primary keys retain human title order before stable identity"
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "publisher".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+    }
+
+    #[test]
+    fn user_tags_are_searchable_and_filter_by_exact_membership() {
+        let catalog = fixture_catalog();
+        let game_tags = Arc::new(HashMap::from([
+            (
+                "metroid".to_owned(),
+                vec!["Couch Co-op".to_owned(), "Family".to_owned()],
+            ),
+            ("outrun".to_owned(), vec!["Arcade Night".to_owned()]),
+        ]));
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "couch".into(),
+                    game_tags: Arc::clone(&game_tags),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    tag: "family".into(),
+                    platform: "Nintendo Entertainment System".into(),
+                    game_tags: Arc::clone(&game_tags),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    tag: "Arcade".into(),
+                    game_tags,
+                    ..Filter::default()
+                }
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn custom_field_names_and_values_are_searchable_without_changing_identity() {
+        let catalog = fixture_catalog();
+        let game_custom_fields = Arc::new(HashMap::from([(
+            "metroid".to_owned(),
+            vec!["Cabinet".to_owned(), "Living room CRT".to_owned()],
+        )]));
+        for search in ["cabinet", "living room", "crt"] {
+            assert_eq!(
+                filter_indices(
+                    &catalog,
+                    &Filter {
+                        search: search.into(),
+                        game_custom_fields: Arc::clone(&game_custom_fields),
+                        ..Filter::default()
+                    }
+                ),
+                vec![0]
+            );
+        }
+        assert_eq!(catalog.games[0].id, "metroid");
+        assert_eq!(catalog.games[0].title, "Metroid");
+    }
+
+    #[test]
+    fn availability_filters_are_explicit() {
+        let catalog = fixture_catalog();
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "downloadable".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "favorites".into(),
+                    favorite_game_ids: Arc::new(HashSet::from(["metroid".to_owned()])),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "arcade".into(),
+                    platform: "Arcade".into(),
+                    availability: "collection:co-op".into(),
+                    collection_game_ids: Arc::new(HashSet::from(["outrun".to_owned()])),
+                    ..Filter::default()
+                }
+            ),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn collection_filter_preserves_explicit_manual_order() {
+        let catalog = fixture_catalog();
+        let game_ids = HashSet::from(["metroid".to_owned(), "outrun".to_owned()]);
+        let order =
+            std::collections::HashMap::from([("outrun".to_owned(), 0), ("metroid".to_owned(), 1)]);
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "collection:arcade-first".into(),
+                    collection_game_ids: Arc::new(game_ids),
+                    collection_game_order: Arc::new(order),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+    }
+
+    #[test]
+    fn legacy_content_classification_is_bounded_and_composable() {
+        assert!(is_non_retail_game("Game", Some("Homebrew")));
+        assert!(is_non_retail_game("Game (USA) (Unl)", None));
+        assert!(!is_non_retail_game("Hack and Slash", None));
+        assert!(is_adult_game("Game", Some("AO - Adults Only"), None));
+        assert!(is_adult_game("Late Night", None, Some("Adult; Puzzle")));
+        assert!(!is_adult_game("Sexxion", None, Some("Action")));
+
+        let mut catalog = fixture_catalog();
+        catalog.games[0].non_retail = true;
+        catalog.games[1].adult = true;
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    hide_non_retail: true,
+                    ..Filter::default()
+                }
+            ),
+            vec![1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "downloadable".into(),
+                    hide_adult: true,
+                    ..Filter::default()
+                }
+            ),
+            Vec::<usize>::new()
+        );
+    }
+
+    #[test]
+    fn release_filters_use_exact_region_and_category_facets() {
+        let usa = crate::region_priority::region_bit("USA").unwrap();
+        let japan = crate::region_priority::region_bit("Japan").unwrap();
+        let europe = crate::region_priority::region_bit("Europe").unwrap();
+        assert_eq!(
+            release_region_membership("Game (USA, Europe)", None),
+            usa | europe
+        );
+        assert_eq!(release_region_membership("Game (Japan)", None), japan);
+        assert_eq!(
+            release_region_membership("Game", Some("North America")),
+            usa
+        );
+        assert_eq!(release_region_membership("Japan Grand Prix", None), 0);
+        assert_eq!(release_region_membership("ゼルダの伝説", None), japan);
+        assert_eq!(
+            release_region_membership("Zelda no Densetsu", None),
+            0,
+            "Latin text must not be guessed as romanized Japanese"
+        );
+
+        let mut catalog = fixture_catalog();
+        catalog.games[0].release_regions = usa;
+        catalog.games[0].adult = true;
+        catalog.games[1].release_regions = japan | europe;
+        catalog.games[1].non_retail = true;
+        catalog.games[1].has_non_retail_release = true;
+
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    release_region_mask: usa,
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    release_region_mask: usa | japan,
+                    ..Filter::default()
+                }
+            ),
+            vec![0, 1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    include_adult_releases: true,
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    release_region_mask: japan,
+                    include_adult_releases: true,
+                    ..Filter::default()
+                }
+            ),
+            Vec::<usize>::new()
+        );
+    }
+
+    #[test]
+    fn exact_alternate_title_regions_recover_romanized_release_evidence() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE game_alternate_names (
+                   launchbox_db_id INTEGER NOT NULL,
+                   alternate_name TEXT NOT NULL,
+                   region TEXT
+                 );
+                 INSERT INTO game_alternate_names VALUES
+                   (41, 'Zelda no Densetsu', 'Japan'),
+                   (42, 'A North American Name', 'North America'),
+                   (43, 'Unscoped Name', NULL);",
+            )
+            .unwrap();
+        let mut games = vec![
+            Game {
+                launchbox_db_id: 41,
+                ..Game::default()
+            },
+            Game {
+                launchbox_db_id: 42,
+                ..Game::default()
+            },
+            Game {
+                launchbox_db_id: 43,
+                ..Game::default()
+            },
+        ];
+
+        apply_alternate_release_regions(&connection, &mut games).unwrap();
+
+        let usa = crate::region_priority::region_bit("USA").unwrap();
+        let japan = crate::region_priority::region_bit("Japan").unwrap();
+        assert_eq!(games[0].release_regions, japan);
+        assert_eq!(games[1].release_regions, usa);
+        assert_eq!(games[2].release_regions, 0);
+    }
+
+    #[test]
+    fn loads_schema_six_catalog_with_linked_local_and_downloadable_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("catalog.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE schema_migrations (version INTEGER);\n\
+                 INSERT INTO schema_migrations VALUES (6);\n\
+                 CREATE TABLE games (\n\
+                     id TEXT PRIMARY KEY, canonical_title TEXT, sort_title TEXT, status TEXT\n\
+                 );\n\
+                 CREATE TABLE platforms (id TEXT PRIMARY KEY, canonical_name TEXT, status TEXT);\n\
+                 CREATE TABLE releases (\n\
+                     id TEXT PRIMARY KEY, game_id TEXT, platform_id TEXT, status TEXT\n\
+                 );\n\
+                 CREATE TABLE release_artifacts (release_id TEXT, artifact_id TEXT);\n\
+                 CREATE TABLE local_files (artifact_id TEXT, availability TEXT);\n\
+                 CREATE TABLE acquisition_offers (artifact_id TEXT, availability TEXT);\n\
+                 CREATE TABLE emulators (id TEXT PRIMARY KEY);\n\
+                 INSERT INTO games VALUES ('game-1', 'Metroid', 'Metroid', 'canonical');\n\
+                 INSERT INTO platforms VALUES ('nes', 'Nintendo Entertainment System', 'canonical');\n\
+                 INSERT INTO releases VALUES ('release-1', 'game-1', 'nes', 'canonical');\n\
+                 INSERT INTO release_artifacts VALUES ('release-1', 'artifact-1');\n\
+                 INSERT INTO local_files VALUES ('artifact-1', 'present');\n\
+                 INSERT INTO acquisition_offers VALUES ('artifact-1', 'available');\n\
+                 INSERT INTO emulators VALUES ('emulator-1');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let connection = open_read_only(&path, "test catalog").unwrap();
+        validate_canonical_schema(&connection).unwrap();
+        let catalog = load_canonical_catalog(&connection).unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert_eq!(catalog.games[0].title, "Metroid");
+        assert_eq!(catalog.games[0].platform, "Nintendo Entertainment System");
+        assert!(catalog.games[0].local);
+        assert!(catalog.games[0].downloadable);
+        assert_eq!(catalog.platforms[0].game_count, 1);
+        assert_eq!(catalog.local_file_count, 1);
+        assert_eq!(catalog.offer_count, 1);
+        assert_eq!(catalog.emulator_count, 1);
+
+        // Public canonical catalogs carry classification in game_type rather
+        // than the optional discovery database's release_type column.
+        drop(connection);
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "ALTER TABLE games ADD COLUMN game_type TEXT;
+            UPDATE games SET canonical_title='Independent Creation', game_type='homebrew';",
+            )
+            .unwrap();
+        let catalog = load_canonical_catalog(&connection).unwrap();
+        assert!(catalog.games[0].non_retail);
+        assert!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    hide_non_retail: true,
+                    ..Filter::default()
+                }
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn discovery_catalog_distinguishes_installed_and_minerva_downloadable_games() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+        let minerva_path = directory.path().join("minerva.db");
+        let user_path = directory.path().join("user.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Nintendo Game Boy');
+                 INSERT INTO platforms VALUES (2, 'Uncovered System');
+                 INSERT INTO games VALUES
+                   ('installed-id', 'Installed Game', NULL, 'Released', 11, 1),
+                   ('download-id', 'Download Game', NULL, 'Released', 12, 1),
+                   ('uncovered-id', 'Uncovered Game', NULL, 'Released', 13, 2),
+                   ('installed-uid', 'ID-less Installed Game', NULL, 'Released', NULL, 1);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let minerva = Connection::open(&minerva_path).unwrap();
+        minerva
+            .execute_batch(
+                "CREATE TABLE minerva_torrents (
+                   id INTEGER PRIMARY KEY, collection TEXT
+                 );
+                 CREATE TABLE minerva_torrent_platforms (
+                   torrent_id INTEGER NOT NULL,
+                   lunchbox_platform_id INTEGER, lunchbox_platform_name TEXT,
+                   minerva_platform TEXT NOT NULL
+                 );
+                 INSERT INTO minerva_torrents VALUES (1, 'No-Intro');
+                 INSERT INTO minerva_torrent_platforms
+                   VALUES (1, 2, 'Nintendo Game Boy', 'Nintendo - Game Boy');",
+            )
+            .unwrap();
+        drop(minerva);
+
+        let user = Connection::open(&user_path).unwrap();
+        user.execute_batch(
+            "CREATE TABLE game_files (launchbox_db_id INTEGER NOT NULL, game_uid TEXT);
+             INSERT INTO game_files VALUES (11, NULL);
+             INSERT INTO game_files VALUES (0, 'installed-uid');",
+        )
+        .unwrap();
+        drop(user);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            Some(&minerva_path),
+            None,
+            Some(&user_path),
+            None,
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 4);
+        assert_eq!(catalog.local_file_count, 2);
+        assert_eq!(catalog.offer_count, 1);
+        assert_eq!(catalog.emulator_count, 1);
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "local".into(),
+                    ..Filter::default()
+                }
+            )
+            .len(),
+            2
+        );
+        let downloadable = filter_indices(
+            &catalog,
+            &Filter {
+                availability: "downloadable".into(),
+                ..Filter::default()
+            },
+        );
+        assert_eq!(downloadable.len(), 1);
+        assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
+    }
+
+    #[test]
+    fn merged_mame_sources_do_not_advertise_download_coverage() {
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let connection = Connection::open(database.path()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE minerva_torrents (id INTEGER PRIMARY KEY, collection TEXT);
+             CREATE TABLE minerva_torrent_platforms (
+                 torrent_id INTEGER, lunchbox_platform_name TEXT, minerva_platform TEXT);
+             INSERT INTO minerva_torrents VALUES (1, 'MAME'), (2, 'mame');
+             INSERT INTO minerva_torrent_platforms VALUES
+                 (1, 'Arcade', 'ROMs (merged)'),
+                 (2, NULL, 'ROMs - merged');",
+            )
+            .unwrap();
+        let coverage = load_minerva_coverage(Some(database.path())).unwrap();
+        assert!(coverage.platform_names.is_empty());
+
+        connection
+            .execute_batch(
+                "INSERT INTO minerva_torrents VALUES (3, 'MAME');
+             INSERT INTO minerva_torrent_platforms VALUES (3, NULL, 'ROMs (non-merged)');",
+            )
+            .unwrap();
+        let coverage = load_minerva_coverage(Some(database.path())).unwrap();
+        assert!(coverage.platform_names.contains("arcade"));
+        assert!(coverage.platform_names.contains("roms-non-merged"));
+        assert!(!coverage.platform_names.contains("roms-merged"));
+    }
+
+    #[test]
+    fn merged_mame_source_rule_is_exact_and_keeps_other_categories() {
+        assert!(is_merged_mame_source(" MAME ", "ROMs (merged)"));
+        assert!(is_merged_mame_source("mame", "ROMS-MERGED"));
+        assert!(is_merged_mame_source("MAME", "Software List ROMs (merged)"));
+        for platform in ["ROMs (non-merged)", "ROMs (split)", "CHDs (merged)", "MAME"] {
+            assert!(!is_merged_mame_source("MAME", platform), "{platform}");
+        }
+        assert!(!is_merged_mame_source("No-Intro", "ROMs (merged)"));
+        assert!(!is_merged_mame_source("HBMAME", "ROMs (merged)"));
+    }
+
+    #[test]
+    fn platform_variants_group_under_their_canonical_system() {
+        use super::{PLATFORM_EQUIVALENTS, canonical_platform_name};
+        // Declared equivalences only, and each variant maps to a different
+        // canonical name.
+        for (variant, canonical) in PLATFORM_EQUIVALENTS {
+            assert_eq!(canonical_platform_name(variant), *canonical);
+            assert_ne!(variant, canonical);
+        }
+        // The Libretro 8-bit family name groups under the launch database's
+        // Atari 800 shelf, with no case sensitivity.
+        assert_eq!(canonical_platform_name("Atari - 8-bit Family"), "Atari 800");
+        assert_eq!(canonical_platform_name("atari - 8-bit family"), "Atari 800");
+        // Every other platform keeps its own name.
+        assert_eq!(canonical_platform_name("Atari 2600"), "Atari 2600");
+        assert_eq!(canonical_platform_name("Atari XEGS"), "Atari XEGS");
+    }
+
+    #[test]
+    fn pleasuredome_catalog_lights_pinball_without_a_manifest() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+        let pleasuredome_path = directory.path().join("pleasuredome.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Pinball');
+                 INSERT INTO platforms VALUES (2, 'Nintendo Game Boy');
+                 INSERT INTO games VALUES
+                   ('pinball-id', 'Medieval Madness', NULL, 'Released', 1, 1),
+                   ('gb-id', 'Tetris', NULL, 'Released', 2, 2);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        // A PleasureDome catalog the user imported, with no local provider
+        // manifest and no state database at all.
+        let pleasuredome = Connection::open(&pleasuredome_path).unwrap();
+        pleasuredome
+            .execute_batch(
+                "CREATE TABLE pleasuredome_torrents (
+                   id INTEGER PRIMARY KEY, torrent_file TEXT NOT NULL UNIQUE,
+                   torrent_url TEXT NOT NULL, collection TEXT,
+                   rom_count INTEGER DEFAULT 0, total_size INTEGER DEFAULT 0
+                 );
+                 CREATE TABLE pleasuredome_torrent_platforms (
+                   torrent_id INTEGER NOT NULL, pleasuredome_platform TEXT NOT NULL,
+                   lunchbox_platform_id INTEGER, lunchbox_platform_name TEXT,
+                   rom_count INTEGER DEFAULT 0,
+                   PRIMARY KEY (torrent_id, pleasuredome_platform)
+                 );
+                 INSERT INTO pleasuredome_torrents VALUES
+                   (1, 'Pinball/Visual Pinball (2026-07-15).torrent',
+                    'https://example.test/visual.torrent', 'Pinball', 0, 10);
+                 INSERT INTO pleasuredome_torrent_platforms VALUES
+                   (1, 'Visual Pinball', NULL, 'Pinball', 0);",
+            )
+            .unwrap();
+        drop(pleasuredome);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            Some(&pleasuredome_path),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let downloadable = filter_indices(
+            &catalog,
+            &Filter {
+                availability: "downloadable".into(),
+                ..Filter::default()
+            },
+        )
+        .into_iter()
+        .map(|index| catalog.games[index].title.as_str())
+        .collect::<Vec<_>>();
+        assert_eq!(downloadable, ["Medieval Madness"]);
+    }
+
+    #[test]
+    fn declared_local_provider_platforms_light_downloadable_cards() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+        let state_path = directory.path().join("state.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Pinball');
+                 INSERT INTO platforms VALUES (2, 'OpenBOR');
+                 INSERT INTO platforms VALUES (3, 'Uncovered System');
+                 INSERT INTO games VALUES
+                   ('pinball-id', 'Medieval Madness', NULL, 'Released', 1, 1),
+                   ('openbor-id', 'Beats of Rage', NULL, 'Released', 2, 2),
+                   ('uncovered-id', 'Uncovered Game', NULL, 'Released', 3, 3);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        // A user-registered local catalog owns Pinball and OpenBOR. A platform
+        // with no registered catalog stays catalog-only.
+        let state = Connection::open(&state_path).unwrap();
+        state
+            .execute_batch(
+                "CREATE TABLE installed_games (
+                   launchbox_db_id INTEGER NOT NULL, game_uid TEXT,
+                   file_path TEXT NOT NULL, import_source TEXT NOT NULL,
+                   title TEXT, platform TEXT
+                 );
+                 CREATE TABLE registered_torrent_catalogs (
+                   id TEXT PRIMARY KEY, platform TEXT NOT NULL,
+                   platform_key TEXT NOT NULL, managed_by_provider_id TEXT
+                 );
+                 INSERT INTO registered_torrent_catalogs VALUES
+                   ('a', 'Pinball', 'pinball', 'pleasuredome'),
+                   ('b', 'OpenBOR', 'openbor', 'pleasuredome');",
+            )
+            .unwrap();
+        drop(state);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+
+        let downloadable = filter_indices(
+            &catalog,
+            &Filter {
+                availability: "downloadable".into(),
+                ..Filter::default()
+            },
+        )
+        .into_iter()
+        .map(|index| catalog.games[index].title.as_str())
+        .collect::<Vec<_>>();
+        assert_eq!(downloadable, ["Beats of Rage", "Medieval Madness"]);
+    }
+
+    fn mario_state_fixture(
+        directory: &tempfile::TempDir,
+    ) -> (Connection, std::path::PathBuf, std::path::PathBuf) {
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (90, 'Nintendo 64');
+                 INSERT INTO platforms VALUES (91, 'Nintendo 64DD');
+                 INSERT INTO games VALUES
+                   ('n64-id', 'Super Mario 64', NULL, 'Released', 216, 90),
+                   ('n64dd-id', 'Super Mario 64', NULL, 'Unreleased', 126650, 91);",
+            )
+            .unwrap();
+        drop(discovery);
+        (canonical, discovery_path, canonical_path)
+    }
+
+    fn write_state_install(
+        directory: &tempfile::TempDir,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        title: &str,
+        platform: &str,
+    ) -> std::path::PathBuf {
+        let rom_path = directory.path().join("Super Mario 64 (USA).zip");
+        std::fs::write(&rom_path, b"mario-bytes").unwrap();
+        let state_path = directory.path().join("state.db");
+        let state = Connection::open(&state_path).unwrap();
+        state
+            .execute_batch(
+                "CREATE TABLE installed_games (
+                   game_uid TEXT PRIMARY KEY, launchbox_db_id INTEGER NOT NULL,
+                   title TEXT NOT NULL, platform TEXT NOT NULL,
+                   file_path TEXT NOT NULL, file_size INTEGER,
+                   import_source TEXT NOT NULL, installed_at INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+        state
+            .execute(
+                "INSERT INTO installed_games VALUES (?1, ?2, ?3, ?4, ?5, 11, 'minerva', 1)",
+                rusqlite::params![
+                    game_uid,
+                    launchbox_db_id,
+                    title,
+                    platform,
+                    rom_path.to_string_lossy()
+                ],
+            )
+            .unwrap();
+        drop(state);
+        state_path
+    }
+
+    #[test]
+    fn state_install_never_lights_a_foreign_platform_card() {
+        // The install was queued from a snapshot where LaunchBox ID 126650
+        // lived on Nintendo 64, while this discovery snapshot files it
+        // under Nintendo 64DD. The bare ID must not light the 64DD card.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path, _) = mario_state_fixture(&directory);
+        let state_path = write_state_install(
+            &directory,
+            "snapshot-uid",
+            126650,
+            "Super Mario 64",
+            "Nintendo 64",
+        );
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 2);
+        let n64 = catalog
+            .games
+            .iter()
+            .find(|game| game.platform == "Nintendo 64")
+            .unwrap();
+        let n64dd = catalog
+            .games
+            .iter()
+            .find(|game| game.platform == "Nintendo 64DD")
+            .unwrap();
+        // The exact (title, platform) pair relights the true card even
+        // though neither the UID nor the platform-scoped ID matches it.
+        assert!(n64.local);
+        assert!(!n64dd.local);
+    }
+
+    #[test]
+    fn state_exact_pair_requires_the_same_platform() {
+        // Same install record, but the discovery snapshot only carries the
+        // 64DD card: no Nintendo 64 card may light, and the foreign card
+        // must not absorb the pair either.
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (91, 'Nintendo 64DD');
+                 INSERT INTO games VALUES
+                   ('n64dd-id', 'Super Mario 64', NULL, 'Unreleased', 126650, 91);",
+            )
+            .unwrap();
+        drop(discovery);
+        let state_path = write_state_install(
+            &directory,
+            "snapshot-uid",
+            126650,
+            "Super Mario 64",
+            "Nintendo 64",
+        );
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert!(!catalog.games[0].local);
+    }
+
+    fn strict_dupe_discovery(directory: &tempfile::TempDir) -> (Connection, std::path::PathBuf) {
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (90, 'Nintendo 64');
+                 INSERT INTO games VALUES
+                   ('released-id', 'Super Mario 64', NULL, 'Released', 216, 90),
+                   ('installed-id', 'Super Mario 64', NULL, 'Unreleased', 126650, 90);",
+            )
+            .unwrap();
+        drop(discovery);
+        (canonical, discovery_path)
+    }
+
+    #[test]
+    fn strict_same_system_duplicates_collapse_to_the_installed_card() {
+        // One platform, one identical title, two provider IDs: a single
+        // card survives, keeping the installed row's identity so library
+        // state, media, and launch keep working.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path) = strict_dupe_discovery(&directory);
+        let state_path = write_state_install(
+            &directory,
+            "installed-id",
+            126650,
+            "Super Mario 64",
+            "Nintendo 64",
+        );
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert_eq!(catalog.games[0].id, "installed-id");
+        assert!(catalog.games[0].local);
+    }
+
+    #[test]
+    fn near_match_titles_with_distinct_ids_stay_split() {
+        // "3-D Maze" vs "3D Maze" only agree after tag stripping and carry
+        // distinct IDs, so they can be different games: never merge them.
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (20, 'Atari 2600');
+                 INSERT INTO games VALUES
+                   ('maze-a', '3-D Maze', NULL, 'Released', 127492, 20),
+                   ('maze-b', '3D Maze', NULL, 'Released', 456144, 20);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 2);
+    }
+
+    #[test]
+    fn alias_linked_row_follows_its_id_into_the_strict_family() {
+        // The provider asserts "Super Mario 64 Disk Version" is an alternate
+        // name of 126650, so the No-Intro disk-proto row joins the strict
+        // base family instead of standing alone under the base title.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path) = strict_dupe_discovery(&directory);
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE game_alternate_names (
+                   launchbox_db_id INTEGER NOT NULL, alternate_name TEXT NOT NULL
+                 );
+                 INSERT INTO game_alternate_names VALUES
+                   (126650, 'Super Mario 64 Disk Version');
+                 INSERT INTO games VALUES
+                   ('disk-id', 'Super Mario 64 - Disk Version (Japan) (Proto)',
+                    NULL, 'Unreleased', NULL, 90);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert_eq!(catalog.games[0].title, "Super Mario 64");
+    }
+
+    #[test]
+    fn regional_row_keeps_its_qualifier_when_the_base_title_collides() {
+        // No alias links the "(USA)" row, so it stays its own card, but it
+        // must not render identically to the base card on the same platform.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path) = strict_dupe_discovery(&directory);
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "INSERT INTO games VALUES
+                   ('usa-id', 'Super Mario 64 (USA)', NULL, 'Released', NULL, 90);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 2);
+        let mut titles = catalog
+            .games
+            .iter()
+            .map(|game| game.title.clone())
+            .collect::<Vec<_>>();
+        titles.sort();
+        assert_eq!(titles, ["Super Mario 64", "Super Mario 64 (USA)"]);
+    }
+
+    #[test]
+    fn focused_preview_starts_with_the_exact_saved_game_and_platform() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let mut discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Other System');
+                 INSERT INTO platforms VALUES (2, 'Saved System');
+                 INSERT INTO games VALUES
+                   ('other-game', 'Aardvark', NULL, 'Released', 1, 1);",
+            )
+            .unwrap();
+        let transaction = discovery.transaction().unwrap();
+        for index in 0..300 {
+            transaction
+                .execute(
+                    "INSERT INTO games VALUES (?1, ?2, NULL, 'Released', ?3, 2)",
+                    params![
+                        format!("saved-{index:03}"),
+                        format!("Saved Game {index:03}"),
+                        i64::from(index) + 10
+                    ],
+                )
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        drop(discovery);
+
+        let preview = load_preview_from_sources(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+            &CatalogPreviewFocus {
+                platform: "Saved System".into(),
+                game_uid: "saved-299".into(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(preview.total_game_count, 301);
+        assert_eq!(preview.catalog.games.len(), 240);
+        assert_eq!(preview.catalog.games[0].id, "saved-299");
+        assert!(
+            preview
+                .catalog
+                .games
+                .iter()
+                .all(|game| game.platform == "Saved System")
+        );
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "ALTER TABLE games ADD COLUMN release_type TEXT;
+            ALTER TABLE games ADD COLUMN version TEXT;
+            UPDATE games SET release_type='Homebrew' WHERE id='saved-299';
+            UPDATE games SET version='ROM Hack' WHERE id='saved-000';",
+            )
+            .unwrap();
+        let preview = load_preview_from_sources(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+            &CatalogPreviewFocus {
+                platform: "Saved System".into(),
+                game_uid: "saved-299".into(),
+            },
+        )
+        .unwrap();
+        for id in ["saved-299", "saved-000"] {
+            assert!(
+                preview
+                    .catalog
+                    .games
+                    .iter()
+                    .find(|game| game.id == id)
+                    .unwrap()
+                    .non_retail
+            );
+        }
+        let visible = filter_indices(
+            &preview.catalog,
+            &Filter {
+                hide_non_retail: true,
+                ..Filter::default()
+            },
+        );
+        assert!(
+            visible
+                .iter()
+                .all(|index| !preview.catalog.games[*index].non_retail)
+        );
+    }
+
+    #[test]
+    fn native_local_inventory_keeps_exact_and_unmatched_files_distinct() {
+        let directory = tempfile::tempdir().unwrap();
+        let state_path = directory.path().join("state.db");
+        let exact_path = directory.path().join("Exact.nes");
+        let unmatched_path = directory.path().join("Unknown.nes");
+        std::fs::write(&exact_path, b"exact").unwrap();
+        std::fs::write(&unmatched_path, b"unknown").unwrap();
+        let exact = crate::local_import::encode_path(&exact_path);
+        let unmatched = crate::local_import::encode_path(&unmatched_path);
+        let connection = Connection::open(&state_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE installed_games (
+                     launchbox_db_id INTEGER, game_uid TEXT, file_path TEXT, import_source TEXT
+                 );
+                 CREATE TABLE local_rom_files (
+                     id TEXT, path_display TEXT, path_bytes BLOB, path_encoding TEXT,
+                     game_uid TEXT, launchbox_db_id INTEGER, display_title TEXT,
+                     platform TEXT, included INTEGER, availability TEXT
+                 );",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'exact-file', ?1, ?2, ?3, 'catalog-game', 42,
+                     'Exact', 'System', 1, 'present'
+                 )",
+                rusqlite::params![exact.display, exact.bytes, exact.encoding],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'overlapping-root-copy', ?1, ?2, ?3, NULL, 0,
+                     'Unknown', 'Unassigned', 1, 'present'
+                 )",
+                rusqlite::params![unmatched.display, unmatched.bytes, unmatched.encoding],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'unknown-file', ?1, ?2, ?3, NULL, 0,
+                     'Unknown', 'Unassigned', 1, 'present'
+                 )",
+                rusqlite::params![unmatched.display, unmatched.bytes, unmatched.encoding],
+            )
+            .unwrap();
+        drop(connection);
+
+        let mut installed = InstalledGames::default();
+        load_native_installed_games_at(&mut installed, &state_path).unwrap();
+        assert_eq!(installed.file_count, 2);
+        // ROM-scan IDs stay scoped to the scanned platform instead of
+        // lighting every card that reuses the ID across snapshots.
+        assert!(
+            installed
+                .state_database_platforms
+                .get(&42)
+                .is_some_and(|platforms| platforms.contains("system"))
+        );
+        assert!(installed.is_local("other-id", "Exact", "System", 42));
+        assert!(!installed.is_local("other-id", "Exact", "Foreign System", 42));
+        assert!(installed.game_uids.contains("catalog-game"));
+        assert_eq!(installed.local_only_games.len(), 1);
+        assert_eq!(installed.local_only_games[0].title, "Unknown");
+        assert_eq!(installed.local_only_games[0].status, "local-only");
+    }
+
+    #[test]
+    fn regional_and_revision_records_collapse_to_one_exact_release_family_card() {
+        fn game(id: &str, title: &str, platform: &str, database_id: i64, local: bool) -> Game {
+            let non_retail = is_non_retail_game(title, None);
+            let adult = is_adult_game(title, None, None);
+            let release_regions = release_region_membership(title, None);
+            Game {
+                id: id.into(),
+                launchbox_db_id: database_id,
+                media_id: stable_media_id(database_id, id),
+                title: title.into(),
+                platform: platform.into(),
+                status: "Released".into(),
+                local,
+                downloadable: !local,
+                non_retail,
+                has_non_retail_release: non_retail,
+                adult,
+                release_regions,
+                cooperative: "unknown".into(),
+                search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            }
+        }
+
+        let mut games = vec![
+            game(
+                "canonical",
+                "Faxanadu",
+                "Nintendo Entertainment System",
+                1283,
+                false,
+            ),
+            game(
+                "europe-a",
+                "Faxanadu (Europe)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "europe-b",
+                "Faxanadu (Europe)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "usa-rev",
+                "Faxanadu (USA) (Rev 1)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "japan",
+                "Faxanadu (Japan)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "different",
+                "Faxanadu: Revisioned",
+                "Nintendo Entertainment System",
+                462550,
+                false,
+            ),
+            game(
+                "wii",
+                "Faxanadu (Europe) (NES) (Virtual Console)",
+                "Nintendo Wii",
+                0,
+                false,
+            ),
+        ];
+        let mut builder = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            builder.push_empty();
+        }
+        let mut metadata = builder.finish();
+        apply_release_families(&mut games, &mut metadata, &LinkedReleaseFamilies::default());
+
+        assert_eq!(games.len(), 3);
+        let faxanadu = games
+            .iter()
+            .position(|game| game.title == "Faxanadu")
+            .expect("canonical Faxanadu family card");
+        assert_eq!(games[faxanadu].launchbox_db_id, 1283);
+        assert!(games[faxanadu].search_key.contains("faxanadu (europe)"));
+        assert_ne!(
+            games[faxanadu].release_regions & crate::region_priority::region_bit("USA").unwrap(),
+            0
+        );
+        assert_ne!(
+            games[faxanadu].release_regions & crate::region_priority::region_bit("Japan").unwrap(),
+            0
+        );
+        assert_eq!(
+            metadata.display_value(
+                faxanadu,
+                &games[faxanadu],
+                ListColumn::Variants,
+                &HashMap::new(),
+            ),
+            "4"
+        );
+        assert!(
+            games
+                .iter()
+                .any(|game| game.title == "Faxanadu: Revisioned")
+        );
+        assert!(games.iter().any(|game| game.platform == "Nintendo Wii"));
+    }
+
+    #[test]
+    fn regional_family_grouping_ignores_separator_punctuation() {
+        let platform = "Sony Playstation";
+        let mut games = [
+            ("canonical", "Castlevania: Symphony of the Night", 511),
+            ("asia", "Castlevania - Symphony of the Night (Asia)", 0),
+            ("europe", "Castlevania - Symphony of the Night (Europe)", 0),
+        ]
+        .into_iter()
+        .map(|(id, title, launchbox_db_id)| Game {
+            id: id.to_owned(),
+            launchbox_db_id,
+            title: title.to_owned(),
+            platform: platform.to_owned(),
+            status: "Released".to_owned(),
+            release_regions: release_region_membership(title, None),
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            ..Game::default()
+        })
+        .collect::<Vec<_>>();
+        let mut metadata = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            metadata.push_empty();
+        }
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &LinkedReleaseFamilies::default());
+
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].launchbox_db_id, 511);
+        assert_ne!(
+            games[0].release_regions & crate::region_priority::region_bit("Asia").unwrap(),
+            0
+        );
+        assert_ne!(
+            games[0].release_regions & crate::region_priority::region_bit("Europe").unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn regional_qualifiers_are_not_card_titles_even_for_singletons() {
+        let mut games = vec![Game {
+            id: "regional".to_owned(),
+            title: "Example Game (USA, Europe) (Rev 2)".to_owned(),
+            platform: "Example Platform".to_owned(),
+            search_key: "example game (usa, europe) (rev 2)".to_owned(),
+            ..Game::default()
+        }];
+        let mut metadata = ListMetadataBuilder::with_capacity(1);
+        metadata.push_empty();
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &LinkedReleaseFamilies::default());
+
+        assert_eq!(games[0].title, "Example Game (Rev 2)");
+        assert!(games[0].search_key.contains("usa, europe"));
+    }
+
+    #[test]
+    fn explicit_translated_titles_collapse_into_the_canonical_family() {
+        let platform = "Sony Playstation";
+        let mut linked = LinkedReleaseFamilies::default();
+        linked.record_alias(platform, "Akumajou Dracula X", 511, "Castlevania X");
+        linked.record_alias(platform, "悪魔城ドラキュラX", 511, "Castlevania X");
+        let mut games = [
+            ("canonical", "Castlevania X", 511),
+            ("romanized", "Akumajou Dracula X (Japan)", 0),
+            ("japanese", "悪魔城ドラキュラX (Japan)", 0),
+        ]
+        .into_iter()
+        .map(|(id, title, launchbox_db_id)| Game {
+            id: id.to_owned(),
+            launchbox_db_id,
+            title: title.to_owned(),
+            platform: platform.to_owned(),
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            ..Game::default()
+        })
+        .collect::<Vec<_>>();
+        let mut metadata = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            metadata.push_empty();
+        }
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &linked);
+
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].title, "Castlevania X");
+        assert!(games[0].search_key.contains("akumajou dracula x"));
+        assert!(games[0].search_key.contains("悪魔城ドラキュラx"));
+    }
+
+    #[test]
+    fn ambiguous_translated_titles_are_never_accepted_as_identity_links() {
+        let platform = "Example Platform";
+        let mut linked = LinkedReleaseFamilies::default();
+        linked.record_alias(platform, "Shared Local Name", 10, "First Game");
+        linked.record_alias(platform, "Shared Local Name", 20, "Second Game");
+        let mut games = [
+            ("first", "First Game", 10),
+            ("second", "Second Game", 20),
+            ("translated", "Shared Local Name (Japan)", 0),
+        ]
+        .into_iter()
+        .map(|(id, title, launchbox_db_id)| Game {
+            id: id.to_owned(),
+            launchbox_db_id,
+            title: title.to_owned(),
+            platform: platform.to_owned(),
+            search_key: title.to_lowercase(),
+            ..Game::default()
+        })
+        .collect::<Vec<_>>();
+        let mut metadata = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            metadata.push_empty();
+        }
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &linked);
+
+        assert_eq!(games.len(), 3);
+        assert!(games.iter().any(|game| game.title == "First Game"));
+        assert!(games.iter().any(|game| game.title == "Second Game"));
+        assert!(games.iter().any(|game| game.title == "Shared Local Name"));
+    }
+}

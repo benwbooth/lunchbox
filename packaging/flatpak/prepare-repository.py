@@ -15,15 +15,27 @@ import urllib.error
 import urllib.request
 
 
-PROJECT = "benwbooth/lunchbox"
-SITE = "https://benwbooth.github.io/lunchbox"
-APP = "io.github.benwbooth.Lunchbox"
-ARCHIVE = "Lunchbox-flatpak-repo.tar.gz"
+PROJECT = "benwbooth/lunchpail"
+SITE = "https://benwbooth.github.io/lunchpail"
+APP = "io.github.benwbooth.Lunchpail"
+ARCHIVE = "Lunchpail-flatpak-repo.tar.gz"
 REQUIRED = {
-    ARCHIVE, "Lunchbox-windows-x86_64.msi", "Lunchbox-windows-x86_64.zip",
-    "Lunchbox-macos-arm64.dmg", "Lunchbox-linux-x86_64.AppImage",
-    "Lunchbox-linux-x86_64.flatpak", "lunchbox.rb", "SHA256SUMS",
+    ARCHIVE, "Lunchpail-windows-x86_64.msi", "Lunchpail-windows-x86_64.zip",
+    "Lunchpail-macos-arm64.dmg", "Lunchpail-linux-x86_64.AppImage",
+    "Lunchpail-linux-x86_64.flatpak", "lunchpail.rb", "SHA256SUMS",
 }
+
+
+def release_assets(release):
+    """Old releases remain immutable, including their original asset names."""
+    assets = {asset["name"]: asset for asset in release["assets"]}
+    legacy = {name.replace("Lunchpail", "Lunchbox").replace("lunchpail", "lunchbox")
+              for name in REQUIRED}
+    if REQUIRED <= assets.keys():
+        return assets, REQUIRED, ARCHIVE, APP
+    if legacy <= assets.keys():
+        return assets, legacy, "Lunchbox-flatpak-repo.tar.gz", "io.github.benwbooth.Lunchbox"
+    raise ValueError("Release upload is incomplete")
 
 
 def api(endpoint):
@@ -35,10 +47,8 @@ def release_identity(release):
     tag = release["tag_name"]
     if release["draft"] or release["prerelease"] or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
         raise ValueError("Only published stable releases can reach the update channel")
-    assets = {asset["name"]: asset for asset in release["assets"]}
-    if not REQUIRED <= assets.keys():
-        raise ValueError("Release upload is incomplete")
-    for name in REQUIRED:
+    assets, required, archive, app = release_assets(release)
+    for name in required:
         asset = assets[name]
         if asset["size"] <= 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", asset.get("digest") or ""):
             raise ValueError(f"Missing content or SHA256 digest for {name}")
@@ -46,7 +56,9 @@ def release_identity(release):
         "schema": 1,
         "tag": tag,
         "release_url": release["html_url"],
-        "archive_sha256": assets[ARCHIVE]["digest"].removeprefix("sha256:"),
+        "archive_sha256": assets[archive]["digest"].removeprefix("sha256:"),
+        "archive": archive,
+        "app_id": app,
     }
 
 
@@ -68,15 +80,15 @@ def extract_repository(archive, output):
         bundle.extractall(output, members=members, filter="data")
 
 
-def write_descriptors(output, key):
+def write_descriptors(output, key, app=APP):
     common = f"Url={SITE}/flatpak/\nHomepage=https://github.com/{PROJECT}\nGPGKey={key}\n"
-    (output / "lunchbox.flatpakrepo").write_text(
-        "[Flatpak Repo]\nTitle=Lunchbox\nComment=Official Lunchbox releases\n"
+    (output / "lunchpail.flatpakrepo").write_text(
+        "[Flatpak Repo]\nTitle=Lunchpail\nComment=Official Lunchpail releases\n"
         "Description=Retro game library and emulator frontend\nDefaultBranch=master\n" + common,
         encoding="utf-8")
-    (output / "lunchbox.flatpakref").write_text(
-        f"[Flatpak Ref]\nName={APP}\nTitle=Lunchbox\nBranch=master\n"
-        "IsRuntime=false\nSuggestRemoteName=lunchbox\n"
+    (output / "lunchpail.flatpakref").write_text(
+        f"[Flatpak Ref]\nName={app}\nTitle=Lunchpail\nBranch=master\n"
+        "IsRuntime=false\nSuggestRemoteName=lunchpail\n"
         "RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n" + common,
         encoding="utf-8")
 
@@ -99,22 +111,23 @@ def main():
             pass  # A missing or unavailable site is safe to republish.
     args.output.mkdir(parents=True, exist_ok=False)
     assets = {asset["name"]: asset for asset in release["assets"]}
-    with tempfile.TemporaryDirectory(prefix="lunchbox-flatpak-") as directory:
+    archive_name = identity["archive"]
+    with tempfile.TemporaryDirectory(prefix="lunchpail-flatpak-") as directory:
         subprocess.run([
             "gh", "release", "download", identity["tag"], "--repo", PROJECT,
-            "--pattern", ARCHIVE, "--pattern", "SHA256SUMS", "--dir", directory,
+            "--pattern", archive_name, "--pattern", "SHA256SUMS", "--dir", directory,
         ], check=True)
-        archive = Path(directory) / ARCHIVE
+        archive = Path(directory) / archive_name
         checksums = Path(directory) / "SHA256SUMS"
-        verify_download(archive, assets[ARCHIVE])
+        verify_download(archive, assets[archive_name])
         verify_download(checksums, assets["SHA256SUMS"])
         matches = [line.split()[0] for line in checksums.read_text().splitlines()
-                   if len(line.split()) == 2 and Path(line.split()[1]).name == ARCHIVE]
+                   if len(line.split()) == 2 and Path(line.split()[1]).name == archive_name]
         if matches != [identity["archive_sha256"]]:
             raise ValueError("Repository digest disagrees with SHA256SUMS")
         extract_repository(archive, args.output)
     (args.output / "repo").rename(args.output / "flatpak")
-    ref = f"app/{APP}/x86_64/master"
+    ref = f"app/{identity['app_id']}/x86_64/master"
     available = subprocess.check_output([
         "flatpak", "remote-ls", "--user", "--columns=ref", args.output.resolve().as_uri() + "/flatpak",
     ], text=True).splitlines()
@@ -122,7 +135,7 @@ def main():
         raise ValueError(f"Published repository is missing {ref}")
     source = Path(__file__).resolve().parent
     key = subprocess.check_output(["gpg", "--dearmor", "--output", "-", str(source / "signing-key.asc")])
-    write_descriptors(args.output, base64.b64encode(key).decode("ascii"))
+    write_descriptors(args.output, base64.b64encode(key).decode("ascii"), identity["app_id"])
     identity["source_commit"] = api(f"commits/{identity['tag']}")["sha"]
     (args.output / "release.json").write_text(json.dumps(identity, indent=2) + "\n")
     (args.output / "index.html").write_text((source / "download.html").read_text())

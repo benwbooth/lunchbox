@@ -1,9 +1,9 @@
 { lib, fetchurl, retroarch-bare }:
 
-# Opt-in only. This does not replace Lunchbox's selected emulator or enable a
+# Opt-in only. This does not replace Lunchpail's selected emulator or enable a
 # command listener. Launch ownership and effective-state checks remain required.
 retroarch-bare.overrideAttrs (old: {
-  pname = "lunchbox-retroarch-relative-routing";
+  pname = "lunchpail-retroarch-relative-routing";
   version = "unstable-69a4f0e-routing1";
   src = fetchurl {
     url = "https://codeload.github.com/libretro/RetroArch/tar.gz/69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576";

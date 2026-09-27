@@ -59,7 +59,7 @@ jobs:
           gpg --homedir "$signing_home" --list-secret-keys "$key_id"
           flatpak build-sign --gpg-homedir="$signing_home" --gpg-sign="$key_id" "$RUNNER_TEMP/site/flatpak"
           flatpak build-update-repo --gpg-homedir="$signing_home" --gpg-sign="$key_id" \
-            --title=Lunchbox --default-branch=master --generate-static-deltas \
+            --title=Lunchpail --default-branch=master --generate-static-deltas \
             --prune --prune-depth=1 "$RUNNER_TEMP/site/flatpak"
           test -s "$RUNNER_TEMP/site/flatpak/summary.sig"
       - uses: actions/upload-pages-artifact@v3

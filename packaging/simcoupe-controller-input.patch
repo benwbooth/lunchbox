@@ -13,8 +13,8 @@
      	full_path = info->path;
  
 -    	strcpy(RPATH,full_path); 
-+        extern bool lunchbox_simcp_insert_disk(const char* path);
-+        if (!lunchbox_simcp_insert_disk(full_path))
++        extern bool lunchpail_simcp_insert_disk(const char* path);
++        if (!lunchpail_simcp_insert_disk(full_path))
 +            return false;
  //g_fPaused= true;
  
@@ -26,7 +26,7 @@
  
  #include "GUIDlg.h"
 +
-+extern "C" bool lunchbox_simcp_insert_disk(const char* path)
++extern "C" bool lunchpail_simcp_insert_disk(const char* path)
 +{
 +    if (!path || !*path || !pFloppy1 || GetOption(drive1) != drvFloppy)
 +        return false;

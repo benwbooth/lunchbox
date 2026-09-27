@@ -1,6 +1,6 @@
 # Add your own download sources
 
-Use **Torrent Sources** to add a torrent collection that Lunchbox can search
+Use **Torrent Sources** to add a torrent collection that Lunchpail can search
 when you open a game's download options. Registering a source does not start
 downloading its games.
 
@@ -12,7 +12,7 @@ downloading its games.
 4. Review the file list and register the source.
 
 Magnets need the configured qBittorrent connection to retrieve their file list.
-Lunchbox does not support every magnet format.
+Lunchpail does not support every magnet format.
 
 You can also attach a source while viewing an individual game. Review the
 exact file before queuing it; a title match is a suggestion, not proof of
@@ -41,7 +41,7 @@ A minimal `provider.json` looks like this:
 
 ~~~json
 {
-  "format": "lunchbox-local-torrent-provider",
+  "format": "lunchpail-local-torrent-provider",
   "schema_version": 1,
   "provider": {
     "id": "my-homebrew",
@@ -62,14 +62,14 @@ A minimal `provider.json` looks like this:
 ~~~
 
 Replace the example names, system, terms address, and torrent path with your
-own. Use the system name shown by Lunchbox. Paths are relative to the manifest
+own. Use the system name shown by Lunchpail. Paths are relative to the manifest
 and must stay inside its folder.
 
 Open **Settings → Local provider catalogs → Import manifest…**.
 A manifest can contain up to 256 sources. Increase `catalog_version` when
 you change its contents.
 
-Removing a registered catalog removes its Lunchbox source entries, not ROMs,
+Removing a registered catalog removes its Lunchpail source entries, not ROMs,
 torrent files, or qBittorrent data.
 
 ## Pinball and OpenBOR

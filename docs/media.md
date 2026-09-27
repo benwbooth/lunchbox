@@ -21,7 +21,7 @@ Use the media/account sections in Settings for services such as EmuMovies,
 ScreenScraper, or IGDB where available. Provider accounts, permissions, and
 catalog coverage differ; connecting one does not guarantee media for every game.
 
-Lunchbox can also use cached media. You do not need every optional account to
+Lunchpail can also use cached media. You do not need every optional account to
 browse or play local games.
 
 ## Fix the wrong artwork
@@ -41,6 +41,6 @@ Rapidly switching games can cancel a preview request before it finishes.
 The media library tools help find missing or problematic items. They are also
 available from **Library & settings** in Couch Mode.
 
-Media caches are not included in a [Lunchbox profile backup](profile-backups.md).
+Media caches are not included in a [Lunchpail profile backup](profile-backups.md).
 Artwork remains the property of its respective rights holders.
 

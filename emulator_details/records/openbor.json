@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/DCurrent/openbor", "commit": "9d81480f8481fbb9e76b0b5f2a5dfa408376761a", "url": "https://github.com/DCurrent/openbor/tree/9d81480f8481fbb9e76b0b5f2a5dfa408376761a", "role": "SDL desktop engine, packed settings, input, save and path source" },
     { "kind": "docs", "url": "https://github.com/DCurrent/openbor/blob/9d81480f8481fbb9e76b0b5f2a5dfa408376761a/README.md", "role": "official project and supported desktop build evidence" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
   ],
   "platforms": {
     "linux": { "paths": [

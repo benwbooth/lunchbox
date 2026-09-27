@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Lunchpail
+Comment=Browse, manage, download, and play your game collection
+Exec=lunchpail
+Icon=io.github.benwbooth.Lunchpail
+Terminal=false
+Categories=Game;Emulator;
+Keywords=games;roms;emulator;library;
+StartupNotify=true
+StartupWMClass=lunchpail

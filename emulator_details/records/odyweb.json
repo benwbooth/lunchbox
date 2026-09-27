@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "artifact", "url": "https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip", "version": "1.0", "sha256": "f1951bbe832c88938e4855f2282833ecdbafcfab98fa83b8a7ff3b045a82fc65", "role": "official self-contained HTML distribution" },
     { "kind": "docs", "url": "https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/", "role": "official project description and download page" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ODYWEB_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/ODYWEB_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
   ],
   "platform_gaps": {
     "linux": { "status": "unsupported", "reason": "OdyWeb is a browser HTML/JavaScript artifact, not a native Linux package; no persistent host-controller or desktop integration contract is published.", "evidence": ["artifact:https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip", "docs:https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/"] },

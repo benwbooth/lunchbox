@@ -2,9 +2,9 @@
   "schema_version": 1,
   "reviewed_at": "2026-09-13",
   "provenance": {
-    "origin": "Lunchbox legacy/electron firmware implementation",
+    "origin": "Lunchpail legacy/electron firmware implementation",
     "license": "MIT",
-    "note": "Runtime-to-firmware mappings maintained by Lunchbox; package content remains runtime-only and is never shipped in the canonical database."
+    "note": "Runtime-to-firmware mappings maintained by Lunchpail; package content remains runtime-only and is never shipped in the canonical database."
   },
   "acquisition_sources": [
     {
@@ -1914,7 +1914,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Standalone melonDS DSi mode requires manually dumped DSi BIOS, firmware, and NAND files; Lunchbox does not have a Minerva source package for these yet.",
+      "notes": "Standalone melonDS DSi mode requires manually dumped DSi BIOS, firmware, and NAND files; Lunchpail does not have a Minerva source package for these yet.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -1928,7 +1928,7 @@
       "target_subdir": "keys",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Import a raw prod.keys file or a ZIP containing prod.keys and optional title.keys from the user's own Nintendo Switch. Lunchbox validates and installs the keys into Eden's active profile.",
+      "notes": "Import a raw prod.keys file or a ZIP containing prod.keys and optional title.keys from the user's own Nintendo Switch. Lunchpail validates and installs the keys into Eden's active profile.",
       "supports_hle_fallback": false,
       "target_strategy": "managed_import"
     },
@@ -1942,7 +1942,7 @@
       "target_subdir": "nand/system/Contents/registered",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Import a firmware ZIP dumped from the user's own Nintendo Switch. Lunchbox validates NCA content and installs it into Eden's active NAND profile.",
+      "notes": "Import a firmware ZIP dumped from the user's own Nintendo Switch. Lunchpail validates NCA content and installs it into Eden's active NAND profile.",
       "supports_hle_fallback": false,
       "target_strategy": "managed_import"
     },
@@ -1956,7 +1956,7 @@
       "target_subdir": "system",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Import a raw prod.keys file or a ZIP containing prod.keys and optional title.keys from the user's own Nintendo Switch. Lunchbox validates and installs the keys into Ryubing's active system profile.",
+      "notes": "Import a raw prod.keys file or a ZIP containing prod.keys and optional title.keys from the user's own Nintendo Switch. Lunchpail validates and installs the keys into Ryubing's active system profile.",
       "supports_hle_fallback": false,
       "target_strategy": "managed_import"
     },
@@ -1970,7 +1970,7 @@
       "target_subdir": "bis/system/Contents/registered",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Import a firmware ZIP dumped from the user's own Nintendo Switch. Lunchbox validates NCA content and installs it into Ryubing's active BIS profile.",
+      "notes": "Import a firmware ZIP dumped from the user's own Nintendo Switch. Lunchpail validates NCA content and installs it into Ryubing's active BIS profile.",
       "supports_hle_fallback": false,
       "target_strategy": "managed_import"
     },
@@ -1984,7 +1984,7 @@
       "target_subdir": "keys",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Import a raw prod.keys file or a ZIP containing prod.keys and optional title.keys from the user's own Nintendo Switch. Lunchbox validates and installs the keys into Torzu's active profile.",
+      "notes": "Import a raw prod.keys file or a ZIP containing prod.keys and optional title.keys from the user's own Nintendo Switch. Lunchpail validates and installs the keys into Torzu's active profile.",
       "supports_hle_fallback": false,
       "target_strategy": "managed_import"
     },
@@ -1998,7 +1998,7 @@
       "target_subdir": "nand/system/Contents/registered",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Import a firmware ZIP dumped from the user's own Nintendo Switch. Lunchbox validates NCA content and installs it into Torzu's active NAND profile.",
+      "notes": "Import a firmware ZIP dumped from the user's own Nintendo Switch. Lunchpail validates NCA content and installs it into Torzu's active NAND profile.",
       "supports_hle_fallback": false,
       "target_strategy": "managed_import"
     },
@@ -2012,7 +2012,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "M88kai needs PC-8801 BIOS ROMs in the emulator directory. Lunchbox exposes a managed import folder, but does not auto-install this standalone BIOS layout yet.",
+      "notes": "M88kai needs PC-8801 BIOS ROMs in the emulator directory. Lunchpail exposes a managed import folder, but does not auto-install this standalone BIOS layout yet.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2026,7 +2026,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "Tsugaru needs FM Towns ROM assets plus a CMOS image. Lunchbox exposes a managed import folder, but Tsugaru's standalone ROM/CMOS layout remains manual.",
+      "notes": "Tsugaru needs FM Towns ROM assets plus a CMOS image. Lunchpail exposes a managed import folder, but Tsugaru's standalone ROM/CMOS layout remains manual.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2040,7 +2040,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "UNZ needs FM Towns ROM assets plus cmos.dat in its emulator directory. Lunchbox exposes a managed import folder, but UNZ remains manual-only.",
+      "notes": "UNZ needs FM Towns ROM assets plus cmos.dat in its emulator directory. Lunchpail exposes a managed import folder, but UNZ remains manual-only.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2054,7 +2054,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "The standalone Emu5 Sord M5 path still expects BIOS ROMs in the emulator directory. Lunchbox exposes a managed import folder instead of guessing the final layout.",
+      "notes": "The standalone Emu5 Sord M5 path still expects BIOS ROMs in the emulator directory. Lunchpail exposes a managed import folder instead of guessing the final layout.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2068,7 +2068,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "DEmul expects the Atomiswave BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchbox exposes a managed import folder instead of mutating DEmul directly.",
+      "notes": "DEmul expects the Atomiswave BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchpail exposes a managed import folder instead of mutating DEmul directly.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2082,7 +2082,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "DEmul expects the Hikaru BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchbox exposes a managed import folder instead of mutating DEmul directly.",
+      "notes": "DEmul expects the Hikaru BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchpail exposes a managed import folder instead of mutating DEmul directly.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2096,7 +2096,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "DEmul expects the NAOMI BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchbox exposes a managed import folder instead of mutating DEmul directly.",
+      "notes": "DEmul expects the NAOMI BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchpail exposes a managed import folder instead of mutating DEmul directly.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -2110,7 +2110,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "DEmul expects the NAOMI 2 BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchbox exposes a managed import folder instead of mutating DEmul directly.",
+      "notes": "DEmul expects the NAOMI 2 BIOS romset to be added through its Roms and Bioses Paths configuration. Lunchpail exposes a managed import folder instead of mutating DEmul directly.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -3090,7 +3090,7 @@
       "target_subdir": "C64",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "VICE C64 requires kernal/basic/chargen ROMs in the C64 search path; user-supplied, not redistributable by Lunchbox.",
+      "notes": "VICE C64 requires kernal/basic/chargen ROMs in the C64 search path; user-supplied, not redistributable by Lunchpail.",
       "supports_hle_fallback": false,
       "target_strategy": "manual_import"
     },
@@ -3202,7 +3202,7 @@
       "target_subdir": "",
       "install_mode": "merge_tree",
       "required": true,
-      "notes": "The exact ca._0ldsk00l.Nestopia Flatpak obtains its Famicom Disk System BIOS from the reviewed Minerva Nintendo - NES - Famicom (Nestopia UE).zip package. Lunchbox extracts only one canonical disksys.rom whose SHA-256 is 99c18490ed9002d9c6d999b9d8d15be5c051bdfa7cc7e73318053c9a994b0178 or a0a9d57cbace21bf9c85c2b85e86656317f0768d7772acc90c7411ab1dbff2bf, from SourMesen/Mesen2 UI/Interop/FirmwareTypeExtensions.cs at b9fa69ddc6d0a331fb103fdb5eef6904305703c2, installs it privately at the reviewed Flatpak data path, and revalidates immediately before launch. Exact raw disksys.rom local import remains accepted; cartridge and NSF content do not use this rule. Other hosts/packages remain explicit manual configuration.",
+      "notes": "The exact ca._0ldsk00l.Nestopia Flatpak obtains its Famicom Disk System BIOS from the reviewed Minerva Nintendo - NES - Famicom (Nestopia UE).zip package. Lunchpail extracts only one canonical disksys.rom whose SHA-256 is 99c18490ed9002d9c6d999b9d8d15be5c051bdfa7cc7e73318053c9a994b0178 or a0a9d57cbace21bf9c85c2b85e86656317f0768d7772acc90c7411ab1dbff2bf, from SourMesen/Mesen2 UI/Interop/FirmwareTypeExtensions.cs at b9fa69ddc6d0a331fb103fdb5eef6904305703c2, installs it privately at the reviewed Flatpak data path, and revalidates immediately before launch. Exact raw disksys.rom local import remains accepted; cartridge and NSF content do not use this rule. Other hosts/packages remain explicit manual configuration.",
       "supports_hle_fallback": false,
       "target_strategy": "runtime_dir"
     }

@@ -1,4 +1,10 @@
-# Install Lunchbox
+# Install Lunchpail
+
+The project was previously named Lunchbox. Published v0.1.2 downloads retain
+their old filenames; follow the README's commands for that release. The renamed
+app preserves existing settings, credentials, profiles, and saves. Older profile
+and theme files remain importable. Existing filesystem paths may remain as
+compatibility links so emulator configurations keep working.
 
 The [README has installation commands for every supported package and OS](../README.md#install).
 Use a published release rather than an unfinished GitHub Actions build.
@@ -16,23 +22,23 @@ regular application.
 ## Windows
 
 Run the MSI installer, or extract the portable ZIP into a folder and run
-Lunchbox from there. Keep the ZIP's accompanying files together.
+Lunchpail from there. Keep the ZIP's accompanying files together.
 
 “Portable ZIP” describes how the app is distributed; it does not mean your
 library settings and saves are automatically stored beside the executable.
 
 ## macOS
 
-Open the DMG and copy Lunchbox to Applications. The package targets Apple
+Open the DMG and copy Lunchpail to Applications. The package targets Apple
 Silicon Macs running macOS 13 or later.
 
 With Homebrew installed:
 
 ~~~sh
-brew install --cask benwbooth/lunchbox/lunchbox
+brew install --cask benwbooth/lunchpail/lunchpail
 ~~~
 
-Update with `brew update` and `brew upgrade --cask lunchbox`. You no longer
+Update with `brew update` and `brew upgrade --cask lunchpail`. You no longer
 need to download a local cask file.
 
 ## Linux
@@ -40,23 +46,23 @@ need to download a local cask file.
 For the AppImage, make the downloaded file executable in your file manager,
 then open it.
 
-For Flatpak, [open the installer](https://benwbooth.github.io/lunchbox/lunchbox.flatpakref)
+For Flatpak, [open the installer](https://benwbooth.github.io/lunchpail/lunchpail.flatpakref)
 in your software manager, or use:
 
 ~~~sh
-flatpak install --user https://benwbooth.github.io/lunchbox/lunchbox.flatpakref
-flatpak run io.github.benwbooth.Lunchbox
+flatpak install --user https://benwbooth.github.io/lunchpail/lunchpail.flatpakref
+flatpak run io.github.benwbooth.Lunchpail
 ~~~
 
-This adds Lunchbox's signed update repository and offers the Flathub runtime
+This adds Lunchpail's signed update repository and offers the Flathub runtime
 source. Update through your software manager or `flatpak update --user`.
-Lunchbox itself is hosted here, not on Flathub.
+Lunchpail itself is hosted here, not on Flathub.
 
 If you previously installed the standalone bundle, switch its update source with:
 
 ~~~sh
-flatpak remote-add --user --if-not-exists lunchbox https://benwbooth.github.io/lunchbox/lunchbox.flatpakrepo
-flatpak install --user --reinstall lunchbox io.github.benwbooth.Lunchbox
+flatpak remote-add --user --if-not-exists lunchpail https://benwbooth.github.io/lunchpail/lunchpail.flatpakrepo
+flatpak install --user --reinstall lunchpail io.github.benwbooth.Lunchpail
 ~~~
 
 This keeps the app's data. For a system-wide installation, use `--system` in place
@@ -64,7 +70,7 @@ of `--user`. The release also includes a standalone bundle and repository archiv
 for manual installation or self-hosting; see the README for those options.
 
 Flatpak permissions can affect access to game folders, external drives, and
-controllers. If a folder works outside the sandbox but not inside Lunchbox,
+controllers. If a folder works outside the sandbox but not inside Lunchpail,
 check the app's permissions before moving your files.
 
 For Nix/NixOS commands, see the [README](../README.md#nix-and-nixos).
@@ -79,7 +85,7 @@ computer's security protections globally to install the app.
 
 ## What else do I need?
 
-An emulator and games. Lunchbox can help manage supported emulators, but it
+An emulator and games. Lunchpail can help manage supported emulators, but it
 does not include ROMs or BIOS dumps.
 
 qBittorrent is optional and only needed for torrent downloads. Local AI

@@ -1,12 +1,12 @@
 # RetroAchievements
 
-Lunchbox can configure RetroAchievements for supported RetroArch games.
+Lunchpail can configure RetroAchievements for supported RetroArch games.
 RetroArch handles recognizing the game, tracking achievements, and displaying
 unlock notifications.
 
 ## Sign in
 
-Open **Settings → RetroAchievements** and sign in. Lunchbox stores the returned
+Open **Settings → RetroAchievements** and sign in. Lunchpail stores the returned
 login token in your operating system's credential store, not your password.
 
 Choose a default:
@@ -21,9 +21,9 @@ default or choose a different mode. Changes apply on the next launch.
 ## See your progress
 
 Open RetroArch's **Quick Menu → Achievements** while playing, or open your
-RetroAchievements profile from Lunchbox.
+RetroAchievements profile from Lunchpail.
 
-Lunchbox does not currently show a synchronized achievement list of its own
+Lunchpail does not currently show a synchronized achievement list of its own
 or configure standalone emulators' achievement accounts.
 
 ## Why isn't this game recognized?
@@ -36,7 +36,7 @@ unmodified one. Use a supported version instead.
 
 ## Hardcore and saves
 
-Lunchbox blocks enabled cheats and disables automatic state loading and rewind
+Lunchpail blocks enabled cheats and disables automatic state loading and rewind
 for its managed Hardcore sessions. In-game saves remain separate from loading
 an emulator state. RetroArch enforces the rest of the mode's requirements.
 

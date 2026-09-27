@@ -11,13 +11,13 @@
     },
     {
       "kind": "manifest",
-      "repo": "lunchbox",
+      "repo": "lunchpail",
       "path": "sources/emulator-install-sources.json",
       "role": "Citron Neo linux AppImage / windows zip / macOS dmg install entries"
     },
     {
       "kind": "manifest",
-      "repo": "lunchbox",
+      "repo": "lunchpail",
       "path": "sources/firmware-rules.json",
       "role": "manual:nintendo-switch-keys / manual:nintendo-switch-firmware sources; eden/ryubing/torzu rules exist, no citron entries"
     }
@@ -85,7 +85,7 @@
           "naming": "Per-player control values persist in the [Controls] category; named profiles persist as input/<profile>.ini via profile read/save."
         }
       ],
-      "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit 91bbce7231 (purpose 'states' therefore omitted). Citron is the yuzu-descendant codebase, so the yuzu conventions hold but with CITRON_DIR \"citron\" (not citron-emu). Lunchbox DB gap: firmware-rules.json binds manual:nintendo-switch-keys and manual:nintendo-switch-firmware to eden/ryubing/torzu rules but has no citron:* rules yet."
+      "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit 91bbce7231 (purpose 'states' therefore omitted). Citron is the yuzu-descendant codebase, so the yuzu conventions hold but with CITRON_DIR \"citron\" (not citron-emu). Lunchpail DB gap: firmware-rules.json binds manual:nintendo-switch-keys and manual:nintendo-switch-firmware to eden/ryubing/torzu rules but has no citron:* rules yet."
     },
     "macos": {
       "paths": [
@@ -144,7 +144,7 @@
           "naming": "Per-player control values persist in the [Controls] category; named profiles persist as input/<profile>.ini via profile read/save."
         }
       ],
-      "notes": "macOS builds ship as dmg assets on the citron-neo/emulator GitHub releases (Lunchbox install source, x86_64 + aarch64); paths are the plain XDG defaults because the code has no macOS-specific data root."
+      "notes": "macOS builds ship as dmg assets on the citron-neo/emulator GitHub releases (Lunchpail install source, x86_64 + aarch64); paths are the plain XDG defaults because the code has no macOS-specific data root."
     },
     "windows": {
       "paths": [

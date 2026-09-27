@@ -8,7 +8,7 @@ and live translation are all optional.
 Open **Library → Import ROMs**, choose the folder containing your games, and
 select the system if the folder contains games for one console.
 
-Start the scan, review the results, and import the games you want. Lunchbox
+Start the scan, review the results, and import the games you want. Lunchpail
 uses file checksums to identify known releases. If a file is not recognized,
 you can still import it or use **Match…** to choose its catalog entry yourself.
 
@@ -22,7 +22,7 @@ emulator. RetroArch also needs a core—the module that emulates that system.
 
 If none is available, open the emulator section in Settings to see installation
 options. Some systems need BIOS or firmware files before they can start.
-Lunchbox shows the requirements for the selected emulator.
+Lunchpail shows the requirements for the selected emulator.
 
 You can keep an emulator choice for just this game or make it the system default.
 
@@ -31,7 +31,7 @@ You can keep an emulator choice for just this game or make it the system default
 Open controller setup, pick a controller from the Player 1 dropdown, and review
 its buttons. Add another player if the game supports one.
 
-A controller that navigates Lunchbox may still need a game mapping.
+A controller that navigates Lunchpail may still need a game mapping.
 [Controller setup](controllers.md) explains the difference.
 
 ## 4. Play

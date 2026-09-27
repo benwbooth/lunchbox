@@ -9,16 +9,16 @@ For MAME or FinalBurn Neo, use a set compatible with the selected emulator.
 Keep the archive's standard set name and contents intact.
 
 A self-contained set is convenient because it includes the required game ROMs.
-Lunchbox prefers non-merged MAME sets and hides merged sets from its download
+Lunchpail prefers non-merged MAME sets and hides merged sets from its download
 choices. This does not remove any arcade games you have already installed.
 Split sets may need a parent archive nearby. Disc-based arcade games may also
 need CHDs and the expected folder layout.
 
-Lunchbox's download review tries to include the files needed for the chosen
+Lunchpail's download review tries to include the files needed for the chosen
 game. Check the review rather than downloading a single matching filename
 from an unrelated collection.
 
-Lunchbox checks imported arcade ROM names against the MAME catalog to avoid
+Lunchpail checks imported arcade ROM names against the MAME catalog to avoid
 mixing up video games and identically named pinball or gambling machines.
 For an installed game, **Other download options** lets you review another
 set without deleting the current files. Arcade artwork uses the exact MAME
@@ -42,7 +42,7 @@ For a conventional six-button fighting-game layout, buttons 1–3 form the top
 row and 4–6 form the bottom row, left to right. The selected emulator's game
 mapping determines what those numbered buttons do.
 
-Lunchbox's N64-style arcade layout uses:
+Lunchpail's N64-style arcade layout uses:
 
 | Arcade row | Left | Middle | Right |
 | --- | --- | --- | --- |
@@ -64,7 +64,7 @@ the opening.
 ## Adult-content filtering
 
 The **Adult** filter also recognizes arcade games whose names and genres do
-not mention adult content, such as *Excelsior*. Lunchbox uses
+not mention adult content, such as *Excelsior*. Lunchpail uses
 [progetto-SNAPS' Mature list](https://www.progettosnaps.net/catver/) and matches
 its ROM-set names to game titles and revisions. It does not treat every
 mahjong or puzzle game as adult, or change a game's official age rating.

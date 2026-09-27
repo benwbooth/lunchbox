@@ -24,7 +24,7 @@
     },
     {
       "kind": "contract",
-      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WINARCADIA_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WINARCADIA_CONTROLLER_BOUNDARY.md",
       "role": "fail-closed DirectInput/game-specific controller boundary"
     }
   ],
@@ -40,7 +40,7 @@
         {
           "purpose": "input",
           "path": "DirectInput host joystick/gamepad devices enumerated at runtime; guest left/right controller selection is held in WinArcadia configuration state",
-          "naming": "The source exposes two guest ports, host-device assignment and an interactive Rearrange Gamepad Buttons dialog; no independently validated Lunchbox serializer has been implemented",
+          "naming": "The source exposes two guest ports, host-device assignment and an interactive Rearrange Gamepad Buttons dialog; no independently validated Lunchpail serializer has been implemented",
           "evidence": [
             "source:ff.c DirectInput device enumeration and DIJOYSTATE polling in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f",
             "source:wa-modal.c RearrangeDlgProc and engine1.c button[2][8] serializer in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f"

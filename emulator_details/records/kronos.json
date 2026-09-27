@@ -7,8 +7,8 @@
     { "kind": "docs", "url": "https://github.com/FCare/Kronos/blob/extui-align/README.md", "role": "platform support: builds target Windows and Linux (Debian) only; libretro core optional; no macOS or flatpak packaging mentioned" },
     { "kind": "docs", "url": "https://api.github.com/repos/FCare/Kronos/releases", "role": "official release assets are Ubuntu-only zips ('Kronos binaries for Ubuntu', 2.7.0_official_release at capture); .github/workflows/release_on_tag.yml builds kronos_ubuntu.zip on ubuntu-20.04 only" },
     { "kind": "docs", "url": "https://flathub.org/api/v2/search", "role": "Flathub search for 'kronos'/'yabause' returns no Kronos Saturn emulator app (queried 2026-09-11) - no official flatpak exists" },
-    { "kind": "docs", "url": "repo:emulator_details/all_emulators.csv", "role": "lunchbox CSV claims save dir ~/.local/share/kronos - contradicted by source (data dir is the executable directory); divergence flagged in notes" },
-    { "kind": "docs", "url": "repo:crates/lunchbox-app/src/firmware.rs", "role": "lunchbox DB firmware_rules has no kronos entries (gap captured here, unchanged by this record)" }
+    { "kind": "docs", "url": "repo:emulator_details/all_emulators.csv", "role": "lunchpail CSV claims save dir ~/.local/share/kronos - contradicted by source (data dir is the executable directory); divergence flagged in notes" },
+    { "kind": "docs", "url": "repo:crates/lunchpail-app/src/firmware.rs", "role": "lunchpail DB firmware_rules has no kronos entries (gap captured here, unchanged by this record)" }
   ],
   "platforms": {
     "linux": {
@@ -58,14 +58,14 @@
         },
         {
           "purpose": "bios",
-          "path": "Saturn BIOS: file path from General/Bios (0x80000 bytes loaded into BiosRom; no hardcoded filename - any dumped BIOS image works, saturn.bin is just the conventional dump name). With General/EnableEmulatedBios (or an empty path) Kronos boots its built-in emulated BIOS instead (yabsys.emulatebios=1 + quickload). ST-V: no separate BIOS setting - the ST-V rom folder (Cartridge/Path when Cartridge/Type = 'STV Rom game', CART_ROMSTV) must contain stvbios.zip, which STVGetRomList loads first; per-game ROM sets are the other .zip files in the same folder and the scan result is cached as gamelistv2.save there. Lunchbox DB firmware_rules has no kronos entries - gap captured, not changed by this record",
+          "path": "Saturn BIOS: file path from General/Bios (0x80000 bytes loaded into BiosRom; no hardcoded filename - any dumped BIOS image works, saturn.bin is just the conventional dump name). With General/EnableEmulatedBios (or an empty path) Kronos boots its built-in emulated BIOS instead (yabsys.emulatebios=1 + quickload). ST-V: no separate BIOS setting - the ST-V rom folder (Cartridge/Path when Cartridge/Type = 'STV Rom game', CART_ROMSTV) must contain stvbios.zip, which STVGetRomList loads first; per-game ROM sets are the other .zip files in the same folder and the scan result is cached as gamelistv2.save there. Lunchpail DB firmware_rules has no kronos entries - gap captured, not changed by this record",
           "naming": "Saturn BIOS: user-selected file (conventionally saturn.bin). ST-V BIOS: exactly stvbios.zip in the rom folder (name hardcoded), containing the Bios table blobs epr-20091.ic8 / epr-17954a.ic8 (euro, preferred default region) / epr-17952a.ic8 / stv110.bin (debug) etc.; game zip romsets are matched by the per-game blob tables (ic13.bin/ic22.bin/... names inside the zips)",
           "evidence": [
             "source:yabause/src/port/qt/YabauseThread.cpp biospath = \"\" when General/EnableEmulatedBios else General/Bios",
             "source:yabause/src/ctrl/src/yabause.c LoadBios(init->biospath) into BiosRom T2MemoryInit(0x80000); yabsys.emulatebios = 1 fallback",
             "source:yabause/src/sys/memory/src/memory.c LoadBios (T123Load BiosRom 0x80000, logs 'ST-V Emulation mode'/'Saturn Emulation mode')",
             "source:yabause/src/ctrl/src/stv.c STVGetRomList loads \"%s/stvbios.zip\" first then scans *.zip, writes gamelistv2.save; Bios table 'stvbios'/'STV Bios' with epr-*.ic8/stv110.bin/stv1061.bin blobs and stv_favorite_region (E=EU default)",
-            "repo:crates/lunchbox-app/src/firmware.rs (no kronos firmware_rules entries)"
+            "repo:crates/lunchpail-app/src/firmware.rs (no kronos firmware_rules entries)"
           ]
         },
         {
@@ -120,12 +120,12 @@
         },
         {
           "purpose": "bios",
-          "path": "Same settings as Linux: General/Bios file path (emulated-BIOS fallback via General/EnableEmulatedBios), stvbios.zip required inside the ST-V rom folder (Cartridge/Path) for ST-V play. No lunchbox firmware_rules resolution exists for kronos on any platform",
+          "path": "Same settings as Linux: General/Bios file path (emulated-BIOS fallback via General/EnableEmulatedBios), stvbios.zip required inside the ST-V rom folder (Cartridge/Path) for ST-V play. No lunchpail firmware_rules resolution exists for kronos on any platform",
           "naming": "Saturn BIOS user-selected file (conventionally saturn.bin); ST-V BIOS exactly stvbios.zip",
           "evidence": [
             "source:yabause/src/port/qt/YabauseThread.cpp biospath wiring",
             "source:yabause/src/ctrl/src/stv.c stvbios.zip scan",
-            "repo:crates/lunchbox-app/src/firmware.rs (no kronos entries)"
+            "repo:crates/lunchpail-app/src/firmware.rs (no kronos entries)"
           ]
         },
         {

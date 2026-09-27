@@ -1,0 +1,772 @@
+use cxx_qt_build::{CxxQtBuilder, QmlModule};
+use quick_xml::Reader;
+use quick_xml::events::Event;
+use std::fmt::Write as _;
+use std::fs;
+use std::io::BufReader;
+use std::path::{Path, PathBuf};
+
+#[derive(Default)]
+struct GameFields {
+    database_id: Option<i64>,
+    title: Option<String>,
+    source: Option<String>,
+    notes: Option<String>,
+    genre: Option<String>,
+    clone_of: Option<String>,
+    application_path: Option<String>,
+    version: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GeneratedArcadeSubtype {
+    Standard,
+    Pinball,
+    Laserdisc,
+}
+
+impl GeneratedArcadeSubtype {
+    fn rust_variant_name(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard",
+            Self::Pinball => "Pinball",
+            Self::Laserdisc => "Laserdisc",
+        }
+    }
+}
+
+struct GeneratedArcadeEntry {
+    database_id: i64,
+    title: String,
+    source: String,
+    subtype: GeneratedArcadeSubtype,
+    preferred_lookup: String,
+    video_lookup: String,
+    lookup_rank: u8,
+    gambling: bool,
+}
+
+fn main() {
+    println!("cargo:rerun-if-env-changed=LUNCHPAIL_SDL3_LIBRARY");
+    if let Ok(path) = std::env::var("LUNCHPAIL_SDL3_LIBRARY") {
+        println!("cargo:rustc-env=LUNCHPAIL_SDL3_LIBRARY={path}");
+    }
+    // Printing any rerun-if-changed disables Cargo's default whole-package
+    // invalidation, so the QML tree must be declared explicitly: without
+    // this, QML-only edits never rerun the build script and the binary
+    // keeps embedding the stale staged copies.
+    rerun_on_source_changes(
+        &PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"))
+            .join("qml"),
+    );
+    rerun_on_source_changes(
+        &PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"))
+            .join("include"),
+    );
+    generate_arcade_lookup();
+    generate_platform_record_index();
+    generate_retroarch_core_index();
+    generate_build_identity();
+    let platform_resources = generate_platform_resources();
+
+    CxxQtBuilder::new_qml_module(
+        QmlModule::new("Lunchpail")
+            .depend("QtQuick.Layouts")
+            .depend("QtCore")
+            .depend("QtMultimedia")
+            .qml_files([
+                "qml/AcceleratedWheelHandler.qml",
+                "qml/VisibleArtworkPriority.qml",
+                "qml/GameModsPane.qml",
+                "qml/CommunityPatchesPane.qml",
+                "qml/RetroAchievementsPane.qml",
+                "qml/RetroAchievementsSettings.qml",
+                "qml/LbCheckBox.qml",
+                "qml/LbOptionLabel.qml",
+                "qml/LbSwitch.qml",
+                "qml/LbRadioButton.qml",
+                "qml/LbSlider.qml",
+                "qml/MomentumWheelHandler.qml",
+                "qml/MomentumFlickable.qml",
+                "qml/MomentumListView.qml",
+                "qml/MomentumGridView.qml",
+                "qml/MomentumScrollView.qml",
+                "qml/WindowPlacement.qml",
+                "qml/StartupPresentation.qml",
+                "qml/ProbeArguments.qml",
+                "qml/DesktopGamepadNavigation.qml",
+                "qml/ControllerAutomaticSetup.qml",
+                "qml/ControllerTargetFilter.qml",
+                "qml/GuidedControllerSetup.qml",
+                "qml/ControllerMappingView.qml",
+                "qml/ControllerRelativeMappingView.qml",
+                "qml/ControllerLayoutExplorer.qml",
+                "qml/ControllerRelativeDeviceForm.qml",
+                "qml/ControllerAbsoluteSettingsDialog.qml",
+                "qml/ControllerNativeRuntimeDialog.qml",
+                "qml/ControllerFbneoSetupDialog.qml",
+                "qml/ControllerMameSetupDialog.qml",
+                "qml/ControllerCoverageDialog.qml",
+                "qml/ControllerInputFeedback.qml",
+                "qml/ControllerCalibrationWizard.qml",
+                "qml/PixelAlignedText.qml",
+                "qml/Brawler64Diagram.qml",
+                "qml/Brawler64Geometry.qml",
+                "qml/AlphabetRail.qml",
+                "qml/AppIcon.qml",
+                "qml/LibraryMenu.qml",
+                "qml/LbControlBackground.qml",
+                "qml/LbButton.qml",
+                "qml/LbButtonLabel.qml",
+                "qml/LbComboBox.qml",
+                "qml/LbDialog.qml",
+                "qml/LbFrame.qml",
+                "qml/LbItemDelegate.qml",
+                "qml/LbRoundButton.qml",
+                "qml/FavoriteButton.qml",
+                "qml/LbScrollBar.qml",
+                "qml/LbSpinBox.qml",
+                "qml/LbTabButton.qml",
+                "qml/LbTextArea.qml",
+                "qml/LbTextField.qml",
+                "qml/LbToolButton.qml",
+                "qml/SemanticIcon.qml",
+                "qml/ArtworkMat.qml",
+                "qml/AuditMetric.qml",
+                "qml/CatalogLinkButton.qml",
+                "qml/ClearableSearchField.qml",
+                "qml/CollectionMetric.qml",
+                "qml/GameFileIdentityDialog.qml",
+                "qml/CollectionMemberPresentationDialog.qml",
+                "qml/CouchAudioSettings.qml",
+                "qml/CouchBackgroundMusic.qml",
+                "qml/CouchDownloadScreen.qml",
+                "qml/CouchGameShelf.qml",
+                "qml/CouchGameBrowser.qml",
+                "qml/CouchGameCard.qml",
+                "qml/CouchLaunchScreen.qml",
+                "qml/CouchModeView.qml",
+                "qml/Box3DViewer.qml",
+                "qml/BulkMetadataEditor.qml",
+                "qml/DownloadReviewDialog.qml",
+                "qml/EmuMoviesTransferStatus.qml",
+                "qml/EmulatorManagerRow.qml",
+                "qml/FilterToggle.qml",
+                "qml/FirmwareAuditView.qml",
+                "qml/FirmwareSetupPage.qml",
+                "qml/FirstRunSetup.qml",
+                "qml/FullscreenMediaView.qml",
+                "qml/GameDownloadStatus.qml",
+                "qml/GameDetailsStatusCard.qml",
+                "qml/GameFilesCard.qml",
+                "qml/GameSaveLocationsCard.qml",
+                "qml/GamePlayHero.qml",
+                "qml/GameSoundtrackCard.qml",
+                "qml/GameTorrentSources.qml",
+                "qml/GameWindowBehavior.qml",
+                "qml/GridHoverFocusState.qml",
+                "qml/HeaderButton.qml",
+                "qml/HorizontalWheelHandler.qml",
+                "qml/HoverPreviewPresentation.qml",
+                "qml/HoverMarqueeText.qml",
+                "qml/MediaPreviewActivity.qml",
+                "qml/InlineProgressBar.qml",
+                "qml/LaunchCommandPreview.qml",
+                "qml/LibraryAuditHistory.qml",
+                "qml/LoadedTorrentPicker.qml",
+                "qml/LocalProviderManifests.qml",
+                "qml/MetadataField.qml",
+                "qml/MetadataEnrichmentDialog.qml",
+                "qml/MediaDownloadStatus.qml",
+                "qml/MediaRepairRecoveryBanner.qml",
+                "qml/MediaRetryController.qml",
+                "qml/NativeTextArea.qml",
+                "qml/NotificationHistory.qml",
+                "qml/SessionSaveRecovery.qml",
+                "qml/PaneButton.qml",
+                "qml/PlatformSearchState.qml",
+                "qml/PreviewAudioCompanion.qml",
+                "qml/RomDownloadStatus.qml",
+                "qml/RomScanScheduleCard.qml",
+                "qml/RetryingMediaPlayer.qml",
+                "qml/VideoSeekSlider.qml",
+                "qml/ReleaseFilterPanel.qml",
+                "qml/ScreenScraperSettings.qml",
+                "qml/SaveCloudSettings.qml",
+                "qml/SecretField.qml",
+                "qml/SidebarNavButton.qml",
+                "qml/SettingsNavButton.qml",
+                "qml/TorrentPayloadPicker.qml",
+                "qml/TorrentPlatformRegistration.qml",
+                "qml/TorrentSourceBatchReview.qml",
+                "qml/ViewportCardGeometry.qml",
+                "qml/WatchedTorrentInbox.qml",
+                "qml/Main.qml",
+            ]),
+    )
+    .crate_include_root(Some("include".to_owned()))
+    .qrc(platform_resources)
+    .qt_module("Quick")
+    .qt_module("QuickControls2")
+    .qt_module("Widgets")
+    .qt_module("Quick3D")
+    .qt_module("Multimedia")
+    .file("src/build_info.rs")
+    .file("src/desktop_application.rs")
+    .file("src/collection_identity_model.rs")
+    .file("src/download_queue_model.rs")
+    .file("src/emumovies_model.rs")
+    .file("src/emulator_manager_model.rs")
+    .file("src/emulator_update_model.rs")
+    .file("src/external_torrent_model.rs")
+    .file("src/firmware_audit_model.rs")
+    .file("src/game_details_model.rs")
+    .file("src/game_mods_model.rs")
+    .file("src/patch_catalog_model.rs")
+    .file("src/retroachievements_model.rs")
+    .file("src/gamepad_input.rs")
+    .file("src/igdb_model.rs")
+    .file("src/launch_profile_manager_model.rs")
+    .file("src/library_audit_model.rs")
+    .file("src/library_model.rs")
+    .file("src/media_audit_model.rs")
+    .file("src/local_import_model.rs")
+    .file("src/local_provider_manifest_model.rs")
+    .file("src/native_file_dialog.rs")
+    .file("src/screenscraper_model.rs")
+    .file("src/save_sync_model.rs")
+    .file("src/settings_model.rs")
+    .file("src/single_instance.rs")
+    .file("src/steamgriddb_model.rs")
+    .file("src/web_artwork_model.rs")
+    .file("src/watched_torrent_model.rs")
+    .file("src/window_icon.rs")
+    .build();
+}
+
+/// Write generated build output only when its bytes changed. Cargo keys
+/// build-script freshness off output mtimes, so an unconditional rewrite
+/// invalidates the whole crate below on every single build.
+fn write_if_changed(path: &Path, contents: &str, what: &str) {
+    if fs::read_to_string(path).is_ok_and(|current| current == contents) {
+        return;
+    }
+    fs::write(path, contents).unwrap_or_else(|error| panic!("failed to write {what}: {error}"));
+}
+
+fn generate_platform_record_index() {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let records_directory = manifest_directory.join("../../emulator_details/records");
+    println!("cargo:rerun-if-changed={}", records_directory.display());
+
+    let mut records = fs::read_dir(&records_directory)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read emulator platform records at {}: {error}",
+                records_directory.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect::<Vec<_>>();
+    records.sort();
+
+    let mut generated = String::from("const RECORDS: &[&str] = &[\n");
+    for path in records {
+        println!("cargo:rerun-if-changed={}", path.display());
+        writeln!(generated, "    include_str!({:?}),", path)
+            .expect("writing platform-record index");
+    }
+    generated.push_str("];\n");
+
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
+        .join("platform_records.rs");
+    write_if_changed(&output, &generated, "platform-record index");
+}
+
+/// Embed every RetroArch core record so adapter logic can serve per-core
+/// firmware files/checksums, save/state naming, and controller contracts
+/// without a database round-trip.
+fn generate_retroarch_core_index() {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let cores_directory = manifest_directory.join("../../emulator_details/retroarch-cores");
+    println!("cargo:rerun-if-changed={}", cores_directory.display());
+
+    let mut cores = fs::read_dir(&cores_directory)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read RetroArch core records at {}: {error}",
+                cores_directory.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect::<Vec<_>>();
+    cores.sort();
+
+    let mut generated = String::from("const CORE_RECORDS: &[&str] = &[\n");
+    for path in cores {
+        println!("cargo:rerun-if-changed={}", path.display());
+        writeln!(generated, "    include_str!({:?}),", path).expect("writing retroarch-core index");
+    }
+    generated.push_str("];\n");
+
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
+        .join("retroarch_core_records.rs");
+    write_if_changed(&output, &generated, "retroarch-core index");
+}
+
+fn generate_platform_resources() -> PathBuf {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let icon_directory = manifest_directory.join("../../assets/platforms");
+    let search_icon = manifest_directory.join("qml/icons/search.svg");
+    let couch_icon = manifest_directory.join("qml/icons/couch.svg");
+    let window_minimize_icon = manifest_directory.join("qml/icons/window-minimize.svg");
+    let window_maximize_icon = manifest_directory.join("qml/icons/window-maximize.svg");
+    let window_restore_icon = manifest_directory.join("qml/icons/window-restore.svg");
+    let window_close_icon = manifest_directory.join("qml/icons/window-close.svg");
+    let app_icon = manifest_directory.join("../../assets/lunchpail.svg");
+    println!("cargo:rerun-if-changed={}", icon_directory.display());
+    println!("cargo:rerun-if-changed={}", search_icon.display());
+    println!("cargo:rerun-if-changed={}", couch_icon.display());
+    for icon in [
+        &window_minimize_icon,
+        &window_maximize_icon,
+        &window_restore_icon,
+        &window_close_icon,
+    ] {
+        println!("cargo:rerun-if-changed={}", icon.display());
+    }
+    println!("cargo:rerun-if-changed={}", app_icon.display());
+
+    let mut icons = fs::read_dir(&icon_directory)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read platform icons at {}: {error}",
+                icon_directory.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "png"))
+        .collect::<Vec<_>>();
+    icons.sort();
+
+    let mut qrc = String::from("<RCC>\n  <qresource prefix=\"/platforms\">\n");
+    for path in icons {
+        println!("cargo:rerun-if-changed={}", path.display());
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("platform icon filename is not UTF-8");
+        writeln!(qrc, "    <file alias=\"{name}\">{}</file>", path.display())
+            .expect("writing platform resource manifest");
+    }
+    qrc.push_str("  </qresource>\n");
+    writeln!(
+        qrc,
+        "  <qresource prefix=\"/qt/qml/Lunchpail/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n    <file alias=\"couch.svg\">{}</file>\n    <file alias=\"window-minimize.svg\">{}</file>\n    <file alias=\"window-maximize.svg\">{}</file>\n    <file alias=\"window-restore.svg\">{}</file>\n    <file alias=\"window-close.svg\">{}</file>\n    <file alias=\"lunchpail.svg\">{}</file>\n  </qresource>",
+        search_icon.display(),
+        couch_icon.display(),
+        window_minimize_icon.display(),
+        window_maximize_icon.display(),
+        window_restore_icon.display(),
+        window_close_icon.display(),
+        app_icon.display()
+    )
+    .expect("writing search icon resource manifest");
+    qrc.push_str("</RCC>\n");
+
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
+        .join("platform_icons.qrc");
+    write_if_changed(&output, &qrc, "platform icon resource manifest");
+    output
+}
+
+/// Embed the identity of the running build: its short git revision and the
+/// time it was compiled, so a dev build is identifiable in the UI.
+fn generate_build_identity() {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    // Re-run whenever any crate source changes, so the embedded identity
+    // describes this build rather than an earlier one.
+    rerun_on_source_changes(&manifest_directory.join("src"));
+    for shared in [
+        "../../.git/HEAD",
+        "../../.git/packed-refs",
+        "../../.git/refs/heads",
+    ] {
+        println!(
+            "cargo:rerun-if-changed={}",
+            manifest_directory.join(shared).display()
+        );
+    }
+
+    let configured = std::env::var("LUNCHPAIL_BUILD_HASH").unwrap_or_default();
+    let configured = configured.trim();
+    let revision = if configured.is_empty() {
+        git_revision(&manifest_directory).unwrap_or_else(|| "unknown".to_string())
+    } else {
+        configured.to_string()
+    };
+    println!("cargo:rustc-env=LUNCHPAIL_BUILD_HASH={revision}");
+
+    let built = match std::env::var("LUNCHPAIL_BUILT_UNIX") {
+        // The dev shell sets `now` so local builds show the real time even
+        // though nixpkgs exports a reproducible `SOURCE_DATE_EPOCH`.
+        Ok(value) if value.trim() == "now" => unix_now(),
+        Ok(value) => value.trim().parse::<u64>().unwrap_or_else(|_| unix_now()),
+        Err(_) => std::env::var("SOURCE_DATE_EPOCH")
+            .ok()
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .unwrap_or_else(unix_now),
+    };
+    println!("cargo:rustc-env=LUNCHPAIL_BUILT_UNIX={built}");
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+fn rerun_on_source_changes(directory: &Path) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => rerun_on_source_changes(&path),
+            Ok(kind) if kind.is_file() => {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn git_revision(directory: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .current_dir(directory)
+        .args(["rev-parse", "--short=12", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let revision = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if revision.is_empty() {
+        return None;
+    }
+    let dirty = std::process::Command::new("git")
+        .current_dir(directory)
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some_and(|output| !output.stdout.is_empty());
+    Some(if dirty {
+        format!("{revision}+")
+    } else {
+        revision
+    })
+}
+
+fn arcade_source_path() -> PathBuf {
+    std::env::var_os("LUNCHPAIL_ARCADE_XML")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("launchbox-data")
+                .join("Arcade.xml")
+        })
+}
+
+fn generate_arcade_lookup() {
+    println!("cargo:rerun-if-env-changed=LUNCHPAIL_ARCADE_XML");
+    let source_path = arcade_source_path();
+    println!("cargo:rerun-if-changed={}", source_path.display());
+
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
+    let output_path = Path::new(&out_dir).join("arcade_lookup.rs");
+
+    let Ok(file) = fs::File::open(&source_path) else {
+        write_if_changed(
+            &output_path,
+            "pub static ARCADE_LOOKUP: &[ArcadeLookupEntry] = &[];\n",
+            "empty arcade lookup",
+        );
+        return;
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(file));
+    reader.config_mut().trim_text(true);
+
+    let mut buffer = Vec::new();
+    let mut current_game: Option<GameFields> = None;
+    let mut current_field: Option<String> = None;
+    let mut entries = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buffer) {
+            Ok(Event::Start(ref event)) => {
+                let tag_name = String::from_utf8_lossy(event.name().as_ref()).to_string();
+                if tag_name == "Game" {
+                    current_game = Some(GameFields::default());
+                    current_field = None;
+                } else if current_game.is_some() {
+                    current_field = Some(tag_name);
+                }
+            }
+            Ok(Event::End(ref event)) => {
+                let tag_name = String::from_utf8_lossy(event.name().as_ref()).to_string();
+                if tag_name == "Game" {
+                    if let Some(game) = current_game.take()
+                        && let Some(database_id) = game.database_id
+                    {
+                        let subtype = classify_arcade_subtype(&game);
+                        let lookup = choose_arcade_lookup(&game);
+                        if subtype != GeneratedArcadeSubtype::Standard || lookup.is_some() {
+                            let (lookup_rank, preferred_lookup, video_lookup) =
+                                lookup.unwrap_or_else(|| (0, String::new(), String::new()));
+                            entries.push(GeneratedArcadeEntry {
+                                gambling: is_gambling_machine(&game),
+                                database_id,
+                                title: game.title.unwrap_or_default(),
+                                source: game.source.unwrap_or_default(),
+                                subtype,
+                                preferred_lookup,
+                                video_lookup,
+                                lookup_rank,
+                            });
+                        }
+                    }
+                    current_field = None;
+                } else if current_game.is_some() {
+                    current_field = None;
+                }
+            }
+            Ok(Event::Text(ref event)) => {
+                if let (Some(game), Some(field)) = (&mut current_game, &current_field) {
+                    let text = event.unescape().unwrap_or_default().to_string();
+                    if !text.is_empty() {
+                        match field.as_str() {
+                            "ApplicationPath" => game.application_path = Some(text),
+                            "CloneOf" => game.clone_of = Some(text),
+                            "DatabaseID" => game.database_id = text.parse().ok(),
+                            "Genre" => game.genre = Some(text),
+                            "Notes" => game.notes = Some(text),
+                            "Source" => game.source = Some(text),
+                            "Title" => game.title = Some(text),
+                            "Version" => game.version = Some(text),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => panic!(
+                "failed to parse arcade lookup source {}: {error}",
+                source_path.display()
+            ),
+            _ => {}
+        }
+        buffer.clear();
+    }
+
+    entries.sort_by(
+        |left: &GeneratedArcadeEntry, right: &GeneratedArcadeEntry| {
+            left.database_id
+                .cmp(&right.database_id)
+                .then_with(|| left.title.cmp(&right.title))
+                .then_with(|| left.preferred_lookup.cmp(&right.preferred_lookup))
+                .then_with(|| left.source.cmp(&right.source))
+        },
+    );
+
+    let mut generated = String::from("pub static ARCADE_LOOKUP: &[ArcadeLookupEntry] = &[\n");
+    for entry in entries {
+        generated.push_str(&format!(
+            "    ArcadeLookupEntry {{ database_id: {}, title: {:?}, source: {:?}, subtype: ArcadeSubtype::{}, preferred_lookup: {:?}, video_lookup: {:?}, lookup_rank: {}, gambling: {} }},\n",
+            entry.database_id,
+            entry.title,
+            entry.source,
+            entry.subtype.rust_variant_name(),
+            entry.preferred_lookup,
+            entry.video_lookup,
+            entry.lookup_rank,
+            entry.gambling
+        ));
+    }
+    generated.push_str("];\n");
+    write_if_changed(&output_path, &generated, "arcade lookup");
+}
+
+fn choose_arcade_lookup(game: &GameFields) -> Option<(u8, String, String)> {
+    let preferred_lookup = game
+        .application_path
+        .as_deref()
+        .and_then(rom_stem_from_path)
+        .map(|stem| (3, stem.to_ascii_lowercase()))
+        .or_else(|| {
+            game.version.as_deref().and_then(|version| {
+                let version = version.trim();
+                looks_like_romset_id(version).then(|| (2, version.to_ascii_lowercase()))
+            })
+        })
+        .or_else(|| {
+            game.clone_of.as_deref().and_then(|clone_of| {
+                let clone_of = clone_of.trim();
+                (!clone_of.is_empty()).then(|| (1, clone_of.to_ascii_lowercase()))
+            })
+        })?;
+
+    let video_lookup = game
+        .clone_of
+        .as_deref()
+        .map(str::trim)
+        .filter(|clone_of| !clone_of.is_empty())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| preferred_lookup.1.clone());
+
+    Some((preferred_lookup.0, preferred_lookup.1, video_lookup))
+}
+
+fn is_gambling_machine(game: &GameFields) -> bool {
+    let genre = game
+        .genre
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    ["fruit machine", "slot machine", "reels", "gambl", "casino"]
+        .iter()
+        .any(|kind| genre.contains(kind))
+}
+
+fn classify_arcade_subtype(game: &GameFields) -> GeneratedArcadeSubtype {
+    // Scraped notes can describe a different game with the same name. The
+    // imported machine genre is more specific than those shared descriptions.
+    if is_gambling_machine(game) {
+        return GeneratedArcadeSubtype::Standard;
+    }
+    let normalized = game
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.replace('\\', "/").to_ascii_lowercase())
+        .unwrap_or_default();
+    if normalized.starts_with("pinball/") {
+        return GeneratedArcadeSubtype::Pinball;
+    }
+
+    if matches!(
+        normalized.as_str(),
+        "amiga/alg.cpp"
+            | "atari/firefox.cpp"
+            | "cinematronics/dlair.cpp"
+            | "cinematronics/dlair2.cpp"
+            | "dataeast/deco_ld.cpp"
+            | "misc/cubeqst.cpp"
+            | "misc/istellar.cpp"
+            | "misc/thayers.cpp"
+            | "sega/gpworld.cpp"
+            | "sega/segald.cpp"
+            | "sega/timetrv.cpp"
+            | "stern/cliffhgr.cpp"
+            | "universal/superdq.cpp"
+    ) {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    let genre = game
+        .genre
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if genre.contains("laserdisc") {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    let notes = game
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if [
+        "arcade laserdisc game",
+        "game on laserdisc",
+        "laserdisc fmv arcade game",
+        "laserdisc game",
+        "laserdisc video game",
+        "laserdisc-based",
+        "laserdisc based",
+        "laserdisc-streamed",
+        "laserdisc streamed",
+        "live-action laserdisc",
+        "only laserdisc game",
+    ]
+    .iter()
+    .any(|phrase| notes.contains(phrase))
+    {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    let version = game
+        .version
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if [
+        "pioneer ld",
+        "sony ld",
+        "data east ld",
+        "amld",
+        "(dld)",
+        " laserdisc",
+    ]
+    .iter()
+    .any(|phrase| version.contains(phrase))
+    {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    GeneratedArcadeSubtype::Standard
+}
+
+fn rom_stem_from_path(path: &str) -> Option<&str> {
+    let file_name = path
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|segment| !segment.is_empty())?;
+    let stem = file_name
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(file_name);
+    (!stem.is_empty()).then_some(stem)
+}
+
+fn looks_like_romset_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 24
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}

@@ -59,7 +59,7 @@
           ]
         },
         {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:dosbox-staging/dosbox-staging@d9135010ea56c2faa0bb8062aaf30a8541bf22f3 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
-      "notes": "Lunchbox can treat ~/.config/dosbox/ as the settings root; per-game dosbox.conf files next to game folders are the intended per-title override point."
+      "notes": "Lunchpail can treat ~/.config/dosbox/ as the settings root; per-game dosbox.conf files next to game folders are the intended per-title override point."
     },
     "linux-flatpak": {
       "paths": [

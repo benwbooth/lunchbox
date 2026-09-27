@@ -1,7 +1,7 @@
 {
   "legacy_catalog": {
     "file": {
-      "path": "lunchbox-games.db",
+      "path": "lunchpail-games.db",
       "bytes": 284569600,
       "sha256": "50b204be7afb2a25af3da349cec628fdf13fe4b8d14664837b489b99641d142b"
     },

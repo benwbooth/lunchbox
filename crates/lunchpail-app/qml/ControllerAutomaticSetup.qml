@@ -1,0 +1,2180 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+ColumnLayout {
+    id: setup
+    required property var settingsModel
+    required property var gamepad
+    LbDialog {
+        id: mameNativeEditor
+        property var reviews: []
+        readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
+        title: "Standalone MAME panels — partial native Linux"
+        modal: true
+        width: Math.min(800, setup.Window.width - 40)
+        standardButtons: Dialog.Close
+        onVisibleChanged: if (!setup.visible) close()
+        ColumnLayout {
+            anchors.fill: parent
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Edit a JSON list of emulator_id, executable, executable_sha256, joystick_provider and players. Each player has player (1–8), controller_id, native_device_id, panel (six/eight), and controls for up/down/left/right/start/coin/button1–6 or button1–8. Controls use native MAME items, e.g. {\"kind\":\"button\",\"number\":1} or {\"kind\":\"hat\",\"number\":1,\"direction\":\"up\"}. Native device IDs and item numbers must not be guessed from SDL/joydev. Launch also requires cfg_directory and runtime {probe_program, sdl_library} with absolute paths. threshold_basis_points defaults to 3000 (0.3). Partial raw-SDL dispatch is untested."
+            }
+            MomentumScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 240
+                LbTextArea { id: mameNativeText; wrapMode: TextEdit.Wrap; selectByMouse: true; onTextChanged: mameNativeEditor.reviews = [] }
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Optional per-player source_controls links targets to saved physical layout IDs, e.g. {\"button1\":\"b\",\"coin\":\"select\"}. Review shows these declared links on both diagrams; native correspondence remains unverified."
+            }
+            RowLayout {
+                LbButton {
+                    text: "Review declarations"
+                    onClicked: {
+                        const result = JSON.parse(setup.settingsModel.review_mame_native_setups(mameNativeText.text))
+                        mameNativeResult.text = result.error || "Declared native routes only. Physical source-to-token correspondence and launch readiness are not verified."
+                        mameNativeEditor.reviews = result.error ? [] : result.setups.reduce((players, item) => players.concat(item.players), [])
+                    }
+                }
+                LbButton {
+                    text: "Stage setups"
+                    onClicked: {
+                        const error = setup.settingsModel.stage_mame_native_setups(mameNativeText.text)
+                        mameNativeResult.text = error || "Staged. Settings save automatically. Native raw SDL dispatch is partial and untested; no device discovery or emulator launch was performed."
+                    }
+                }
+            }
+            MomentumScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 280
+                ColumnLayout {
+                    width: parent.width
+                    Repeater {
+                        model: mameNativeEditor.reviews
+                        delegate: ColumnLayout {
+                            id: mamePanelReview
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Label { text: "Player " + modelData.player + " · " + modelData.controller_id + " · declared native assignments" }
+                            ControllerMappingView {
+                                Layout.fillWidth: true
+                                settingsModel: setup.settingsModel
+                                destinationLayout: mameNativeEditor.catalog.layouts.find(layout => layout.id === mamePanelReview.modelData.target_layout) || null
+                                sourceLayout: mameNativeEditor.catalog.layouts.find(layout => layout.id === mamePanelReview.modelData.source_layout) || null
+                                rows: Object.keys(mamePanelReview.modelData.bindings).map(control => ({
+                                    target_id: control === "coin" && destinationLayout && destinationLayout.controls.some(item => item.id === "select") ? "select" : control,
+                                    target: control === "coin" ? "Coin" : control,
+                                    physical_id: mamePanelReview.modelData.source_controls[control] || null,
+                                    physical: mamePanelReview.modelData.source_labels[mamePanelReview.modelData.source_controls[control]] || "Source control not linked",
+                                    output: mamePanelReview.modelData.bindings[control],
+                                    input: null,
+                                    reason: "User-declared source link; native token correspondence not verified"
+                                }))
+                            }
+                        }
+                    }
+                }
+            }
+            MomentumScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 180
+                LbTextArea { id: mameNativeResult; readOnly: true; wrapMode: TextEdit.Wrap; selectByMouse: true }
+            }
+        }
+    }
+    LbButton {
+        text: "Standalone MAME panels…"
+        onClicked: {
+            mameNativeText.text = setup.settingsModel.mame_native_setups_json()
+            mameNativeResult.text = "Partial native raw SDL dispatch. Set cfg_directory and runtime {probe_program, sdl_library} to absolute paths. Plain machine arguments and unique controller GUIDs are required. Changes to MAME cfg settings during play remain session-local."
+            mameNativeEditor.open()
+        }
+    }
+    property bool testInput: false
+    onVisibleChanged: { if (!visible) { mameNativeEditor.close(); duckstationSetups.close(); nativeCapture.close(); nativeRuntime.close(); fbneoSetups.close(); mameSetups.close(); relativeSettings.close(); relativeForm.close(); absoluteSettings.close(); layoutExplorer.close(); arcadePreview.close() } }
+    readonly property bool calibrationActive: calibration.visible || nativeCapture.visible
+    readonly property var calibrationContentItem: nativeCapture.visible ? nativeCapture.contentItem : calibration.contentItem
+    readonly property string calibratedCoverage: {
+        if (calibration.catalog.host_os !== "linux")
+            return "Calibrated launch adapters for this OS are not implemented yet."
+        const profiles = calibration.catalog.emulator_profiles.filter(profile => profile.retroarch_launch)
+        return "Linux RetroArch (native or Flatpak): " + profiles.map(profile => profile.name.replace("RetroArch · ", "")).join(", ") + "."
+    }
+    function openCalibrationFor(index, layoutId) {
+        calibration.openFor(settingsModel.controller_key_at(index), settingsModel.controller_name_at(index))
+        if (layoutId) {
+            const choice = calibration.catalog.layouts.findIndex(item => item.id === layoutId)
+            if (choice >= 0) calibration.resetLayout(choice)
+        }
+    }
+    ControllerCalibrationWizard {
+        id: calibration
+        settingsModel: setup.settingsModel
+        gamepad: setup.gamepad
+    }
+    ControllerCoverageDialog {
+        id: coverage
+        settingsModel: setup.settingsModel
+        onNativeRuntimeRequested: nativeRuntime.loadAndOpen()
+        onPerGameSetupRequested: function(core) {
+            if (core === "mame") mameSetups.loadAndOpen()
+            else if (core === "fbneo") fbneoSetups.loadAndOpen()
+        }
+    }
+    ControllerNativeRuntimeDialog {
+        id: nativeRuntime
+        settingsModel: setup.settingsModel
+    }
+    LbButton {
+        text: "jgenesis Genesis setups…"
+        onClicked: {
+            duckstationSetups.adapter = "jgenesis-native"
+            duckstationEditor.text = setup.settingsModel.jgenesis_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private jgenesis-config.toml; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "b2 BBC Micro setups…"
+        onClicked: {
+            duckstationSetups.adapter = "b2-native"
+            duckstationEditor.text = setup.settingsModel.b2_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch patches a copied b2.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Hypseus Singe setups…"
+        onClicked: {
+            duckstationSetups.adapter = "hypseus-native"
+            duckstationEditor.text = setup.settingsModel.hypseus_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages an exact SDL3 Gamepad order and private keymap/home while retaining a separate NVRAM directory; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Gopher64 N64 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "gopher64-native"
+            duckstationEditor.text = setup.settingsModel.gopher64_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch patches a copied config.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Gearsystem / Gearcoleco SDL3 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "gear-native"
+            duckstationEditor.text = setup.settingsModel.gear_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch uses a private SDL preference root, exact first-gamepad ordering, and preserved save/state destinations; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "XRoar SDL3 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "xroar-native"
+            duckstationEditor.text = setup.settingsModel.xroar_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch uses a private first-option config and rechecks exact SDL3 joystick order and bindings; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "ZEsarUX Kempston setups…"
+        onClicked: {
+            duckstationSetups.adapter = "zesarux-native"
+            duckstationEditor.text = setup.settingsModel.zesarux_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch uses a copied first-option config plus an exact launch-owned joydev link; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Oricutron joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "oricutron-native"
+            duckstationEditor.text = setup.settingsModel.oricutron_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch overlays only the executable-sibling oricutron.cfg and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Yaba Sanshiro 2 Saturn setups…"
+        onClicked: {
+            duckstationSetups.adapter = "yaba-sanshiro-native"
+            duckstationEditor.text = setup.settingsModel.yaba_sanshiro_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch overlays only a copied yabause.ini and rechecks measured SDL2 routing while retaining the real data root; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Kronos Saturn setups…"
+        onClicked: {
+            duckstationSetups.adapter = "kronos-native"
+            duckstationEditor.text = setup.settingsModel.kronos_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch overlays only a copied kronos.ini and rechecks exact raw-SDL2 routing while retaining the real data paths; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Atari++ AnalogJoystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "atari-plus-plus-native"
+            duckstationEditor.text = setup.settingsModel.atari_plus_plus_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the selected config and exact joydev nodes while preserving media/save/state paths; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "ARAnyM IKBD joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "aranym-native"
+            duckstationEditor.text = setup.settingsModel.aranym_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch overlays the selected config at its original path and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Atari800 digital joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "atari800-native"
+            duckstationEditor.text = setup.settingsModel.atari800_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch overlays the selected config at its original path and rechecks SDL2 names, duplicate-name slots and raw controls; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "NanoBoyAdvance GBA controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "nanoboyadvance-native"
+            duckstationEditor.text = setup.settingsModel.nanoboyadvance_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the selected config and rechecks the unique SDL3 GUID, raw controls, 16 KiB BIOS, and save/state root; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "VBA-M GBA controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "vba-m-native"
+            duckstationEditor.text = setup.settingsModel.vba_m_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch uses an explicit private Qt/wx config and rechecks exact raw SDL2/SDL3 controls, persistence roots, and any active GBA BIOS; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "86Box PC gameport setups…"
+        onClicked: {
+            duckstationSetups.adapter = "86box-native"
+            duckstationEditor.text = setup.settingsModel.eighty_six_box_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch overlays the exact machine 86box.cfg and rechecks SDL2 raw controls and enumeration; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "A7800 Pro-Line setups…"
+        onClicked: {
+            duckstationSetups.adapter = "a7800-native"
+            duckstationEditor.text = setup.settingsModel.a7800_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch builds a private A7800 controller profile and filtered config, rechecks the old fork's SDL2 name/item routing, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Gambatte Game Boy setups…"
+        onClicked: {
+            duckstationSetups.adapter = "gambatte-native"
+            duckstationEditor.text = setup.settingsModel.gambatte_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private gambatte_qt.conf [input] group, rechecks the exact SDL2 device order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Caprice32 CPC setups…"
+        onClicked: {
+            duckstationSetups.adapter = "caprice32-native"
+            duckstationEditor.text = setup.settingsModel.caprice32_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Vita3K Vita setups…"
+        onClicked: {
+            duckstationSetups.adapter = "vita3k-native"
+            duckstationEditor.text = setup.settingsModel.vita3k_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Play! PS2 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "play-native"
+            duckstationEditor.text = setup.settingsModel.play_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch runs in a session directory with a private evdev input profile, rechecks the exact evdev routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "ep128emu joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "ep128emu-native"
+            duckstationEditor.text = setup.settingsModel.ep128emu_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session .ep128emu config with joystick event rows, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "ADAMEm Coleco setups…"
+        onClicked: {
+            duckstationSetups.adapter = "adamem-native"
+            duckstationEditor.text = setup.settingsModel.adamem_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a private adamem.joy with fire/aim buttons, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "vector06sdl stick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "vector06sdl-native"
+            duckstationEditor.text = setup.settingsModel.vector06sdl_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session gamecontrollerdb.txt with the six stick outputs, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "SimCoupe SAM setups…"
+        onClicked: {
+            duckstationSetups.adapter = "simcoupe-native"
+            duckstationEditor.text = setup.settingsModel.simcoupe_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session SimCoupe.cfg selecting the pad by exact SDL name, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "PCem gameport setups…"
+        onClicked: {
+            duckstationSetups.adapter = "pcem-native"
+            duckstationEditor.text = setup.settingsModel.pcem_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch passes a private machine config with --config, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Tsugaru FM Towns setups…"
+        onClicked: {
+            duckstationSetups.adapter = "tsugaru-native"
+            duckstationEditor.text = setup.settingsModel.tsugaru_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch passes explicit ROM/CMOS/CD/game-port flags with PHYS0, rechecks the exact joydev routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "touchHLE touch setups…"
+        onClicked: {
+            duckstationSetups.adapter = "touchhle-native"
+            duckstationEditor.text = setup.settingsModel.touchhle_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch passes --button-to-touch options over the fixed SDL2 buttons, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "OpenBOR brawler setups…"
+        onClicked: {
+            duckstationSetups.adapter = "openbor-native"
+            duckstationEditor.text = setup.settingsModel.openbor_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session Saves/<pak>.cfg with measured joystick codes, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Supermodel arcade setups…"
+        onClicked: {
+            duckstationSetups.adapter = "supermodel-native"
+            duckstationEditor.text = setup.settingsModel.supermodel_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session Config/Supermodel.ini with the sdlgamepad backend, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Panda3DS 3DS setups…"
+        onClicked: {
+            duckstationSetups.adapter = "panda3ds-native"
+            duckstationEditor.text = setup.settingsModel.panda3ds_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch runs in a session directory with a private config.toml, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "DreamPotato VMU setups…"
+        onClicked: {
+            duckstationSetups.adapter = "dreampotato-native"
+            duckstationEditor.text = setup.settingsModel.dreampotato_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch patches a private configuration.json PrimaryInput, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Ymir Saturn setups…"
+        onClicked: {
+            duckstationSetups.adapter = "ymir-native"
+            duckstationEditor.text = setup.settingsModel.ymir_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session profile with a patched Ymir.toml, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "shadPS4 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "shadps4-native"
+            duckstationEditor.text = setup.settingsModel.shadps4_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages default.ini plus the per-game input file under XDG_DATA_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Azahar 3DS setups…"
+        onClicked: {
+            duckstationSetups.adapter = "azahar-native"
+            duckstationEditor.text = setup.settingsModel.azahar_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch runs in a session directory with a private qt-config.ini while saves survive through symlinks, rechecks the exact SDL2 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Uzem setups…"
+        onClicked: {
+            duckstationSetups.adapter = "uzem-native"
+            duckstationEditor.text = setup.settingsModel.uzem_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private joystick-settings binary in a session working directory, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "EKA2L1 phone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "eka2l1-native"
+            duckstationEditor.text = setup.settingsModel.eka2l1_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a session config.yml plus keybind profile, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Cemu Wii U setups…"
+        onClicked: {
+            duckstationSetups.adapter = "cemu-native"
+            duckstationEditor.text = setup.settingsModel.cemu_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private controller0.xml under XDG_CONFIG_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "PokeMini setups…"
+        onClicked: {
+            duckstationSetups.adapter = "pokemini-native"
+            duckstationEditor.text = setup.settingsModel.pokemini_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch runs a symlink sandbox with a private pokemini.cfg, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "GBE+ GBA setups…"
+        onClicked: {
+            duckstationSetups.adapter = "gbe-plus-native"
+            duckstationEditor.text = setup.settingsModel.gbe_plus_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private gbe.ini gamepad section under HOME, proves the pad is SDL index 0, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Amiberry Amiga setups…"
+        onClicked: {
+            duckstationSetups.adapter = "amiberry-native"
+            duckstationEditor.text = setup.settingsModel.amiberry_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private gamecontrollerdb plus joyport fragment, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Fuse Spectrum setups…"
+        onClicked: {
+            duckstationSetups.adapter = "fuse-native"
+            duckstationEditor.text = setup.settingsModel.fuse_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch patches a private fuserc under XDG_CONFIG_HOME, proves the pads hold SDL slots 0/1, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "LinApple Apple II setups…"
+        onClicked: {
+            duckstationSetups.adapter = "linapple-native"
+            duckstationEditor.text = setup.settingsModel.linapple_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch patches a private linapple.conf passed with --config, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "SkyEmu DS setups…"
+        onClicked: {
+            duckstationSetups.adapter = "skyemu-native"
+            duckstationEditor.text = setup.settingsModel.skyemu_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private <name>-bindings.bin, rechecks the exact SDL device order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Nestopia UE native setups…"
+        onClicked: {
+            duckstationSetups.adapter = "nestopia-ue-native"
+            duckstationEditor.text = setup.settingsModel.nestopia_ue_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private nestopia.conf/input.conf pair, rechecks the exact SDL enumeration order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "PicoDrive Genesis setups…"
+        onClicked: {
+            duckstationSetups.adapter = "picodrive-native"
+            duckstationEditor.text = setup.settingsModel.picodrive_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private binddev/bind config, rechecks the exact SDL device order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "RMG N64 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "rmg-native"
+            duckstationEditor.text = setup.settingsModel.rmg_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch patches copied RMG input-plugin profiles under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "simple64 N64 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "simple64-native"
+            duckstationEditor.text = setup.settingsModel.simple64_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch stages a private simple64 configuration while preserving the native save root; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "ScummVM setups…"
+        onClicked: {
+            duckstationSetups.adapter = "scummvm-native"
+            duckstationEditor.text = setup.settingsModel.scummvm_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private ini target under an isolated XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "openMSX MSX setups…"
+        onClicked: {
+            duckstationSetups.adapter = "openmsx-native"
+            duckstationEditor.text = setup.settingsModel.openmsx_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch isolates OPENMSX_HOME and loads a private settings file; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "DeSmuME DS setups…"
+        onClicked: {
+            duckstationSetups.adapter = "desmume-native"
+            duckstationEditor.text = setup.settingsModel.desmume_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch isolates XDG_CONFIG_HOME and writes the private JOYKEYS keyfile; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "xemu Xbox setups…"
+        onClicked: {
+            duckstationSetups.adapter = "xemu-native"
+            duckstationEditor.text = setup.settingsModel.xemu_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private -config_path file with the declared boot ROM, flash image and game; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "BlastEm Genesis setups…"
+        onClicked: {
+            duckstationSetups.adapter = "blastem-native"
+            duckstationEditor.text = setup.settingsModel.blastem_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch isolates HOME and binds the selected SDL devices to gamepad ports; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Mesen2 NES/PCE setups…"
+        onClicked: {
+            duckstationSetups.adapter = "mesen2-native"
+            duckstationEditor.text = setup.settingsModel.mesen2_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch isolates XDG_DATA_HOME and verifies the sole qualifying event device; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Hatari joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "hatari-native"
+            duckstationEditor.text = setup.settingsModel.hatari_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch isolates HOME and passes a private -c configuration with the declared TOS image; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "VICE joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "vice-native"
+            duckstationEditor.text = setup.settingsModel.vice_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch uses a private -config/-joymap pair with SDL2 probing; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Stella standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "stella-native"
+            duckstationEditor.text = setup.settingsModel.stella_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch uses a private -basedir and the SDL classic backend; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "bsnes standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "bsnes"
+            duckstationEditor.text = setup.settingsModel.bsnes_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch writes a private settings.bml through --settings; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "DuckStation standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "duckstation"
+            duckstationEditor.text = setup.settingsModel.duckstation_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native launch requires a saved trusted runtime; tests and runtime verification are deferred."
+            duckstationSetups.open()
+        }
+    }
+    LbDialog {
+        id: duckstationSetups
+        property string adapter: "duckstation"
+        readonly property bool ppsspp: adapter === "ppsspp"
+        readonly property bool mgba: adapter === "mgba"
+        readonly property bool dolphin: adapter === "dolphin"
+        readonly property bool snes9x: adapter === "snes9x"
+        readonly property bool nestopia: adapter === "nestopia"
+        readonly property bool punes: adapter === "punes"
+        readonly property bool fceux: adapter === "fceux"
+        readonly property bool sameboy: adapter === "sameboy"
+        readonly property bool bsnes: adapter === "bsnes"
+        readonly property bool stellaNative: adapter === "stella-native"
+        readonly property bool viceNative: adapter === "vice-native"
+        readonly property bool mesen2Native: adapter === "mesen2-native"
+        readonly property bool blastemNative: adapter === "blastem-native"
+        readonly property bool xemuNative: adapter === "xemu-native"
+        readonly property bool desmumeNative: adapter === "desmume-native"
+        readonly property bool openmsxNative: adapter === "openmsx-native"
+        readonly property bool scummvmNative: adapter === "scummvm-native"
+        readonly property bool jgenesisNative: adapter === "jgenesis-native"
+        readonly property bool gopher64Native: adapter === "gopher64-native"
+        readonly property bool gearNative: adapter === "gear-native"
+        readonly property bool xroarNative: adapter === "xroar-native"
+        readonly property bool zesaruxNative: adapter === "zesarux-native"
+        readonly property bool oricutronNative: adapter === "oricutron-native"
+        readonly property bool yabaSanshiroNative: adapter === "yaba-sanshiro-native"
+        readonly property bool kronosNative: adapter === "kronos-native"
+        readonly property bool atariPlusPlusNative: adapter === "atari-plus-plus-native"
+        readonly property bool aranymNative: adapter === "aranym-native"
+        readonly property bool atari800Native: adapter === "atari800-native"
+        readonly property bool nanoboyadvanceNative: adapter === "nanoboyadvance-native"
+        readonly property bool vbaMNative: adapter === "vba-m-native"
+        readonly property bool eightySixBoxNative: adapter === "86box-native"
+        readonly property bool a7800Native: adapter === "a7800-native"
+        readonly property bool gambatteNative: adapter === "gambatte-native"
+        readonly property bool picodriveNative: adapter === "picodrive-native"
+        readonly property bool nestopiaUeNative: adapter === "nestopia-ue-native"
+        readonly property bool skyemuNative: adapter === "skyemu-native"
+        readonly property bool linappleNative: adapter === "linapple-native"
+        readonly property bool fuseNative: adapter === "fuse-native"
+        readonly property bool amiberryNative: adapter === "amiberry-native"
+        readonly property bool gbePlusNative: adapter === "gbe-plus-native"
+        readonly property bool pokeminiNative: adapter === "pokemini-native"
+        readonly property bool uzemNative: adapter === "uzem-native"
+        readonly property bool eka2l1Native: adapter === "eka2l1-native"
+        readonly property bool cemuNative: adapter === "cemu-native"
+        readonly property bool azaharNative: adapter === "azahar-native"
+        readonly property bool shadps4Native: adapter === "shadps4-native"
+        readonly property bool ymirNative: adapter === "ymir-native"
+        readonly property bool dreampotatoNative: adapter === "dreampotato-native"
+        readonly property bool panda3dsNative: adapter === "panda3ds-native"
+        readonly property bool supermodelNative: adapter === "supermodel-native"
+        readonly property bool openborNative: adapter === "openbor-native"
+        readonly property bool touchhleNative: adapter === "touchhle-native"
+        readonly property bool tsugaruNative: adapter === "tsugaru-native"
+        readonly property bool pcemNative: adapter === "pcem-native"
+        readonly property bool simcoupeNative: adapter === "simcoupe-native"
+        readonly property bool vector06sdlNative: adapter === "vector06sdl-native"
+        readonly property bool adamemNative: adapter === "adamem-native"
+        readonly property bool ep128emuNative: adapter === "ep128emu-native"
+        readonly property bool playNative: adapter === "play-native"
+        readonly property bool vita3kNative: adapter === "vita3k-native"
+        readonly property bool caprice32Native: adapter === "caprice32-native"
+        readonly property bool b2Native: adapter === "b2-native"
+        readonly property bool hypseusNative: adapter === "hypseus-native"
+        readonly property bool rmgNative: adapter === "rmg-native"
+        readonly property bool simple64Native: adapter === "simple64-native"
+        readonly property bool hatariNative: adapter === "hatari-native"
+        readonly property bool mednafen: adapter === "mednafen"
+        readonly property bool flycastNative: adapter === "flycast-native"
+        readonly property bool melonds: adapter === "melonds"
+        readonly property bool rpcs3: adapter === "rpcs3"
+        readonly property bool pcsx2: adapter === "pcsx2"
+        readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
+        title: punes ? "puNES Flatpak setups — exact Linux deployment, first launch discovers" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — native and Flatpak Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES/PCE setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : eightySixBoxNative ? "86Box PC gameport setups — partial native Linux" : a7800Native ? "A7800 Pro-Line setups — partial native Linux" : gambatteNative ? "Gambatte Game Boy setups — partial native Linux" : picodriveNative ? "PicoDrive Genesis setups — partial native Linux" : nestopiaUeNative ? "Nestopia UE native setups — partial native Linux" : skyemuNative ? "SkyEmu DS setups — partial native Linux" : linappleNative ? "LinApple Apple II setups — partial native Linux" : caprice32Native ? "Caprice32 CPC setups — partial native Linux" : fuseNative ? "Fuse Spectrum setups — partial native Linux" : amiberryNative ? "Amiberry Amiga setups — partial native Linux" : gbePlusNative ? "GBE+ GBA setups — partial native Linux" : pokeminiNative ? "PokeMini setups — partial native Linux" : uzemNative ? "Uzem setups — partial native Linux" : eka2l1Native ? "EKA2L1 phone setups — partial native Linux" : vita3kNative ? "Vita3K Vita setups — partial native Linux" : cemuNative ? "Cemu Wii U setups — partial native Linux" : azaharNative ? "Azahar 3DS setups — partial native Linux" : shadps4Native ? "shadPS4 setups — partial native Linux" : ymirNative ? "Ymir Saturn setups — partial native Linux" : dreampotatoNative ? "DreamPotato VMU setups — partial native Linux" : panda3dsNative ? "Panda3DS 3DS setups — partial native" : supermodelNative ? "Supermodel arcade setups — partial native" : openborNative ? "OpenBOR brawler setups — partial native" : touchhleNative ? "touchHLE touch setups — partial native" : tsugaruNative ? "Tsugaru FM Towns setups — partial native" : pcemNative ? "PCem gameport setups — partial native Linux" : simcoupeNative ? "SimCoupe SAM setups — partial native Linux" : vector06sdlNative ? "vector06sdl stick setups — partial native" : adamemNative ? "ADAMEm Coleco setups — partial native Linux" : ep128emuNative ? "ep128emu joystick setups — partial native Linux" : playNative ? "Play! PS2 setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native and Flatpak Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native and Flatpak Linux"
+        width: Math.min(900, setup.width)
+        height: 640
+        modal: true
+        property var review: []
+        contentItem: ColumnLayout {
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: duckstationSetups.punes
+                    ? "puNES Flatpak 0.111: edit a JSON list with emulator_id, content, source_main_config, source_input_config, probe_program, executable_sha256, and one or two players. Each player has a contiguous player number and controller_id. Paths are absolute; configs must be siblings in the installed Flatpak profile. Launch pins the exact app/runtime hashes, creates fixed target evdev pads, stages private 0700/0600 config, and preserves the native data root. This contract accepts only ordinary .nes/.unf/.unif cartridges; FDS, NSF, Four Score, and special peripherals require separate review. Guided first launches discover the Flatpak setup automatically."
+                    : duckstationSetups.nestopia
+                    ? "Nestopia UE Flatpak 1.53.2: edit a JSON list with emulator_id, content, source_main_config, source_input_config, probe_program, sdl_library, executable_sha256, and exactly two players. Each player has player (1 or 2) and controller_id. All paths are absolute; configs must be the installed Flatpak profile siblings. Review uses saved calibration only. Launch pins the exact app/runtime hashes, stages private 0700/0600 config, rechecks target SDL2 routing, and preserves native cartridge/state data."
+                    : duckstationSetups.melonds
+                    ? "melonDS standard controls: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, bubblewrap_program and players. runtime_libraries must be empty for the SDL2 probe. Supply one player entry with player: 1, controller_id and source_controls for a/b/x/y, up/down/left/right, start/select and l/r. Paths must be absolute. Review shows calibrated source links and the DS destination layout; stylus, lid and microphone controls are not implemented by this adapter. Native launch integration is partial and untested."
+                    : duckstationSetups.rpcs3
+                    ? "RPCS3 standard pads: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, optional runtime_libraries, and players. Each player has player (1–7), controller_id and source_controls linking all 24 destination visual IDs to calibrated physical controls. Paths must be absolute. Review displays source and destination layouts without opening devices. Native file-boot dispatch is connected but untested. Directory boot targets and other backends remain pending."
+                    : duckstationSetups.pcsx2
+                    ? "PCSX2 DualShock 2: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, runtime_libraries (explicit libudev dependency), native (data_root, serial and integer disc crc), multitaps ([false,false] by default), and players. Each player has player, controller_id and source_controls. Source links use destination visual IDs: up/down/left/right, a/b/x/y, select/start, l/r/l2/r2/l3/r3, stick_up/down/left/right and right_stick_up/down/left/right. Players follow port-one slots then port-two slots. Paths must be absolute. Review shows both layouts without opening devices. Native dispatch is connected for SDL 3.2.20 classic backend. Runtime/internal routing remain unverified."
+                    : duckstationSetups.flycastNative
+                    ? "Standalone Flycast: edit a JSON list with emulator_id, content, game_id (native ID, not library title), executable_sha256, source_config, probe_program, sdl_library and players. Paths must be absolute. Each player has player (1–4), controller_id, panel (six by default or eight), and source_controls linking every target to a calibrated physical layout ID. Targets: up/down/left/right/start/coin/button1–6 or button1–8. Example source_controls entry: button1 maps to b. Review displays source/destination diagrams. Partial native Linux launch dispatch is connected. Startup checks can reject mismatched controllers. Internal routing and runtime compatibility remain unverified. Review opens no devices."
+                    : duckstationSetups.mednafen
+                    ? "Mednafen: edit a JSON list with emulator_id, content, base_directory, bubblewrap_program, executable_sha256, gamepad (game-boy, game-boy-advance, lynx, neo-geo-pocket, wonder-swan, virtual-boy, game-gear, master-system, pce-two, pce-six, pce-fast-two, pce-fast-six, nes-two, nes-four-score, nes-famicom-four, snes, snes-faust, md-three, md-six, saturn-digital play-station-digital or play-station-dual-analog), and players containing player and controller_id (handhelds: player 1; Master System: ports 1–2; PC Engine: ports 1–5; NES: 1–2 or 1–4 according to adapter; SNES/SNES Faust: 1–8, with 3–5 on the port-two tap and 6–8 on the port-one tap). Each player may optionally specify gamepad: pce-two or pce-six (or pce-fast-two/pce-fast-six for the fast module) to override the default within the same native module. Genesis: md_tap is none (default), port-one, port-two, dual or four-way; player ports are sequential native virtual ports, up to 2/5/5/8/4 respectively. Per-player md-three/md-six overrides allow mixed pads. Saturn: saturn_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/7/12 sequential virtual slots. PlayStation: psx_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/5/8 sequential virtual slots. Per-player play-station-digital/play-station-dual-analog overrides permit mixed pads. Dual Analog uses four centered proportional axes, no rumble or mode switch. PlayStation, Saturn and PC Engine accept .ccd and UTF-8 .cue discs with companion-file tracking. Native CD firmware is required. TOC/M3U and firmware identity remain incomplete. Paths must be absolute. Native GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine joydev launch dispatch is connected. Child internal IDs and other native input drivers remain unverified. NES currently accepts raw iNES .nes and conventional UNIF .unf/.unif content and rejects ROM-device conflicts. Review opens no devices."
+                    : duckstationSetups.jgenesisNative
+                    ? "jgenesis: edit a JSON list with emulator_id, content (absolute ROM path), controller_id, probe_program, sdl_library (the SDL library the jgenesis build links), and executable_sha256. Paths must be absolute. Launch writes a private jgenesis-config.toml using raw SDL joystick indices; the SDL2 probe captures the same kernel-order mapping. Custom keymaps are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.gopher64Native
+                    ? "Gopher64: edit a JSON list with emulator_id, content (absolute ROM path), config_path (the existing absolute config.json), probe_program, sdl_library (the SDL3 library the Gopher64 build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch copies config.json plus cheats/RetroAchievements companions under a private XDG_CONFIG_HOME, patches only profiles/assignments, and leaves XDG_DATA_HOME untouched so saves and states remain in the native data root. Measured Linux controls are translated through the target SDL3 mapping with SDL_JOYSTICK_LINUX_CLASSIC=1. Portable mode, VRU authoring and Transfer Pak authoring are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.gearNative
+                    ? "Gearsystem / Gearcoleco: edit a JSON list with adapter (gearsystem or gearcoleco), profile_id, emulator_id, content, config_path (the existing config.ini), probe_program, sdl_library, mapping_database (the executable's sibling gamecontrollerdb.txt), executable_sha256, and contiguous players starting at one. Gearsystem profiles are gearsystem:standalone-gamegear and gearsystem:standalone-master-system; Gearcoleco uses gearcoleco:standalone-colecovision. Launch translates physical Linux calibration through the exact SDL3 runtime, requires the selected pads to be the first SDL gamepads in player order, and copies config.ini under a private XDG_DATA_HOME. Default save/state roots are pinned back to the original config directory; ROM and absolute custom roots are preserved. Portable mode and nonstandard peripherals are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.xroarNative
+                    ? "XRoar: edit a JSON list with profile_id (xroar:standalone-xroar-analog-joystick), emulator_id, content, config_path (the existing xroar.conf), probe_program, sdl_library, mapping_database, executable_sha256, and one or two contiguous players. Player one selects XRoar's right port and player two its left port. Guided directions must resolve to opposite halves of two SDL gamepad axes; fire controls must resolve to SDL gamepad buttons. Launch copies the config, supplies it with first-option -c, disables config auto-save, and rechecks exact SDL joystick order and bindings. Media and snapshot paths stay caller-owned. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.zesaruxNative
+                    ? "ZEsarUX: edit a JSON list with emulator_id, content, config_path (the existing command-style config), executable_sha256, and controller_id. Launch translates the saved Linux physical calibration directly into the pinned native joydev button/axis numbering, copies and appends to the config, creates a private immutable joystick symlink, and supplies --configfile first. The profile covers one Kempston joystick with four directions and Fire. Firmware, media, autosnapshot and state paths stay caller-owned. SDL mode, keyboard mappings, other interfaces, other hosts, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.oricutronNative
+                    ? "Oricutron: edit a JSON list with emulator_id, content, config_path (the executable-sibling oricutron.cfg), probe_program, sdl_library, bubblewrap_program, executable_sha256, machine_ports (atmos-ijk, atmos-altai-pase, or telestrat), and one or two contiguous players. Launch accepts only the pinned source's fixed SDL axis/hat/button layout, requires each selected SDL slot (0–9) to equal its event instance ID, and overlays only the copied configuration. Firmware, media, saves, and snapshots keep their native paths. Other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.yabaSanshiroNative
+                    ? "Yaba Sanshiro 2: edit a JSON list with emulator_id, content, controller_id, port, device_id, config_path (the existing yabause.ini), probe_program, sdl_library, bubblewrap_program, and executable_sha256. Launch translates physical calibration through the exact SDL2 GameController mapping, patches the complete Saturn pad entry in a copied INI, and overlays only that file at its original path. Native backup RAM and state paths remain active. Runtime behavior remains unverified; review opens no devices."
+                    : duckstationSetups.kronosNative
+                    ? "Kronos: edit a JSON list with emulator_id, content, config_path (the existing kronos.ini), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one to four contiguous players. Each player has player, controller_id, port (1 or 2), and device_id (1–6). Launch translates calibration to the pinned raw SDL2 joystick codes, requires selected devices among the first four enumeration slots, patches complete 13-control Saturn pad entries in a copied INI, and overlays only that file. Native backup RAM, cartridge, state, BIOS and media paths remain active. Runtime behavior remains unverified; review opens no devices."
+                    : duckstationSetups.atariPlusPlusNative
+                    ? "Atari++: edit a JSON list with emulator_id, content, config_path (the selected existing Atari++ config), bubblewrap_program, executable_sha256, and one through four contiguous players. Launch requires directions on opposite halves of joydev axes 0–3 and four distinct joydev buttons, overlays the copied config at its original path, and maps the exact selected devices to launch-owned /dev/input/jsN units. The command template must contain the content exactly once and use the appropriate Atari++ media option. Firmware, mounted-media saves, and user-selected snapshots keep their native paths. Runtime behavior remains unverified; review opens no devices."
+                    : duckstationSetups.aranymNative
+                    ? "ARAnyM: edit a JSON list with emulator_id, content (an absolute floppy image), config_path (the existing ARAnyM config), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one or two contiguous players. Player one uses Ikbd1 and player two Ikbd0. Launch requires directions on SDL axes 0/1 or one cardinal hat and Fire on a button, mounts the copied config at its original path, requires each SDL slot to equal its event instance ID, and launches the content with --floppy. TOS, disk/GEMDOS guest saves, NVRAM and snapshots retain their native paths. Jaguar joypads, other media modes, other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.atari800Native
+                    ? "Atari800: edit a JSON list with emulator_id, content, config_path (an existing selected Atari800 config), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one to four contiguous players. Launch requires directions on raw SDL axes 0/1 or 2/3, or cardinal hat 0, and Fire on raw button 0–14. It overlays the copied config at the original path and rechecks exact SDL2 names and duplicate-name slots. Mounted-media saves, firmware paths, explicit states, and the config-adjacent quick-save remain native. Paddles, 5200 analog controls, other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.nanoboyadvanceNative
+                    ? "NanoBoyAdvance: edit a JSON list with emulator_id, content, config_path (the existing config.toml), probe_program, sdl_library, bubblewrap_program, executable_sha256, and exactly one player. Launch maps all ten GBA controls to raw SDL3 joystick buttons, axis halves, or cardinal hats; overlays only a private copied config; preserves keyboard, cartridge, BIOS, save and state settings; verifies the configured 16 KiB BIOS and save directory; and rejects a selected GUID shared by another attached controller. Other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.vbaMNative
+                    ? "VBA-M: edit a JSON list with emulator_id, content (an uncompressed .gba file), config_path (vbam-qt.ini or vbam.ini), frontend (qt or wx), sdl_api (sdl2 or sdl3), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes an explicit private --config, disables SDL GameController translation, maps the ten ordinary GBA controls through exact raw joystick numbering, and guards the configured battery/state directories plus any enabled 16 KiB GBA BIOS. BatteryDir and StateDir must be empty (ROM directory) or absolute; relative roots are rejected because the two frontends resolve them differently. e-Reader card scanning, other systems/hosts/packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.eightySixBoxNative
+                    ? "86Box: edit a JSON list with emulator_id, content (the absolute selected machine 86box.cfg), sdl_api (sdl2), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one or two contiguous players. Launch overlays a private config at the same path, forces the source-defined 2axis_2button topology, and rechecks exact raw SDL2 device order. Directions must use opposite raw axis halves or cardinal hats; A/B map to distinct raw buttons. Other gameport types, SDL3 builds, Flatpak, guest behavior, other hosts, and runtime input remain unverified; review opens no devices."
+                    : duckstationSetups.caprice32Native
+                    ? "Caprice32: edit a JSON list with emulator_id, content (absolute disk/ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -c with a private cap32.cfg ahead of the content path; the pads must hold SDL instances 0/1 and start/select supply the two one-based menu buttons. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.vita3kNative
+                    ? "Vita3K: edit a JSON list with emulator_id, content (absolute installed-app path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -c with a private config.yml ahead of -r <app> and maps the fifteen buttons plus twin sticks through exact SDL gamepad indices. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.playNative
+                    ? "Play!: edit a JSON list with emulator_id, content (absolute disc or ELF path), data_dir (absolute Play Data Files), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with portable.txt plus a private input profile; the pad is addressed through evdev uniq/vendor/product/version and kernel codes. Hats and rumble are unsupported. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.ep128emuNative
+                    ? "ep128emu: edit a JSON list with emulator_id, content (absolute snapshot path), event_rows (joystick event code to matrix row), config_source (absolute config), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -snapshot with a session .ep128emu config; the pad must be a capable first-slot SDL joystick. Matrix rows come from the user's own keyboard map. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.adamemNative
+                    ? "ADAMEm SDL: edit a JSON list with emulator_id, content (absolute cartridge path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs through a session executable link with a private adamem.joy carrying fire/aim buttons; the pad must be SDL index 0 with axes. Hats have no handler. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.vector06sdlNative
+                    ? "vector06sdl: edit a JSON list with emulator_id, content (absolute image path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with a private gamecontrollerdb.txt carrying the six stick outputs; the pad must be SDL index 0 and sticks have no mapping. Other sticks, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.simcoupeNative
+                    ? "SimCoupe: edit a JSON list with emulator_id, content (absolute disk path), config_source (absolute SimCoupe.cfg), probe_program, sdl_library, executable_sha256, and exactly one player. Launch keeps the default positional disk slot with a session SimCoupe.cfg naming the pad; directions need axes or hats and fire needs a button. Other joysticks, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.pcemNative
+                    ? "PCem: edit a JSON list with emulator_id, content (absolute machine config path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes --config with a private machine config selecting joystick 0; the pad must be SDL slot 0 with axes plus two buttons. POV hats have no gameport slot. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.tsugaruNative
+                    ? "Tsugaru: edit a JSON list with emulator_id, content (absolute CD image path), rom_dir (absolute FM Towns ROMs), cmos (absolute CMOS image), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes the ROM directory positionally with -CMOS/-CD/-GAMEPORT0 PHYS0; the pad must be SDL index 0 (/dev/input/js0) with hats or buttons only. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.touchhleNative
+                    ? "touchHLE: edit a JSON list with emulator_id, content (absolute app bundle path), touch_points (one per button with x/y), dpad_region, probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes --button-to-touch options ahead of the bundle path over fixed SDL2 buttons; sticks have no mapping. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.openborNative
+                    ? "OpenBOR: edit a JSON list with emulator_id, content (absolute .pak path), config_source (absolute per-pak .cfg), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with Saves/<pak>.cfg carrying measured joystick codes for slot 0; extra players stay cleared. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.supermodelNative
+                    ? "Supermodel: edit a JSON list with emulator_id, content (absolute ROM zip path), config_source (absolute Supermodel.ini), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with Config/Supermodel.ini selecting the sdlgamepad backend; JOY1 must be SDL index 0 and fighting inputs need buttons or hats. Other games, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.panda3dsNative
+                    ? "Panda3DS: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with a private config.toml; the pad must be SDL index 0 with the hard-wired standard mapping (face buttons are swapped A/B and X/Y by the source). Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.dreampotatoNative
+                    ? "DreamPotato: edit a JSON list with emulator_id, content (absolute game path), config_source (absolute configuration.json), probe_program, sdl_library, executable_sha256, and exactly one player. Launch keeps the default positional game slot with a private configuration.json PrimaryInput; the pad must be SDL index 0 and menu buttons stay on the user's own configuration. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.ymirNative
+                    ? "Ymir: edit a JSON list with emulator_id, content (absolute disc path), profile_dir (absolute Ymir profile), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -p with a session profile plus -d ahead of the disc; port 1 must select the Control Pad and sticks have no action. Other peripherals, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.shadps4Native
+                    ? "shadPS4: edit a JSON list with emulator_id, content (absolute game path), game_id (CUSA title ID), probe_program, sdl_library, executable_sha256, and exactly one player. Launch stages default.ini plus the per-game input file under XDG_DATA_HOME with gamepad ID 1; the pad must be the first SDL gamepad and axes need paired halves. Touchpad stays default. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.azaharNative
+                    ? "Azahar: edit a JSON list with emulator_id, content (absolute game path), user_dir (absolute Azahar user directory), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with a private qt-config.ini while NAND/SDMC survive through symlinks; the pad must be an SDL gamepad with a unique GUID, every ParamPackage must be distinct, and triggers/analogs need axes. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.cemuNative
+                    ? "Cemu: edit a JSON list with emulator_id, content (absolute game path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -g with a private controller0.xml under XDG_CONFIG_HOME; the pad must be an SDL gamepad with a unique GUID and only mapped controls translate. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.eka2l1Native
+                    ? "EKA2L1: edit a JSON list with emulator_id, content (absolute N-Gage game path), config_source (absolute config.yml), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with a patched config.yml plus keybind profile ahead of --runng; the pad must be an SDL game controller and only mapped controls translate. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.uzemNative
+                    ? "Uzem: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch runs in a session directory holding a private joystick-settings binary ahead of the ROM path; the pads must hold SDL slots 0/1, directions pair into shared axes, and hats need no mapping. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.pokeminiNative
+                    ? "PokeMini: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch links the trusted executable into a sandbox directory holding a private pokemini.cfg ahead of the ROM path; the pad must be SDL index 0 and only raw buttons map. Menu/power/shake stay unassigned. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.gbePlusNative
+                    ? "GBE+: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch keeps the default positional ROM slot and maps the twelve gamepad controls to SDL event codes under a private HOME. The pad must be SDL index 0. Other systems, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.amiberryNative
+                    ? "Amiberry: edit a JSON list with emulator_id, content (absolute disk/WHDLoad path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -f with a private joyport fragment plus controllers_path override ahead of the content path; directions use the fixed gamepad dpad and fire maps to raw buttons. Gamepad-only inventories are required. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.fuseNative
+                    ? "Fuse: edit a JSON list with emulator_id, content (absolute tape/snapshot path), probe_program, sdl_library, executable_sha256, and one or two players each with a joystick_type. Launch keeps the default positional content argument and maps fire to its own raw button index on fixed SDL slots 0/1. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.linappleNative
+                    ? "LinApple: edit a JSON list with emulator_id, content (absolute disk image path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes --config with a private linapple.conf ahead of -1 <disk> and maps directions to one shared analog axis pair plus two buttons. Hats cannot drive the analog Axis fields. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.skyemuNative
+                    ? "SkyEmu: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch writes a private <name>-bindings.bin under XDG_DATA_HOME and maps the twelve DS controls through exact raw SDL device order. Stick axes are refused; map directions to buttons or hats. Other systems, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.nestopiaUeNative
+                    ? "Nestopia UE native: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch writes a private nestopia.conf/input.conf pair under XDG_CONFIG_HOME and maps the eight NES controls through exact SDL enumeration-order player indices. Turbo controls, diagonal hats, axes beyond 0/1 handling limits, and other modes remain unverified; review opens no devices."
+                    : duckstationSetups.picodriveNative
+                    ? "PicoDrive: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -config with a private binddev/bind file ahead of the ROM path and maps the twelve Genesis controls through exact raw SDL device order. Axes beyond 0/1 and hats are refused. Other systems, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.gambatteNative
+                    ? "Gambatte: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch writes a private gambatte_qt.conf [input] group under XDG_CONFIG_HOME and maps the eight Game Boy controls through exact raw SDL2 device order. Other systems, hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.a7800Native
+                    ? "A7800 5.2: edit a JSON list with emulator_id, content (absolute cartridge path), machine (ntsc or pal), cfg_directory, probe_program, sdl_library, executable_sha256, threshold_basis_points, and one or two contiguous players. Launch selects only a7800/a7800p with -cart, forces Pro-Line ports, and uses a private controller profile plus filtered default/machine cfg copies. The old fork's whitespace-stripped SDL2 device names must be unique and non-overlapping. Other machines, peripherals, packages, hosts, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.b2Native
+                    ? "b2: edit a JSON list with emulator_id, content (absolute launched disk/content path), config_path (the existing absolute b2.json), probe_program, sdl_library (the SDL2 library the b2 build links), executable_sha256, swap_joysticks_when_shared, and slots. Each slot has slot 0 (analogue 0), 1 (analogue 1), or 2 (digital) plus controller_id. One controller may intentionally occupy both analogue slots; two distinct attached controllers with the same SDL name are rejected. Launch writes only a private XDG_CONFIG_HOME/b2/b2.json. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.hypseusNative
+                    ? "Hypseus Singe: edit a JSON list with emulator_id, content (absolute framefile), config_path (complete hypinput_gamepad.ini), ram_directory, probe_program, sdl_library, mapping_database, optional runtime_libraries, executable_sha256, players, and mappings. Player slots are zero and optionally one with distinct controller_id values. Each mapping names a source KEY_* switch and its pad0/pad1 SDL3 button and axis macros; zero disables a column. Direction, primary button, start, and coin mappings are required. Launch uses a private home/keymap and exact eight-entry SDL Gamepad reorder while preserving the selected NVRAM directory. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.rmgNative
+                    ? "RMG: edit a JSON list with emulator_id, content (absolute ROM path), config_path (the existing absolute RMG settings file), probe_program, sdl_library (the SDL3 library the RMG build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch copies and patches only the four base RMG input-plugin profiles under a private XDG_CONFIG_HOME, removes game overrides that could replace the measured mapping, and leaves XDG_DATA_HOME untouched so saves and states remain in the native data root. Portable mode, pak authoring and virtual controllers are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.simple64Native
+                    ? "simple64: edit a JSON list with emulator_id, content (absolute ROM path), config_dir (the existing absolute Mupen64Plus config directory), probe_program, sdl_library (the SDL2 library the simple64 build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch stages the executable and private input-profiles.ini/input-settings.ini plus a private GUI configDirPath while leaving XDG_DATA_HOME/mupen64plus/save untouched. Keyboard, raw joystick, VRU and Transfer Pak behavior are not covered. The runtime is record-only until a canonical catalog identity exists, and runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.scummvmNative
+                    ? "ScummVM: edit a JSON list with emulator_id, content (absolute game directory), controller_id, probe_program, sdl_library (the SDL library the ScummVM build links), and executable_sha256. Paths must be absolute. Launch isolates XDG_CONFIG_HOME and writes a private ini whose target carries the game path and the engine-default keymap actions; the selected controller must be SDL device zero. Engines with custom keymaps and the GUI/global keymaps are not remapped. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.openmsxNative
+                    ? "openMSX: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library (the SDL2 library the openMSX build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch isolates OPENMSX_HOME, loads a private settings file with the msxjoystickN_config dicts and plugs the second port when needed. MSX mice, JoyMega and paddle devices are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.desmumeNative
+                    ? "DeSmuME: edit a JSON list with emulator_id, content (absolute ROM path), controller_id, probe_program, sdl_library (the SDL2 library the DeSmuME build links), executable_sha256. Paths must be absolute. Launch isolates XDG_CONFIG_HOME and writes the private [JOYKEYS] section; touchscreen remains a mouse input; microphone, lid and Debug/Boost are disabled. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.xemuNative
+                    ? "xemu: edit a JSON list with emulator_id, content (absolute XISO path), mcpx_bootrom and flashrom (absolute declared images), probe_program, sdl_library (the SDL3 library the xemu build links), executable_sha256, and players (1–4). Paths must be absolute. Launch passes a private -config_path file that mounts the declared boot ROM, flash image and game, disables auto-bind and binds each SDL GUID to its port with standard-index controller mappings; the probe and child both run with SDL_JOYSTICK_LINUX_CLASSIC=1. Same-GUID devices cannot be distinguished; Steel Battalion and the S controller driver are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.blastemNative
+                    ? "BlastEm: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library (the SDL2 library the BlastEm build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch isolates HOME and writes the private blastem.cfg tern config binding each SDL device to its gamepad port with the six-button Genesis pad targets. Mice, the tee-input adapter, hotkeys and analog stick translation are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.mesen2Native
+                    ? "Mesen2: edit a JSON list with emulator_id, content (absolute ROM path), controller_id, probe_program (absolute lunchpail-controller-probe path), executable_sha256, and system (nes for NES/FDS, pce for PC Engine/TurboGrafx; defaults to nes). Paths must be absolute. Launch isolates XDG_DATA_HOME and writes the private settings.json Port1 mapping (NES or PcEngine section) for the selected gamepad's real Mesen2 pad slot (pads register in /dev/input order, so plugging another gamepad in ahead of it moves the slot and review is required again). Zapper, Power Pad, Four Score, multitaps, TurboTap, Avenue Pad 6 and SNES/GB/GBA systems are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.hatariNative
+                    ? "Hatari: edit a JSON list with emulator_id, content (absolute disk/program path), tos_image (absolute EmuTOS/TOS image), probe_program, sdl_library (the SDL library the Hatari build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch isolates HOME, passes a private -c configuration and selects the declared TOS image. Directions must live on SDL axes 0/1 or hat 0; fire 2/3 are optional joyport expansions. Mouse, analog paddles and joypad emulation are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.viceNative
+                    ? "VICE 3.x+: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library (the SDL2 library the VICE build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch passes a private -config and -joymap pair; the user's own vicerc is never touched. Digital joystick pins plus fire2/fire3 are mapped on the control ports; keysets, paddles, potentiometers, mouse and userport adapters are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.stellaNative
+                    ? "Stella 7.x: edit a JSON list with emulator_id, content (absolute ROM path), base_directory (persistent private -basedir holding stella.sqlite3 and native saves), probe_program, sdl_library (the SDL3 library the Stella build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch runs Stella with -basedir, SDL_JOYSTICK_LINUX_CLASSIC=1 and a private settings database; the user's own Stella configuration is never touched. Joystick, Booster Grip/Genesis buttons and console switches are mapped; paddles, driving controllers, keypads and Stelladaptors are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.bsnes
+                    ? "bsnes v115+ settings.bml: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library (the SDL2 library the bsnes build links; Flatpak resolves it from the application runtime), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch writes a private settings.bml via --settings and probes SDL2 numbering at launch with the trusted library; the user's own settings file is never touched. Two controller ports; Mouse, Super Multitap, Super Scope and Justifier targets are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.sameboy
+                    ? "SameBoy SDL v1.0.3: edit a JSON list with emulator_id, content, source_config (binary preferences file), probe_program, sdl_library, bubblewrap_program, executable_sha256, runtime, and players containing exactly one entry with player: 1 and controller_id. All paths must be absolute. Native SDL device zero must be the selected controller. Runtime declares abi: sdl103-enums32-bool8 and data_directory: {kind: not-compiled} or {kind: compiled, path: absolute-directory}. These must describe the trusted executable build; they are not automatically verified. Native dispatch is connected; tilt-game axis behavior remains unresolved. Review opens no devices."
+                    : duckstationSetups.fceux
+                    ? "Edit a JSON list with emulator_id, content, base_directory (native FCEUX data/config root), probe_program, sdl_library, bubblewrap_program, executable_sha256, and players. Each player has player (1–4) and controller_id. Paths must be absolute and runtime files trusted. This targets FCEUX Qt 2.6.6 standard NES pads. Native launch dispatch is connected but ROM-selected device overrides may replace standard pads. Review opens no devices; runtime support is untested."
+                    : duckstationSetups.snes9x
+                    ? "Edit a JSON list with emulator_id, content, source_config (native snes9x.conf or the com.snes9x.Snes9x Flatpak profile config), probe_program, sdl_library, bubblewrap_program, executable_sha256, and players. Each player has player (1–5) and controller_id. Paths must be absolute and runtime files trusted. This targets Snes9x GTK 1.63, not Qt. Review uses saved calibration only; native controller and runtime checks run at launch. Runtime testing remains deferred."
+                    : duckstationSetups.dolphin
+                    ? "Edit a JSON list with emulator_id, content, game_id (six-character disc ID), revision, user_directory, system_directory, bubblewrap_program, executable_sha256, and players. Each player has port (1–4), controller_id and device_qualifier (native evdev/id/name). All paths must be absolute. This targets standard GameCube pads in Dolphin 2606. Review checks saved measurements only; launch checks run only when starting a game. System-data path is user-declared."
+                    : duckstationSetups.mgba
+                    ? "Edit a JSON list with emulator_id, content, handheld (gba or gameboy), controller_id, source_config (native config.ini), probe_program, sdl_library, bubblewrap_program, and executable_sha256. Paths must be absolute and executables/libraries trusted. This targets mGBA 0.10.5's native Linux SDL frontend, not Qt. Launch checks the runtime and isolated config handoff; review/staging open no devices. Runtime testing remains deferred."
+                    : duckstationSetups.ppsspp
+                    ? "Edit a JSON list with emulator_id, content (absolute path), game_id, source_system (native PSP/SYSTEM path), controller_id, probe_program, sdl_library, mapping_database (PPSSPP's bundled gamecontrollerdb.txt), bubblewrap_program, and executable_sha256. All paths must be absolute and executables/libraries trusted. Native SDL2 launches use a private SYSTEM overlay; saves stay in their native location. The child must confirm its runtime and mapping order. This implementation has not been runtime-tested."
+                    : "Edit a JSON list with emulator_id, content (absolute ROM path), data_root, serial, first_disc_serial (null only for a confirmed single-disc game), and players. Players need pad (1–8), controller_id and controller_type (DigitalController or AnalogController). For native launch add runtime: {probe_program, sdl_library, runtime_libraries: [absolute dependency paths], executable_sha256}; Flatpak launch resolves the same runtime from the installed org.duckstation.DuckStation application (data_root must be its config/duckstation profile). These must belong to trusted DuckStation 0a53bc47c / SDL 3.2.20. Existing controller types are preserved; guided first launches discover Flatpak setups automatically. Wine is not enabled."
+            }
+            MomentumScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 190
+                LbTextArea {
+                    id: duckstationEditor
+                    font.family: "monospace"
+                    wrapMode: TextEdit.Wrap
+                    onTextChanged: duckstationSetups.review = []
+                }
+            }
+            MomentumScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                ColumnLayout {
+                    width: parent.width
+                    Repeater {
+                        model: duckstationSetups.review
+                        delegate: ColumnLayout {
+                            id: nativeReviewPlayer
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Label { text: "Pad " + modelData.pad + ": " + modelData.source_layout + " → " + modelData.target_layout }
+                            ControllerMappingView {
+                                Layout.fillWidth: true
+                                settingsModel: setup.settingsModel
+                                sourceLayout: duckstationSetups.catalog.layouts.find(layout => layout.id === nativeReviewPlayer.modelData.source_layout) || null
+                                destinationLayout: duckstationSetups.catalog.layouts.find(layout => layout.id === nativeReviewPlayer.modelData.target_layout) || null
+                                rows: nativeReviewPlayer.modelData.mapping.rows
+                            }
+                        }
+                    }
+                }
+            }
+            Label { id: duckstationStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            RowLayout {
+                LbButton {
+                    text: "Review mappings"
+                    onClicked: {
+                        const result = JSON.parse(duckstationSetups.melonds
+                            ? setup.settingsModel.review_melonds_setups(duckstationEditor.text)
+                            : duckstationSetups.rpcs3
+                            ? setup.settingsModel.review_rpcs3_setups(duckstationEditor.text)
+                            : duckstationSetups.pcsx2
+                            ? setup.settingsModel.review_pcsx2_setups(duckstationEditor.text)
+                            : duckstationSetups.flycastNative
+                            ? setup.settingsModel.review_flycast_native_setups(duckstationEditor.text)
+                            : duckstationSetups.mednafen
+                            ? setup.settingsModel.review_mednafen_setups(duckstationEditor.text)
+                            : duckstationSetups.jgenesisNative
+                            ? setup.settingsModel.review_jgenesis_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gopher64Native
+                            ? setup.settingsModel.review_gopher64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gearNative
+                            ? setup.settingsModel.review_gear_native_setups(duckstationEditor.text)
+                            : duckstationSetups.xroarNative
+                            ? setup.settingsModel.review_xroar_native_setups(duckstationEditor.text)
+                            : duckstationSetups.zesaruxNative
+                            ? setup.settingsModel.review_zesarux_native_setups(duckstationEditor.text)
+                            : duckstationSetups.oricutronNative
+                            ? setup.settingsModel.review_oricutron_native_setups(duckstationEditor.text)
+                            : duckstationSetups.yabaSanshiroNative
+                            ? setup.settingsModel.review_yaba_sanshiro_native_setups(duckstationEditor.text)
+                            : duckstationSetups.kronosNative
+                            ? setup.settingsModel.review_kronos_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atariPlusPlusNative
+                            ? setup.settingsModel.review_atari_plus_plus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.aranymNative
+                            ? setup.settingsModel.review_aranym_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atari800Native
+                            ? setup.settingsModel.review_atari800_native_setups(duckstationEditor.text)
+                            : duckstationSetups.nanoboyadvanceNative
+                            ? setup.settingsModel.review_nanoboyadvance_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vbaMNative
+                            ? setup.settingsModel.review_vba_m_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eightySixBoxNative
+                            ? setup.settingsModel.review_eighty_six_box_native_setups(duckstationEditor.text)
+                            : duckstationSetups.caprice32Native
+                            ? setup.settingsModel.review_caprice32_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vita3kNative
+                            ? setup.settingsModel.review_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.playNative
+                            ? setup.settingsModel.review_play_native_setups(duckstationEditor.text)
+                            : duckstationSetups.ep128emuNative
+                            ? setup.settingsModel.review_ep128emu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.adamemNative
+                            ? setup.settingsModel.review_adamem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vector06sdlNative
+                            ? setup.settingsModel.review_vector06sdl_native_setups(duckstationEditor.text)
+                            : duckstationSetups.simcoupeNative
+                            ? setup.settingsModel.review_simcoupe_native_setups(duckstationEditor.text)
+                            : duckstationSetups.pcemNative
+                            ? setup.settingsModel.review_pcem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.tsugaruNative
+                            ? setup.settingsModel.review_tsugaru_native_setups(duckstationEditor.text)
+                            : duckstationSetups.touchhleNative
+                            ? setup.settingsModel.review_touchhle_native_setups(duckstationEditor.text)
+                            : duckstationSetups.openborNative
+                            ? setup.settingsModel.review_openbor_native_setups(duckstationEditor.text)
+                            : duckstationSetups.supermodelNative
+                            ? setup.settingsModel.review_supermodel_native_setups(duckstationEditor.text)
+                            : duckstationSetups.panda3dsNative
+                            ? setup.settingsModel.review_panda3ds_native_setups(duckstationEditor.text)
+                            : duckstationSetups.dreampotatoNative
+                            ? setup.settingsModel.review_dreampotato_native_setups(duckstationEditor.text)
+                            : duckstationSetups.ymirNative
+                            ? setup.settingsModel.review_ymir_native_setups(duckstationEditor.text)
+                            : duckstationSetups.shadps4Native
+                            ? setup.settingsModel.review_shadps4_native_setups(duckstationEditor.text)
+                            : duckstationSetups.azaharNative
+                            ? setup.settingsModel.review_azahar_native_setups(duckstationEditor.text)
+                            : duckstationSetups.cemuNative
+                            ? setup.settingsModel.review_cemu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eka2l1Native
+                            ? setup.settingsModel.review_eka2l1_native_setups(duckstationEditor.text)
+                            : duckstationSetups.uzemNative
+                            ? setup.settingsModel.review_uzem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.pokeminiNative
+                            ? setup.settingsModel.review_pokemini_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gbePlusNative
+                            ? setup.settingsModel.review_gbe_plus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.amiberryNative
+                            ? setup.settingsModel.review_amiberry_native_setups(duckstationEditor.text)
+                            : duckstationSetups.fuseNative
+                            ? setup.settingsModel.review_fuse_native_setups(duckstationEditor.text)
+                            : duckstationSetups.linappleNative
+                            ? setup.settingsModel.review_linapple_native_setups(duckstationEditor.text)
+                            : duckstationSetups.skyemuNative
+                            ? setup.settingsModel.review_skyemu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.nestopiaUeNative
+                            ? setup.settingsModel.review_nestopia_ue_native_setups(duckstationEditor.text)
+                            : duckstationSetups.picodriveNative
+                            ? setup.settingsModel.review_picodrive_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gambatteNative
+                            ? setup.settingsModel.review_gambatte_native_setups(duckstationEditor.text)
+                            : duckstationSetups.a7800Native
+                            ? setup.settingsModel.review_a7800_native_setups(duckstationEditor.text)
+                            : duckstationSetups.b2Native
+                            ? setup.settingsModel.review_b2_native_setups(duckstationEditor.text)
+                            : duckstationSetups.hypseusNative
+                            ? setup.settingsModel.review_hypseus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.rmgNative
+                            ? setup.settingsModel.review_rmg_native_setups(duckstationEditor.text)
+                            : duckstationSetups.simple64Native
+                            ? setup.settingsModel.review_simple64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.scummvmNative
+                            ? setup.settingsModel.review_scummvm_native_setups(duckstationEditor.text)
+                            : duckstationSetups.openmsxNative
+                            ? setup.settingsModel.review_openmsx_native_setups(duckstationEditor.text)
+                            : duckstationSetups.desmumeNative
+                            ? setup.settingsModel.review_desmume_native_setups(duckstationEditor.text)
+                            : duckstationSetups.xemuNative
+                            ? setup.settingsModel.review_xemu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.blastemNative
+                            ? setup.settingsModel.review_blastem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.mesen2Native
+                            ? setup.settingsModel.review_mesen2_native_setups(duckstationEditor.text)
+                            : duckstationSetups.hatariNative
+                            ? setup.settingsModel.review_hatari_native_setups(duckstationEditor.text)
+                            : duckstationSetups.viceNative
+                            ? setup.settingsModel.review_vice_native_setups(duckstationEditor.text)
+                            : duckstationSetups.stellaNative
+                            ? setup.settingsModel.review_stella_native_setups(duckstationEditor.text)
+                            : duckstationSetups.bsnes
+                            ? setup.settingsModel.review_bsnes_setups(duckstationEditor.text)
+                            : duckstationSetups.sameboy
+                            ? setup.settingsModel.review_sameboy_setups(duckstationEditor.text)
+                            : duckstationSetups.fceux
+                            ? setup.settingsModel.review_fceux_setups(duckstationEditor.text)
+                            : duckstationSetups.punes
+                            ? setup.settingsModel.review_punes_flatpak_setups(duckstationEditor.text)
+                            : duckstationSetups.nestopia
+                            ? setup.settingsModel.review_nestopia_ue_flatpak_setups(duckstationEditor.text)
+                            : duckstationSetups.snes9x
+                            ? setup.settingsModel.review_snes9x_setups(duckstationEditor.text)
+                            : duckstationSetups.dolphin
+                            ? setup.settingsModel.review_dolphin_setups(duckstationEditor.text)
+                            : duckstationSetups.mgba
+                            ? setup.settingsModel.review_mgba_setups(duckstationEditor.text)
+                            : duckstationSetups.ppsspp
+                            ? setup.settingsModel.review_ppsspp_setups(duckstationEditor.text)
+                            : setup.settingsModel.review_duckstation_setups(duckstationEditor.text))
+                        let players = []
+                        if (!result.error) for (const item of result.setups) players = players.concat(item.players)
+                        duckstationSetups.review = players
+                        duckstationStatus.text = result.error || result.setups.map(function(item) {
+                            return item.detail || "Mapping review only; runtime readiness is not verified."
+                        }).join("\n") || "No saved setups to review."
+                    }
+                }
+                LbButton {
+                    text: "Stage setups"
+                    onClicked: {
+                        const error = duckstationSetups.melonds
+                            ? setup.settingsModel.stage_melonds_setups(duckstationEditor.text)
+                            : duckstationSetups.rpcs3
+                            ? setup.settingsModel.stage_rpcs3_setups(duckstationEditor.text)
+                            : duckstationSetups.pcsx2
+                            ? setup.settingsModel.stage_pcsx2_setups(duckstationEditor.text)
+                            : duckstationSetups.flycastNative
+                            ? setup.settingsModel.stage_flycast_native_setups(duckstationEditor.text)
+                            : duckstationSetups.mednafen
+                            ? setup.settingsModel.stage_mednafen_setups(duckstationEditor.text)
+                            : duckstationSetups.jgenesisNative
+                            ? setup.settingsModel.stage_jgenesis_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gopher64Native
+                            ? setup.settingsModel.stage_gopher64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gearNative
+                            ? setup.settingsModel.stage_gear_native_setups(duckstationEditor.text)
+                            : duckstationSetups.xroarNative
+                            ? setup.settingsModel.stage_xroar_native_setups(duckstationEditor.text)
+                            : duckstationSetups.zesaruxNative
+                            ? setup.settingsModel.stage_zesarux_native_setups(duckstationEditor.text)
+                            : duckstationSetups.oricutronNative
+                            ? setup.settingsModel.stage_oricutron_native_setups(duckstationEditor.text)
+                            : duckstationSetups.yabaSanshiroNative
+                            ? setup.settingsModel.stage_yaba_sanshiro_native_setups(duckstationEditor.text)
+                            : duckstationSetups.kronosNative
+                            ? setup.settingsModel.stage_kronos_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atariPlusPlusNative
+                            ? setup.settingsModel.stage_atari_plus_plus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.aranymNative
+                            ? setup.settingsModel.stage_aranym_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atari800Native
+                            ? setup.settingsModel.stage_atari800_native_setups(duckstationEditor.text)
+                            : duckstationSetups.nanoboyadvanceNative
+                            ? setup.settingsModel.stage_nanoboyadvance_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vbaMNative
+                            ? setup.settingsModel.stage_vba_m_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eightySixBoxNative
+                            ? setup.settingsModel.stage_eighty_six_box_native_setups(duckstationEditor.text)
+                            : duckstationSetups.caprice32Native
+                            ? setup.settingsModel.stage_caprice32_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vita3kNative
+                            ? setup.settingsModel.stage_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.playNative
+                            ? setup.settingsModel.stage_play_native_setups(duckstationEditor.text)
+                            : duckstationSetups.ep128emuNative
+                            ? setup.settingsModel.stage_ep128emu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.adamemNative
+                            ? setup.settingsModel.stage_adamem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vector06sdlNative
+                            ? setup.settingsModel.stage_vector06sdl_native_setups(duckstationEditor.text)
+                            : duckstationSetups.simcoupeNative
+                            ? setup.settingsModel.stage_simcoupe_native_setups(duckstationEditor.text)
+                            : duckstationSetups.pcemNative
+                            ? setup.settingsModel.stage_pcem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.tsugaruNative
+                            ? setup.settingsModel.stage_tsugaru_native_setups(duckstationEditor.text)
+                            : duckstationSetups.touchhleNative
+                            ? setup.settingsModel.stage_touchhle_native_setups(duckstationEditor.text)
+                            : duckstationSetups.openborNative
+                            ? setup.settingsModel.stage_openbor_native_setups(duckstationEditor.text)
+                            : duckstationSetups.supermodelNative
+                            ? setup.settingsModel.stage_supermodel_native_setups(duckstationEditor.text)
+                            : duckstationSetups.panda3dsNative
+                            ? setup.settingsModel.stage_panda3ds_native_setups(duckstationEditor.text)
+                            : duckstationSetups.dreampotatoNative
+                            ? setup.settingsModel.stage_dreampotato_native_setups(duckstationEditor.text)
+                            : duckstationSetups.ymirNative
+                            ? setup.settingsModel.stage_ymir_native_setups(duckstationEditor.text)
+                            : duckstationSetups.shadps4Native
+                            ? setup.settingsModel.stage_shadps4_native_setups(duckstationEditor.text)
+                            : duckstationSetups.azaharNative
+                            ? setup.settingsModel.stage_azahar_native_setups(duckstationEditor.text)
+                            : duckstationSetups.cemuNative
+                            ? setup.settingsModel.stage_cemu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eka2l1Native
+                            ? setup.settingsModel.stage_eka2l1_native_setups(duckstationEditor.text)
+                            : duckstationSetups.uzemNative
+                            ? setup.settingsModel.stage_uzem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.pokeminiNative
+                            ? setup.settingsModel.stage_pokemini_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gbePlusNative
+                            ? setup.settingsModel.stage_gbe_plus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.amiberryNative
+                            ? setup.settingsModel.stage_amiberry_native_setups(duckstationEditor.text)
+                            : duckstationSetups.fuseNative
+                            ? setup.settingsModel.stage_fuse_native_setups(duckstationEditor.text)
+                            : duckstationSetups.linappleNative
+                            ? setup.settingsModel.stage_linapple_native_setups(duckstationEditor.text)
+                            : duckstationSetups.skyemuNative
+                            ? setup.settingsModel.stage_skyemu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.nestopiaUeNative
+                            ? setup.settingsModel.stage_nestopia_ue_native_setups(duckstationEditor.text)
+                            : duckstationSetups.picodriveNative
+                            ? setup.settingsModel.stage_picodrive_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gambatteNative
+                            ? setup.settingsModel.stage_gambatte_native_setups(duckstationEditor.text)
+                            : duckstationSetups.a7800Native
+                            ? setup.settingsModel.stage_a7800_native_setups(duckstationEditor.text)
+                            : duckstationSetups.b2Native
+                            ? setup.settingsModel.stage_b2_native_setups(duckstationEditor.text)
+                            : duckstationSetups.hypseusNative
+                            ? setup.settingsModel.stage_hypseus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.rmgNative
+                            ? setup.settingsModel.stage_rmg_native_setups(duckstationEditor.text)
+                            : duckstationSetups.simple64Native
+                            ? setup.settingsModel.stage_simple64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.scummvmNative
+                            ? setup.settingsModel.stage_scummvm_native_setups(duckstationEditor.text)
+                            : duckstationSetups.openmsxNative
+                            ? setup.settingsModel.stage_openmsx_native_setups(duckstationEditor.text)
+                            : duckstationSetups.desmumeNative
+                            ? setup.settingsModel.stage_desmume_native_setups(duckstationEditor.text)
+                            : duckstationSetups.xemuNative
+                            ? setup.settingsModel.stage_xemu_native_setups(duckstationEditor.text)
+                            : duckstationSetups.blastemNative
+                            ? setup.settingsModel.stage_blastem_native_setups(duckstationEditor.text)
+                            : duckstationSetups.mesen2Native
+                            ? setup.settingsModel.stage_mesen2_native_setups(duckstationEditor.text)
+                            : duckstationSetups.hatariNative
+                            ? setup.settingsModel.stage_hatari_native_setups(duckstationEditor.text)
+                            : duckstationSetups.viceNative
+                            ? setup.settingsModel.stage_vice_native_setups(duckstationEditor.text)
+                            : duckstationSetups.stellaNative
+                            ? setup.settingsModel.stage_stella_native_setups(duckstationEditor.text)
+                            : duckstationSetups.bsnes
+                            ? setup.settingsModel.stage_bsnes_setups(duckstationEditor.text)
+                            : duckstationSetups.sameboy
+                            ? setup.settingsModel.stage_sameboy_setups(duckstationEditor.text)
+                            : duckstationSetups.fceux
+                            ? setup.settingsModel.stage_fceux_setups(duckstationEditor.text)
+                            : duckstationSetups.punes
+                            ? setup.settingsModel.stage_punes_flatpak_setups(duckstationEditor.text)
+                            : duckstationSetups.nestopia
+                            ? setup.settingsModel.stage_nestopia_ue_flatpak_setups(duckstationEditor.text)
+                            : duckstationSetups.snes9x
+                            ? setup.settingsModel.stage_snes9x_setups(duckstationEditor.text)
+                            : duckstationSetups.dolphin
+                            ? setup.settingsModel.stage_dolphin_setups(duckstationEditor.text)
+                            : duckstationSetups.mgba
+                            ? setup.settingsModel.stage_mgba_setups(duckstationEditor.text)
+                            : duckstationSetups.ppsspp
+                            ? setup.settingsModel.stage_ppsspp_setups(duckstationEditor.text)
+                            : setup.settingsModel.stage_duckstation_setups(duckstationEditor.text)
+                        duckstationStatus.text = error || (duckstationSetups.melonds
+                            ? "melonDS setups staged. Settings save automatically. Native launch integration is partial and untested; no devices opened."
+                            : duckstationSetups.rpcs3
+                            ? "RPCS3 setups staged. Settings save automatically. Native integration is partial and untested; no devices opened."
+                            : duckstationSetups.pcsx2
+                            ? "PCSX2 setups staged. Settings save automatically. Native launch integration is partial and untested; no devices opened."
+                            : duckstationSetups.flycastNative
+                            ? "Staged. Settings save automatically. Standalone Flycast uses partial native Linux launch mapping; no devices were opened during review."
+                            : duckstationSetups.mednafen
+                            ? "Staged. Settings save automatically. Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested; no devices were opened."
+                            : duckstationSetups.jgenesisNative
+                            ? "Staged. Settings save automatically. jgenesis native dispatch writes a private config at launch; no devices were opened."
+                            : duckstationSetups.gopher64Native
+                            ? "Staged. Settings save automatically. Gopher64 native dispatch writes a private config while preserving its normal save/state data root; no devices were opened."
+                            : duckstationSetups.gearNative
+                            ? "Staged. Settings save automatically. Gearsystem/Gearcoleco native dispatch writes a private config, preserves save/state roots, and checks exact SDL3 player order at launch; no devices were opened."
+                            : duckstationSetups.xroarNative
+                            ? "Staged. Settings save automatically. XRoar native dispatch writes a private first-option config and checks exact SDL3 joystick order and bindings at launch; no devices were opened."
+                            : duckstationSetups.zesaruxNative
+                            ? "Staged. Settings save automatically. ZEsarUX native dispatch writes a private first-option config and exact joydev link at launch; no devices were opened."
+                            : duckstationSetups.oricutronNative
+                            ? "Staged. Settings save automatically. Oricutron native dispatch overlays only a copied sibling config and rechecks exact SDL2 slot/instance routing at launch; no devices were opened."
+                            : duckstationSetups.yabaSanshiroNative
+                            ? "Staged. Settings save automatically. Yaba Sanshiro 2 native dispatch writes a private Qt input config and checks exact SDL2 routing at launch; no devices were opened."
+                            : duckstationSetups.kronosNative
+                            ? "Staged. Settings save automatically. Kronos native dispatch overlays a private Qt config and checks exact raw-SDL2 routing at launch; no devices were opened."
+                            : duckstationSetups.atariPlusPlusNative
+                            ? "Staged. Settings save automatically. Atari++ native dispatch overlays only the copied config and exact joydev nodes while retaining media/save/state paths; no devices were opened."
+                            : duckstationSetups.aranymNative
+                            ? "Staged. Settings save automatically. ARAnyM native dispatch overlays only the copied config and rechecks exact SDL2 slot/instance routing while retaining TOS/media/save/state paths; no devices were opened."
+                            : duckstationSetups.atari800Native
+                            ? "Staged. Settings save automatically. Atari800 native dispatch overlays only the selected config and rechecks exact SDL2 name, duplicate-slot, and raw-control routing while retaining media, firmware and state paths; no devices were opened."
+                            : duckstationSetups.nanoboyadvanceNative
+                            ? "Staged. Settings save automatically. NanoBoyAdvance native dispatch overlays only a copied config and rechecks the unique SDL3 GUID, raw controls, configured BIOS, and save/state directory; no devices were opened."
+                            : duckstationSetups.vbaMNative
+                            ? "Staged. Settings save automatically. VBA-M native dispatch passes an explicit private Qt/wx config and rechecks raw SDL routing, configured persistence roots, and any active GBA BIOS; no devices were opened."
+                            : duckstationSetups.eightySixBoxNative
+                            ? "Staged. Settings save automatically. 86Box native dispatch overlays the machine config and rechecks raw SDL2 device order and controls while leaving guest disks and ROM paths native; no devices were opened."
+                            : duckstationSetups.caprice32Native
+                            ? "Staged. Settings save automatically. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
+                            : duckstationSetups.vita3kNative
+                            ? "Staged. Settings save automatically. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.playNative
+                            ? "Staged. Settings save automatically. Play! native dispatch runs in a session directory with a private input profile and rechecks evdev routes at launch; no devices were opened."
+                            : duckstationSetups.ep128emuNative
+                            ? "Staged. Settings save automatically. ep128emu native dispatch stages a session config and rechecks SDL slot 0 at launch; no devices were opened."
+                            : duckstationSetups.adamemNative
+                            ? "Staged. Settings save automatically. ADAMEm native dispatch stages a private adamem.joy and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.vector06sdlNative
+                            ? "Staged. Settings save automatically. vector06sdl native dispatch stages a session gamecontrollerdb.txt and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.simcoupeNative
+                            ? "Staged. Settings save automatically. SimCoupe native dispatch stages a session SimCoupe.cfg and rechecks exact SDL routes at launch; no devices were opened."
+                            : duckstationSetups.pcemNative
+                            ? "Staged. Settings save automatically. PCem native dispatch passes a private machine config and rechecks SDL slot 0 at launch; no devices were opened."
+                            : duckstationSetups.tsugaruNative
+                            ? "Staged. Settings save automatically. Tsugaru native dispatch passes explicit flags and rechecks joydev slot 0 at launch; no devices were opened."
+                            : duckstationSetups.touchhleNative
+                            ? "Staged. Settings save automatically. touchHLE native dispatch passes touch options and rechecks exact SDL2 button routes at launch; no devices were opened."
+                            : duckstationSetups.openborNative
+                            ? "Staged. Settings save automatically. OpenBOR native dispatch stages a session Saves/<pak>.cfg and rechecks SDL slot 0 at launch; no devices were opened."
+                            : duckstationSetups.supermodelNative
+                            ? "Staged. Settings save automatically. Supermodel native dispatch stages a session Config/Supermodel.ini and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.panda3dsNative
+                            ? "Staged. Settings save automatically. Panda3DS native dispatch runs in a session directory with a private config.toml and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.dreampotatoNative
+                            ? "Staged. Settings save automatically. DreamPotato native dispatch patches a private configuration.json and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.ymirNative
+                            ? "Staged. Settings save automatically. Ymir native dispatch stages a session profile with a patched Ymir.toml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.shadps4Native
+                            ? "Staged. Settings save automatically. shadPS4 native dispatch stages default.ini plus the per-game file and rechecks gamepad order at launch; no devices were opened."
+                            : duckstationSetups.azaharNative
+                            ? "Staged. Settings save automatically. Azahar native dispatch runs in a session directory with a private qt-config.ini and rechecks exact SDL2 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.cemuNative
+                            ? "Staged. Settings save automatically. Cemu native dispatch writes a private controller0.xml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.eka2l1Native
+                            ? "Staged. Settings save automatically. EKA2L1 native dispatch stages a session config plus keybind profile and rechecks exact SDL2 routes at launch; no devices were opened."
+                            : duckstationSetups.uzemNative
+                            ? "Staged. Settings save automatically. Uzem native dispatch runs in a session directory with a private joystick-settings binary and rechecks SDL slot order at launch; no devices were opened."
+                            : duckstationSetups.pokeminiNative
+                            ? "Staged. Settings save automatically. PokeMini native dispatch runs a symlink sandbox with a private pokemini.cfg and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.gbePlusNative
+                            ? "Staged. Settings save automatically. GBE+ native dispatch writes a private gbe.ini and rechecks SDL index 0 at launch; no devices were opened."
+                            : duckstationSetups.amiberryNative
+                            ? "Staged. Settings save automatically. Amiberry native dispatch writes a private gamecontrollerdb plus joyport fragment and rechecks exact SDL3 routes at launch; no devices were opened."
+                            : duckstationSetups.fuseNative
+                            ? "Staged. Settings save automatically. Fuse native dispatch patches a private fuserc and rechecks exact SDL slot order at launch; no devices were opened."
+                            : duckstationSetups.linappleNative
+                            ? "Staged. Settings save automatically. LinApple native dispatch patches a private linapple.conf and rechecks exact SDL routes at launch; no devices were opened."
+                            : duckstationSetups.skyemuNative
+                            ? "Staged. Settings save automatically. SkyEmu native dispatch writes a private <name>-bindings.bin and rechecks exact SDL device order at launch; no devices were opened."
+                            : duckstationSetups.nestopiaUeNative
+                            ? "Staged. Settings save automatically. Nestopia native dispatch writes a private nestopia.conf/input.conf pair and rechecks exact SDL enumeration order at launch; no devices were opened."
+                            : duckstationSetups.picodriveNative
+                            ? "Staged. Settings save automatically. PicoDrive native dispatch writes a private binddev/bind config and rechecks exact SDL device order and controls at launch; no devices were opened."
+                            : duckstationSetups.gambatteNative
+                            ? "Staged. Settings save automatically. Gambatte native dispatch writes a private gambatte_qt.conf [input] group and rechecks exact SDL2 device order and controls at launch; no devices were opened."
+                            : duckstationSetups.a7800Native
+                            ? "Staged. Settings save automatically. A7800 native dispatch creates a private controller profile and filtered cfg directory, then rechecks exact old-fork SDL2 name/item routing and child ownership at launch; no devices were opened."
+                            : duckstationSetups.b2Native
+                            ? "Staged. Settings save automatically. b2 native dispatch writes a private b2.json while leaving disk images in place; no devices were opened."
+                            : duckstationSetups.hypseusNative
+                            ? "Staged. Settings save automatically. Hypseus native dispatch writes a private keymap/home, fixes SDL3 Gamepad order, and preserves the selected NVRAM directory; no devices were opened."
+                            : duckstationSetups.rmgNative
+                            ? "Staged. Settings save automatically. RMG native dispatch writes private base input-plugin profiles while preserving native save/state roots; no devices were opened."
+                            : duckstationSetups.simple64Native
+                            ? "Staged. Settings save automatically. simple64 native dispatch stages private input profiles and settings while preserving its native save root; no devices were opened."
+                            : duckstationSetups.scummvmNative
+                            ? "Staged. Settings save automatically. ScummVM native dispatch writes a private ini target at launch; no devices were opened."
+                            : duckstationSetups.openmsxNative
+                            ? "Staged. Settings save automatically. openMSX native dispatch stages a private OPENMSX_HOME and settings file at launch; no devices were opened."
+                            : duckstationSetups.desmumeNative
+                            ? "Staged. Settings save automatically. DeSmuME native dispatch writes a private keyfile under an isolated XDG_CONFIG_HOME at launch; no devices were opened."
+                            : duckstationSetups.xemuNative
+                            ? "Staged. Settings save automatically. xemu native dispatch writes a private -config_path configuration at launch; no devices were opened."
+                            : duckstationSetups.blastemNative
+                            ? "Staged. Settings save automatically. BlastEm native dispatch writes a private blastem.cfg under an isolated HOME at launch; no devices were opened."
+                            : duckstationSetups.mesen2Native
+                            ? "Staged. Settings save automatically. Mesen2 native dispatch writes a private settings.json under an isolated XDG_DATA_HOME at launch; no devices were opened."
+                            : duckstationSetups.hatariNative
+                            ? "Staged. Settings save automatically. Hatari native dispatch stages a private HOME and -c configuration at launch; no devices were opened."
+                            : duckstationSetups.viceNative
+                            ? "Staged. Settings save automatically. VICE native dispatch stages a private -config/-joymap pair at launch; no devices were opened."
+                            : duckstationSetups.stellaNative
+                            ? "Staged. Settings save automatically. Stella native dispatch writes a private stella.sqlite3 under its -basedir at launch; no devices were opened."
+                            : duckstationSetups.bsnes
+                            ? "Staged. Settings save automatically. bsnes native dispatch writes a private settings.bml at launch; no devices were opened."
+                            : duckstationSetups.sameboy
+                            ? "Staged. Settings save automatically. SameBoy native dispatch is partial; runtime details are user-declared and tilt-game axes remain unresolved; no devices were opened."
+                            : duckstationSetups.fceux
+                            ? "Staged. Settings save automatically. FCEUX native dispatch is partial: ROM device overrides remain unresolved. No devices were opened."
+                            : duckstationSetups.punes
+                            ? "Staged. Settings save automatically. puNES launch will verify the exact Flatpak runtime, private configs, fixed target evdev paths, and persistent native data root; no devices were opened while staging."
+                            : duckstationSetups.nestopia
+                            ? "Staged. Settings save automatically. Nestopia launch will verify the exact Flatpak runtime, private configs, both controller paths, and persistent native data root; no devices were opened while staging."
+                            : duckstationSetups.snes9x
+                            ? "Staged. Settings save automatically. Native Snes9x launch checks runtime and controller routing; no devices were opened while staging."
+                            : duckstationSetups.dolphin
+                            ? "Staged. Settings save automatically. No devices were opened; native launch checks run when starting a game."
+                            : duckstationSetups.mgba
+                            ? "Staged. Settings save automatically. Native mGBA launch will resolve and check the controller; no devices were opened while staging."
+                            : duckstationSetups.ppsspp
+                            ? "Staged. Settings save automatically. Native PPSSPP launch will capture and confirm the mapping; no devices were opened while staging."
+                            : "Staged. Settings save automatically. Native launch validates the configured runtime and confirms actual startup routing; staging opens no devices.")
+                    }
+                }
+                LbButton { text: "Close"; onClicked: duckstationSetups.close() }
+            }
+        }
+    }
+    LbButton {
+        text: "PPSSPP standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "ppsspp"
+            duckstationEditor.text = setup.settingsModel.ppsspp_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Review checks saved intent only. Native runtime and controller checks occur when launching."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "mGBA SDL standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "mgba"
+            duckstationEditor.text = setup.settingsModel.mgba_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Saved mapping review only. Native SDL runtime, device and config checks occur at launch."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Dolphin GameCube standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "dolphin"
+            duckstationEditor.text = setup.settingsModel.dolphin_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Review shows saved physical mappings only. Native Dolphin launch checks run when starting a game."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Snes9x GTK standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "snes9x"
+            duckstationEditor.text = setup.settingsModel.snes9x_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Saved mapping review only. Native Snes9x GTK checks controller routing at launch."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Nestopia UE Flatpak setups…"
+        visible: Qt.platform.os === "linux"
+        onClicked: {
+            duckstationSetups.adapter = "nestopia"
+            duckstationEditor.text = setup.settingsModel.nestopia_ue_flatpak_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Saved mapping review only. Exact Flatpak runtime, controller routing, private config, and persistent data checks occur at launch."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "puNES Flatpak setups…"
+        visible: Qt.platform.os === "linux"
+        onClicked: {
+            duckstationSetups.adapter = "punes"
+            duckstationEditor.text = setup.settingsModel.punes_flatpak_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Saved mapping review only. Exact Flatpak runtime, fixed evdev routing, private config, and persistent data checks occur at launch."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "FCEUX Qt standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "fceux"
+            duckstationEditor.text = setup.settingsModel.fceux_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Saved mapping review only. FCEUX Qt dispatch is partial; ROM device overrides remain unresolved."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "SameBoy SDL standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "sameboy"
+            duckstationEditor.text = setup.settingsModel.sameboy_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "SameBoy native dispatch is partial; runtime details are user-declared and tilt-game axes remain unresolved. Review opens no devices."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Mednafen standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "mednafen"
+            duckstationEditor.text = setup.settingsModel.mednafen_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested. Review opens no devices."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "Standalone Flycast panels…"
+        onClicked: {
+            duckstationSetups.adapter = "flycast-native"
+            duckstationEditor.text = setup.settingsModel.flycast_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Standard six/eight-button panels: partial native dispatch connected; runtime behavior remains untested."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "PCSX2 controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "pcsx2"
+            duckstationEditor.text = setup.settingsModel.pcsx2_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "DualShock 2 native dispatch is partial and untested; review opens no devices."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "RPCS3 controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "rpcs3"
+            duckstationEditor.text = setup.settingsModel.rpcs3_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Standard pads: partial native file-boot dispatch; runtime behavior untested."
+            duckstationSetups.open()
+        }
+    }
+    LbButton {
+        text: "melonDS controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "melonds"
+            duckstationEditor.text = setup.settingsModel.melonds_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Twelve standard DS controls; partial native Linux launch integration, untested."
+            duckstationSetups.open()
+        }
+    }
+    ControllerFbneoSetupDialog {
+        // Standard native PCSX2 uses the shared editor above.
+        // Flycast standalone setup is separate from libretro FBNeo.
+        // Native mapping editor is above; arcade settings stay independent.
+        // Separate per-game arcade editor; native standalone setups above share
+        // only the presentation, never their saved records or input protocols.
+        id: fbneoSetups
+        settingsModel: setup.settingsModel
+    }
+    ControllerMameSetupDialog {
+        id: mameSetups
+        settingsModel: setup.settingsModel
+        onCalibrationRequested: function(controllerId, sourceLayout, physicalControl) {
+            const matches = []
+            for (let index = 0; index < setup.settingsModel.controller_count(); ++index) {
+                if (setup.settingsModel.controller_key_at(index) === controllerId) matches.push(index)
+            }
+            if (matches.length !== 1) {
+                mameSetups.statusText = "Cannot open calibration: this saved controller identity is missing or ambiguous in the current inventory. Reconnect it or choose another player controller. The game draft is unchanged."
+                return
+            }
+            try {
+                calibration.openFor(controllerId, setup.settingsModel.controller_name_at(matches[0]))
+                if (physicalControl && !calibration.focusSavedControl(sourceLayout, physicalControl)) {
+                    calibration.status = "The requested physical control no longer matches this saved layout. Recording is paused. Choose the correct layout/control or explicitly resume; existing bindings have not been reset."
+                }
+            } catch (error) {
+                mameSetups.statusText = "Cannot open this controller's calibration: " + error + ". The game draft is unchanged."
+            }
+        }
+    }
+    ControllerLayoutExplorer { id: layoutExplorer; settingsModel: setup.settingsModel }
+    LbButton { text: "Explore source → destination layouts…"; onClicked: layoutExplorer.open() }
+    LbButton {
+        text: "Relative mouse / trackball settings…"
+        onClicked: {
+            relativeEditor.text = setup.settingsModel.relative_device_settings_json()
+            relativeStatus.text = ""
+            relativeSettings.open()
+        }
+    }
+    LbButton {
+        text: "Absolute calibration records (advanced)…"
+        onClicked: absoluteSettings.loadAndOpen()
+    }
+    ControllerAbsoluteSettingsDialog {
+        id: absoluteSettings
+        settingsModel: setup.settingsModel
+    }
+    ControllerRelativeDeviceForm {
+        id: relativeForm
+        onDeviceAdded: device => {
+            try {
+                const devices = JSON.parse(relativeEditor.text)
+                if (!Array.isArray(devices)) throw new Error("The draft must be a JSON list.")
+                if (devices.length >= 16) throw new Error("At most 16 devices may be saved.")
+                if (devices.some(existing => existing.event_path === device.event_path || existing.input_identity === device.input_identity))
+                    throw new Error("That event path or physical identity is already in the draft. Edit its existing entry.")
+                devices.push(device)
+                relativeEditor.text = JSON.stringify(devices, null, 2)
+                relativeStatus.text = "Added to draft only. Stage settings to validate the complete list."
+            } catch (error) {
+                relativeStatus.text = "Device was not added: " + error.message
+            }
+        }
+    }
+    LbDialog {
+        id: relativeSettings
+        onClosed: relativeForm.close()
+        title: "Saved relative devices"
+        modal: true
+        width: 780
+        height: 540
+        closePolicy: Popup.NoAutoClose
+        contentItem: ColumnLayout {
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Edit the device list as JSON. Each entry needs event_path, input_identity, axes and buttons; motion contains x_percent, y_percent, invert_x, invert_y and swap_xy. Axes: 0=X, 1=Y, 6=horizontal wheel, 8=vertical wheel. Buttons are [physical, output] code pairs (272=left, 273=right, 274=middle). An empty list removes saved entries."
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "These paths must identify the exact device and may need updating after reconnect/reboot. Staging checks the data only. Frontend routing is unfinished: saving these settings does not enable emulator mouse input or start capture."
+            }
+            MomentumScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                LbTextArea { id: relativeEditor; selectByMouse: true; font.family: "monospace"; wrapMode: TextEdit.NoWrap }
+            }
+            Label { id: relativeStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            RowLayout {
+                LbButton {
+                    text: "Add device with form…"
+                    onClicked: relativeForm.open()
+                }
+                LbButton {
+                    text: "Stage settings"
+                    onClicked: {
+                        const error = setup.settingsModel.stage_relative_device_settings(relativeEditor.text)
+                        relativeStatus.text = error || "Staged. Settings save automatically. No device was opened."
+                    }
+                }
+                LbButton { text: "Close"; onClicked: relativeSettings.close() }
+            }
+        }
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Label { text: "MAME arcade default" }
+        LbComboBox {
+            id: mameDefault
+            Layout.fillWidth: true
+            readonly property var ids: ["automatic", "six_button", "eight_button", "neo_geo", "fixed_channels", "disabled"]
+            model: ["Standard six-button arcade (no game inspection)", "Six buttons: 1 2 3 / 4 5 6", "Eight buttons: 1 2 3 7 / 4 5 6 8", "Advanced per-game Neo Geo", "Advanced per-game fixed channels", "Per-game setups only"]
+            currentIndex: { setup.revision; return ids.indexOf(setup.settingsModel.mame_arcade_layout()) }
+            onActivated: {
+                const error = setup.settingsModel.choose_mame_arcade_layout(ids[index])
+                mameDefaultStatus.text = error || "Arcade default staged; settings save automatically."
+            }
+        }
+        LbButton {
+            text: "Preview layout…"
+            enabled: mameDefault.currentIndex >= 0 && mameDefault.ids[mameDefault.currentIndex] !== "disabled"
+            onClicked: arcadePreview.open()
+        }
+    }
+    LbDialog {
+        id: arcadePreview
+        title: "MAME arcade button positions"
+        width: Math.min(740, setup.width)
+        modal: true
+        standardButtons: Dialog.Close
+        readonly property var panels: {
+            const choice = mameDefault.ids[mameDefault.currentIndex]
+            const six = {id: "arcade-six-button", name: "Six-button arcade"}
+            const eight = {id: "arcade-eight-button", name: "Eight-button arcade"}
+            if (choice === "automatic") return [six]
+            if (choice === "six_button") return [six]
+            if (choice === "eight_button") return [eight]
+            if (choice === "neo_geo") return [{id: "neogeo", name: "Neo Geo"}]
+            if (choice === "fixed_channels") return [{id: "mame-fixed-digital", name: "Fixed frontend channels"}]
+            return []
+        }
+        contentItem: ColumnLayout {
+            Repeater {
+                model: arcadePreview.panels
+                delegate: ColumnLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    Label { text: modelData.name }
+                    Image {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(220, width * 500 / 900)
+                        fillMode: Image.PreserveAspectFit
+                        source: arcadePreview.visible ? setup.settingsModel.controller_diagram(modelData.id, "") : ""
+                        sourceSize.width: Math.max(1, Math.ceil(width * Screen.devicePixelRatio))
+                        sourceSize.height: Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
+                        Accessible.name: modelData.name + " button positions"
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Six and eight buttons use the same first-six positions; eight adds a rightmost column. Only controls used by the game need mapping. Automatic may choose a different panel for twin sticks or unusual inputs. This preview shows positions, not a verified per-game mapping."
+            }
+        }
+    }
+    Label {
+        id: mameDefaultStatus
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        text: "Standard six/eight-button arcade layouts require no per-game input inspection. Saved advanced setups still win; dependency discovery below applies to advanced inspected setups. Cabinet-specific layouts and peripherals are outside this mapping scope. Not runtime-tested yet."
+    }
+    LbCheckBox {
+        text: "Discover MAME dependencies beside the selected archive"
+        checked: { setup.revision; return setup.settingsModel.mame_dependency_discovery() }
+        onToggled: {
+            setup.settingsModel.choose_mame_dependency_discovery(checked)
+            mameDefaultStatus.text = "Dependency discovery staged. Each required ROM set needs its own archive in that folder; CHDs may use set/parent subfolders. Merged archives need an explicit setup. This choice saves automatically."
+        }
+    }
+    LbButton {
+        text: "MAME per-game setups (advanced)…"
+        onClicked: mameSetups.loadAndOpen()
+    }
+    LbButton {
+        text: "FBNeo per-game setups (advanced)…"
+        onClicked: fbneoSetups.loadAndOpen()
+    }
+    LbDialog {
+        id: nativeCapture
+        property string controllerId: ""
+        property string errorText: ""
+        property int selectedChange: -1
+        property var targetControls: []
+        property string runtimeSelectionKey: ""
+        readonly property var runtimeChoices: {
+            setup.revision
+            return JSON.parse(setup.settingsModel.native_controller_runtimes_json())
+        }
+        onRuntimeChoicesChanged: {
+            setup.settingsModel.cancel_native_controller_capture()
+            captureRuntimeChoice.currentIndex = runtimeChoices.findIndex(value => JSON.stringify(value.key) === runtimeSelectionKey)
+        }
+        readonly property var savedBindings: {
+            setup.revision
+            const saved = JSON.parse(setup.settingsModel.scoped_native_controller_calibration_json(controllerId, runtimeSelectionKey))
+            return Object.entries(saved.bindings || {}).map(([control, gesture]) => ({ control: control, gesture: gesture }))
+        }
+        readonly property var changes: {
+            try { return JSON.parse(setup.settingsModel.native_capture_results) }
+            catch (_) { return [] }
+        }
+        function openFor(id, name) {
+            setup.settingsModel.cancel_native_controller_capture()
+            controllerId = id
+            title = "Native SDL2 gesture — " + name
+            errorText = ""
+            selectedChange = -1
+            runtimeSelectionKey = runtimeChoices.length === 1 ? JSON.stringify(runtimeChoices[0].key) : ""
+            captureRuntimeChoice.currentIndex = runtimeChoices.length === 1 ? 0 : -1
+            const saved = JSON.parse(setup.settingsModel.controller_calibration_json(id))
+            const layout = calibration.catalog.layouts.find(item => item.id === saved.layout)
+            targetControls = layout ? layout.controls.filter(control => saved.bindings && saved.bindings[control.id]) : []
+            open()
+        }
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(650, parent ? parent.width - 40 : 650)
+        height: Math.min(540, parent ? parent.height - 40 : 540)
+        modal: true
+        standardButtons: Dialog.Close
+        onClosed: { clearNativeBindings.close(); setup.settingsModel.cancel_native_controller_capture() }
+        onChangesChanged: selectedChange = -1
+        contentItem: MomentumScrollView {
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+                width: parent.width
+                spacing: 10
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: "Requires a configured trusted native BizHawk runtime. Release all controls and capture the released state. Then hold one control and capture its pressed state. Use the mouse to operate these buttons so controller navigation does not interrupt the gesture."
+                }
+                LbComboBox {
+                    id: captureRuntimeChoice
+                    Layout.fillWidth: true
+                    model: nativeCapture.runtimeChoices
+                    textRole: "name"
+                    currentIndex: -1
+                    displayText: currentIndex >= 0 ? currentText : "Select the native runtime to calibrate"
+                    onActivated: {
+                        nativeCapture.runtimeSelectionKey = JSON.stringify(nativeCapture.runtimeChoices[currentIndex].key)
+                        setup.settingsModel.cancel_native_controller_capture()
+                    }
+                    Accessible.name: "Native capture runtime and SDL library"
+                }
+                RowLayout {
+                    LbButton {
+                        text: "1. Capture released"
+                        enabled: !setup.settingsModel.native_capture_busy
+                        onClicked: {
+                            if (captureRuntimeChoice.currentIndex < 0 || captureRuntimeChoice.currentIndex >= nativeCapture.runtimeChoices.length) {
+                                nativeCapture.errorText = "Choose the saved runtime whose SDL library should be calibrated."
+                                return
+                            }
+                            nativeCapture.errorText = setup.settingsModel.begin_native_controller_capture(nativeCapture.controllerId,
+                                JSON.stringify(nativeCapture.runtimeChoices[captureRuntimeChoice.currentIndex].key))
+                        }
+                    }
+                    LbButton {
+                        text: "2. Capture pressed"
+                        enabled: setup.settingsModel.native_capture_ready && !setup.settingsModel.native_capture_busy
+                        onClicked: nativeCapture.errorText = setup.settingsModel.finish_native_controller_capture()
+                    }
+                    LbButton {
+                        text: "Cancel capture"
+                        onClicked: {
+                            setup.settingsModel.cancel_native_controller_capture()
+                            nativeCapture.errorText = ""
+                        }
+                    }
+                }
+                BusyIndicator {
+                    running: setup.settingsModel.native_capture_busy
+                    visible: running
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: nativeCapture.errorText || setup.settingsModel.native_capture_status
+                    color: nativeCapture.errorText ? "#ffb454" : "#95a2b6"
+                }
+                ButtonGroup { id: nativeChanges }
+                Repeater {
+                    model: nativeCapture.changes
+                    LbRadioButton {
+                        required property int index
+                        required property var modelData
+                        ButtonGroup.group: nativeChanges
+                        checked: nativeCapture.selectedChange === index
+                        text: modelData.output + (modelData.analog ? " (axis)" : " (button)")
+                            + ": " + modelData.released + " → " + modelData.pressed
+                        onClicked: nativeCapture.selectedChange = index
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: nativeCapture.targetControls.length
+                        ? "Choose which calibrated physical control this gesture represents. Recorded bindings save automatically. Native BizHawk digital pads and directly representable DualShock sticks use these records; asymmetric or composite stick mappings still need normalized transport. This implementation has not been tested yet."
+                        : "Choose a layout and save physical calibration first, then reopen this dialog to record logical bindings."
+                    color: "#ffb454"
+                }
+                LbComboBox {
+                    id: nativeTarget
+                    Layout.fillWidth: true
+                    model: nativeCapture.targetControls
+                    textRole: "label"
+                    Accessible.name: "Calibrated control represented by this gesture"
+                }
+                LbButton {
+                    text: "Record selected logical binding"
+                    enabled: nativeCapture.selectedChange >= 0 && nativeTarget.currentIndex >= 0
+                        && !setup.settingsModel.native_capture_busy
+                    onClicked: nativeCapture.errorText = setup.settingsModel.save_native_controller_gesture(
+                        nativeCapture.controllerId, nativeCapture.targetControls[nativeTarget.currentIndex].id,
+                        nativeCapture.selectedChange)
+                }
+                Label {
+                    text: "Recorded logical bindings: " + nativeCapture.savedBindings.length
+                    font.bold: true
+                }
+                Repeater {
+                    model: nativeCapture.savedBindings
+                    Label {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: modelData.control + " → " + modelData.gesture.output
+                            + " (" + modelData.gesture.released + " → " + modelData.gesture.pressed + ")"
+                    }
+                }
+                LbButton {
+                    text: "Clear this runtime's recorded bindings…"
+                    enabled: nativeCapture.savedBindings.length > 0 && !setup.settingsModel.native_capture_busy
+                    onClicked: { clearNativeBindings.controllerId = nativeCapture.controllerId; clearNativeBindings.runtimeKey = nativeCapture.runtimeSelectionKey; clearNativeBindings.open() }
+                }
+            }
+        }
+    }
+    LbDialog {
+        id: clearNativeBindings
+        property string controllerId: ""
+        property string runtimeKey: ""
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(450, parent ? parent.width - 40 : 450)
+        modal: true
+        title: "Clear this controller's logical bindings?"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: "This removes scoped SDL2 bindings for this controller and runtime only. Other scopes and legacy fallback bindings remain unchanged. Legacy bindings may apply again after clearing this scope. The change saves automatically."
+        }
+        onAccepted: setup.settingsModel.clear_scoped_native_controller_calibration(controllerId, runtimeKey)
+    }
+    readonly property int revision: settingsModel.controller_revision
+    readonly property var profiles: {
+        revision
+        let choices = [{ id: "", name: "Automatic layout" },
+                       { id: "none", name: "Keep native mapping" },
+                       { id: "two-button-clockwise", name: "Two-button: left run / bottom jump" }]
+        for (let index = 0; index < settingsModel.custom_controller_profile_count(); ++index)
+            choices.push({ id: settingsModel.custom_controller_profile_id_at(index),
+                           name: settingsModel.custom_controller_profile_name_at(index) })
+        return choices
+    }
+    readonly property var layouts: [
+        { id: "auto", name: "Unverified — choose a layout" },
+        { id: "diamond", name: "Standard diamond (PS5 / Steam / Xbox)" },
+        { id: "horizontal", name: "Horizontal: left B / right A" },
+        { id: "horizontal-swapped", name: "Horizontal: left A / right B (swap)" },
+        { id: "nintendo", name: "Nintendo diamond: swap A/B and X/Y" }
+    ]
+    spacing: 10
+
+    Label {
+        text: "Smart controller setup"
+        font.pixelSize: 20
+        font.bold: true
+    }
+    LbButton {
+        text: "Controller coverage — implemented / remaining…"
+        onClicked: coverage.open()
+    }
+    LbButton {
+        visible: Qt.platform.os === "linux"
+        text: "Native BizHawk runtime and player setup…"
+        onClicked: nativeRuntime.loadAndOpen()
+    }
+
+    LbSwitch {
+        text: "Automatic selection for existing launch profiles"
+        checked: setup.settingsModel.controller_automatic
+        onToggled: setup.settingsModel.set_controller_automatic_enabled(checked)
+    }
+    Label {
+        Layout.fillWidth: true
+        text: setup.calibratedCoverage + " Automatic RetroArch overrides/remaps are suspended for the session. Contracts that require core options also suspend per-game core options; saved files are unchanged. Other cores/emulators still need adapters. Disable Apply saved calibrations to keep native setup."
+        color: "#ffb454"
+        wrapMode: Text.WordWrap
+    }
+    Label {
+        Layout.fillWidth: true
+        visible: !setup.settingsModel.controller_remapping_available
+        text: "Advanced virtual-controller routing below needs a supported, managed InputPlumber device on Linux. Calibrated RetroArch launch and Lunchpail navigation work independently of InputPlumber."
+        wrapMode: Text.WordWrap
+        color: "#ffb454"
+    }
+    RowLayout {
+        visible: Qt.platform.os === "linux"
+        LbButton {
+            text: "Enable Linux controller routing…"
+            enabled: !setup.settingsModel.controller_busy
+            onClicked: { routingConfirmation.enableRouting = true; routingConfirmation.open() }
+        }
+        LbButton {
+            text: "Use native controller routing…"
+            enabled: !setup.settingsModel.controller_busy
+            onClicked: { routingConfirmation.enableRouting = false; routingConfirmation.open() }
+        }
+    }
+    LbDialog {
+        id: routingConfirmation
+        property bool enableRouting: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(520, parent ? parent.width - 40 : 520)
+        modal: true
+        title: enableRouting ? "Enable system-wide controller routing?" : "Return to native routing?"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: "This changes the running InputPlumber service for all supported controllers, including other applications. It can change Steam Input routing. Close running games first. No system packages or drivers will be installed."
+        }
+        onAccepted: setup.settingsModel.configure_controller_routing(enableRouting)
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "For two-button systems, horizontal pads keep their comfortable left/right layout; diamond pads use left for run and bottom for jump. Changes save automatically."
+        wrapMode: Text.WordWrap
+        color: "#95a2b6"
+    }
+    Label {
+        Layout.fillWidth: true
+        text: setup.gamepad.last_input.length ? "Input check: " + setup.gamepad.last_input
+                                             : "Press a controller button to see what it reports."
+        wrapMode: Text.WordWrap
+        color: "#62d6c6"
+    }
+    LbSwitch {
+        text: "Test controller input — pause menu navigation"
+        checked: setup.testInput
+        onToggled: setup.testInput = checked
+    }
+    LbSwitch {
+        text: "Apply saved controller mappings at emulator launch"
+        Accessible.description: "Apply saved gamepad calibrations and per-game setups, including relative-only MAME and FBNeo input. Runtime requirements still apply."
+        checked: setup.settingsModel.controller_calibrated_launch
+        onToggled: setup.settingsModel.set_controller_calibrated_launch_enabled(checked)
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "Press a button: its controller row flashes and shows the reported control. South/East/West/North are the reported positions, not necessarily the labels printed on your pad. Test mode prevents presses from activating settings."
+        wrapMode: Text.WordWrap
+        color: "#95a2b6"
+    }
+    LbCheckBox {
+        id: showVirtualControllers
+        text: "Show virtual controllers"
+        checked: false
+    }
+    Repeater {
+        model: { setup.revision; return setup.settingsModel.controller_count() }
+        delegate: ColumnLayout {
+            id: device
+            visible: {
+                setup.revision
+                const review = JSON.parse(setup.settingsModel.controller_model_review(
+                    setup.settingsModel.controller_key_at(index), ""))
+                return showVirtualControllers.checked || !review.steam_virtual
+            }
+            required property int index
+            Layout.fillWidth: true
+            ControllerInputFeedback {
+                Layout.fillWidth: true
+                gamepad: setup.gamepad
+                controllerName: { setup.revision; return setup.settingsModel.controller_name_at(device.index) }
+                matchesInput: {
+                    setup.revision
+                    return setup.settingsModel.controller_receives_input(device.index, setup.gamepad.last_device_key)
+                }
+            }
+            LbTextField {
+                Layout.fillWidth: true
+                text: { setup.revision; return setup.settingsModel.controller_alias_at(device.index) }
+                placeholderText: "Name this controller (e.g. N30 or Retro Fighters)"
+                maximumLength: 80
+                onEditingFinished: setup.settingsModel.rename_controller(device.index, text)
+                Accessible.name: "Rename " + setup.settingsModel.controller_name_at(device.index)
+            }
+            LbButton {
+                text: "Choose layout and calibrate…"
+                onClicked: calibration.openFor(setup.settingsModel.controller_key_at(device.index),
+                    setup.settingsModel.controller_name_at(device.index))
+            }
+            ColumnLayout {
+                visible: { setup.revision; return setup.settingsModel.controller_key_at(device.index).startsWith("sdl3:") }
+                Layout.fillWidth: true
+                LbButton {
+                    text: "Use native SDL3 mapping"
+                    enabled: !setup.settingsModel.busy
+                    onClicked: {
+                        const error = setup.settingsModel.use_sdl3_controller_mapping(setup.settingsModel.controller_key_at(device.index))
+                        nativeSdlResult.text = error || "SDL3 mapping saved. Choose layout and calibrate to review or edit it."
+                    }
+                }
+                Label { id: nativeSdlResult; Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: text.length > 0 }
+            }
+            LbButton {
+                visible: Qt.platform.os === "linux"
+                text: "Capture native SDL2 gesture…"
+                onClicked: nativeCapture.openFor(setup.settingsModel.controller_key_at(device.index),
+                    setup.settingsModel.controller_name_at(device.index))
+            }
+            LbComboBox {
+                Layout.fillWidth: true
+                model: setup.layouts
+                textRole: "name"
+                currentIndex: {
+                    setup.revision
+                    const layout = setup.settingsModel.controller_layout_at(device.index)
+                    return Math.max(0, setup.layouts.findIndex(option => option.id === layout))
+                }
+                onActivated: setup.settingsModel.choose_controller_layout(device.index, setup.layouts[currentIndex].id)
+                Accessible.name: "Physical layout for " + setup.settingsModel.controller_name_at(device.index)
+            }
+        }
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "N64 / unusual controllers: use the profile editor below to assign physical controls. C-buttons reported as right-stick directions are supported. Do not select a wiring preset unless the input check agrees."
+        wrapMode: Text.WordWrap
+        color: "#95a2b6"
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "Some USB adapters identify as Xbox controllers regardless of their physical layout. Verify those once. Devices without a unique serial are remembered by USB port; keep each controller on its configured port."
+        wrapMode: Text.WordWrap
+        color: "#95a2b6"
+    }
+    Repeater {
+        model: [
+            { id: "two-button", name: "NES / Game Boy / PC Engine" },
+            { id: "n64", name: "Nintendo 64" },
+            { id: "six-button", name: "Mega Drive / Saturn / Arcade" },
+            { id: "modern", name: "SNES / modern systems" }
+        ]
+        delegate: RowLayout {
+            required property var modelData
+            Layout.fillWidth: true
+            Label { text: parent.modelData.name; Layout.preferredWidth: 220; wrapMode: Text.WordWrap }
+            LbComboBox {
+                Layout.fillWidth: true
+                model: {
+                    setup.revision
+                    let names = ["Automatic / first available"]
+                    for (let index = 0; index < setup.settingsModel.controller_count(); ++index)
+                        names.push(setup.settingsModel.controller_name_at(index))
+                    return names
+                }
+                currentIndex: { setup.revision; return setup.settingsModel.controller_preference_at(parent.modelData.id) }
+                onActivated: setup.settingsModel.choose_preferred_controller(parent.modelData.id, currentIndex)
+                Accessible.name: "Preferred controller for " + parent.modelData.name
+            }
+            LbComboBox {
+                Layout.fillWidth: true
+                model: setup.profiles
+                textRole: "name"
+                enabled: { setup.revision; return setup.settingsModel.controller_preference_at(parent.modelData.id) > 0 }
+                currentIndex: {
+                    setup.revision
+                    const profile = setup.settingsModel.preferred_controller_profile(parent.modelData.id)
+                    return Math.max(0, setup.profiles.findIndex(option => option.id === profile))
+                }
+                onActivated: setup.settingsModel.choose_preferred_controller_profile(parent.modelData.id, setup.profiles[currentIndex].id)
+                Accessible.name: "Controller layout for " + parent.modelData.name
+            }
+        }
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "Choose a preferred controller to assign a different custom profile for each system family. Explicit player assignments and game overrides below take priority. Disconnected preferences are retained."
+        color: "#95a2b6"
+        wrapMode: Text.WordWrap
+    }
+}

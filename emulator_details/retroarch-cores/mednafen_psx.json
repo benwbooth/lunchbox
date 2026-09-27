@@ -11,8 +11,8 @@
       "evidence": [
         "buildbot:https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_psx_libretro.so.zip @2026-09-13",
         "runtime:Linux x86_64; Beetle PSX 0.9.44.1 82d8e05; sha256 c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674",
-        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md",
-        "crates/lunchbox-controller-probe/LIBRETRO_PERSISTENCE.md"
+        "crates/lunchpail-controller-probe/LIBRETRO_INPUT.md",
+        "crates/lunchpail-controller-probe/LIBRETRO_PERSISTENCE.md"
       ]
     },
     "linux-flatpak": {
@@ -21,7 +21,7 @@
       "evidence": [
         "runtime:Flatpak org.libretro.RetroArch 1.22.2 Git 69a4f0ea1e commit 9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752",
         "runtime:external mednafen_psx_libretro.so sha256 c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674",
-        "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"
+        "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/CONTROLLER_RETROARCH_ORACLE.md"
       ]
     },
     "macos": {
@@ -30,8 +30,8 @@
       "evidence": [
         "buildbot:https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mednafen_psx_libretro.dylib.zip @2026-09-13",
         "runtime:macOS 26.5.1 arm64 M1; Beetle PSX 0.9.44.1 82d8e05; sha256 20e52419f9f693cce563dd63711ce70ff21ad3b30965696c97d828e38db4fd22",
-        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md",
-        "crates/lunchbox-controller-probe/LIBRETRO_PERSISTENCE.md"
+        "crates/lunchpail-controller-probe/LIBRETRO_INPUT.md",
+        "crates/lunchpail-controller-probe/LIBRETRO_PERSISTENCE.md"
       ]
     },
     "windows": {
@@ -50,7 +50,7 @@
     ],
     "mapping_summary": "Catalog retropad profiles map the system controls to the core’s libretro input ports.",
     "evidence": [
-      "crates/lunchbox-app/data/controllers/catalog.json emulator_profiles",
+      "crates/lunchpail-app/data/controllers/catalog.json emulator_profiles",
       "core-info:mednafen_psx_libretro.info",
       "runtime:90/90 PAD observations in individual and bitmask modes on Linux x86_64 and macOS arm64",
       "runtime:production RetroArch Flatpak mapping passed 14 digital controls, two combinations, and every release"
@@ -152,7 +152,7 @@
     "notes": "The exact Linux x86_64 and macOS arm64 builds each exposed one 131,072-byte memory-card buffer through RETRO_MEMORY_SAVE_RAM; four-process runtime oracles preserved and updated a bounded marker. This proves the direct core/frontend memory-card ABI, not RetroArch path naming or provider sync.",
     "evidence": [
       "mednafen_psx_libretro.info libretro_saves=true",
-      "crates/lunchbox-controller-probe/LIBRETRO_PERSISTENCE.md"
+      "crates/lunchpail-controller-probe/LIBRETRO_PERSISTENCE.md"
     ]
   },
   "states": {
@@ -162,7 +162,7 @@
     "notes": "mednafen_psx_libretro.info declares savestate=true with deterministic serialization. The exact Linux x86_64 and macOS arm64 builds each restored an emulated-RAM marker from a 16,777,216-byte state in the same process and a fresh process.",
     "evidence": [
       "mednafen_psx_libretro.info savestate=true/savestate_features=deterministic",
-      "crates/lunchbox-controller-probe/LIBRETRO_PERSISTENCE.md"
+      "crates/lunchpail-controller-probe/LIBRETRO_PERSISTENCE.md"
     ]
   }
 }

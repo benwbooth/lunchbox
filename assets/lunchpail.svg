@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Lunchpail</title>
+  <desc id="desc">An amber enamel lunchpail with a carry handle, a directional pad and two mint game buttons.</desc>
+  <defs>
+    <linearGradient id="enamel" x1="48" y1="96" x2="204" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffcd79"/>
+      <stop offset=".55" stop-color="#ffb454"/>
+      <stop offset="1" stop-color="#ee9038"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="128" y1="72" x2="128" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffdc96"/>
+      <stop offset="1" stop-color="#ffc26a"/>
+    </linearGradient>
+    <linearGradient id="grip" x1="128" y1="24" x2="128" y2="78" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3b4d60"/>
+      <stop offset="1" stop-color="#192a3b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- A broad, open handle keeps the lunchpail silhouette legible at 24 px. -->
+  <path d="M78 80V50c0-18 12-30 30-30h40c18 0 30 12 30 30v30h-18V51c0-8-4-12-12-12h-40c-8 0-12 4-12 12v29Z" fill="url(#grip)"/>
+  <path d="M100 26h56" stroke="#63758a" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+
+  <!-- Dark rolled edge and a quiet lower shadow; no decorative wear or screws. -->
+  <rect x="20" y="70" width="216" height="166" rx="34" fill="#142435"/>
+  <rect x="26" y="76" width="204" height="150" rx="28" fill="url(#enamel)"/>
+  <path d="M54 76h148c16 0 28 12 28 28v6H26v-6c0-16 12-28 28-28Z" fill="url(#lid)"/>
+  <path d="M28 110h200" stroke="#be732e" stroke-width="3"/>
+  <path d="M54 82h148" stroke="#fff0c9" stroke-width="3" stroke-linecap="round" opacity=".75"/>
+  <path d="M43 211c4 6 10 9 19 9h132c9 0 15-3 19-9" fill="none" stroke="#dc8333" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- The clasp crosses the lid seam, making the object unmistakably a case. -->
+  <rect x="115" y="94" width="26" height="29" rx="7" fill="#b36d2e" opacity=".45"/>
+  <rect x="115" y="90" width="26" height="29" rx="7" fill="#223548"/>
+  <rect x="120" y="94" width="16" height="18" rx="3" fill="#dce9e8"/>
+  <path d="M123 98h10" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- The face itself is the controller, rather than a badge pasted onto it. -->
+  <path d="M74 138h16v19h19v16H90v19H74v-19H55v-16h19Z" fill="#cc7d34"/>
+  <path d="M76 134h12a2 2 0 0 1 2 2v17h17a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H90v17a2 2 0 0 1-2 2H76a2 2 0 0 1-2-2v-17H57a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h17v-17a2 2 0 0 1 2-2Z" fill="#223548"/>
+  <path d="M79 140h6v16" fill="none" stroke="#42566b" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="161" cy="177" r="16" fill="#cb7b34"/>
+  <circle cx="188" cy="150" r="16" fill="#cb7b34"/>
+  <circle cx="161" cy="173" r="16" fill="#223548"/>
+  <circle cx="188" cy="146" r="16" fill="#223548"/>
+  <circle cx="161" cy="172" r="11" fill="#65d8c5"/>
+  <circle cx="188" cy="145" r="11" fill="#65d8c5"/>
+  <path d="M156 166a8 8 0 0 1 9 0m18-27a8 8 0 0 1 9 0" fill="none" stroke="#b2f3df" stroke-width="2" stroke-linecap="round"/>
+  <rect x="117" y="195" width="22" height="5" rx="2.5" fill="#a95f2d" opacity=".65"/>
+</svg>

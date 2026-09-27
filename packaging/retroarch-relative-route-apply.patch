@@ -1,7 +1,7 @@
 --- a/command.c
 +++ b/command.c
 @@ -424,1 +424,46 @@
-+bool command_lunchbox_set_mouse_routes(command_t *cmd, const char *arg)
++bool command_lunchpail_set_mouse_routes(command_t *cmd, const char *arg)
 +{
 +   unsigned routes[8], i, j;
 +   bool disabled = true, identical = true;
@@ -51,7 +51,7 @@
 +++ b/command.h
 @@ -427,1 +427,2 @@
  bool command_get_config_param(command_t *cmd, const char* arg);
-+bool command_lunchbox_set_mouse_routes(command_t *cmd, const char *arg);
++bool command_lunchpail_set_mouse_routes(command_t *cmd, const char *arg);
 @@ -448,1 +449,2 @@
     { "GET_CONFIG_PARAM", command_get_config_param, "<param name>" },
-+   { "LUNCHBOX_SET_MOUSE_ROUTES", command_lunchbox_set_mouse_routes, "<eight mouse indices>" },
++   { "LUNCHBOX_SET_MOUSE_ROUTES", command_lunchpail_set_mouse_routes, "<eight mouse indices>" },

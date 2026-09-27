@@ -269,7 +269,7 @@
           ]
         }
       ],
-      "notes": "Official macOS builds are aarch64-only app bundles (plus brew install --cask gopher64); the Lunchbox DB row for Gopher64 lists only 'Windows;Linux' and should gain macOS."
+      "notes": "Official macOS builds are aarch64-only app bundles (plus brew install --cask gopher64); the Lunchpail DB row for Gopher64 lists only 'Windows;Linux' and should gain macOS."
     }
   }
 }

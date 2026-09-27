@@ -25,8 +25,8 @@
             "docs:ctrlr_config (ctrlr folder samples, -ctrlr selection, version 10)",
             "source:mamedev/mame src/emu/config.cpp (loads default.cfg as DEFAULT and basename()+\".cfg\" as SYSTEM from cfg_directory; controller file \"<ctrlr>.cfg\")",
             "source:mamedev/mame src/frontend/mame/clifront.cpp (-createconfig writes mame.ini, ui.ini, plugin.ini)",
-            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (owned default.cfg and machine-basename cfg copies matching pinned config.cpp load order)",
-            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_CONTROLLER_CONTRACT.md (version-10 controller XML writer; inspection launch routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree with INI load/write disabled)"
+            "contract: https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (owned default.cfg and machine-basename cfg copies matching pinned config.cpp load order)",
+            "contract: https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_CONTROLLER_CONTRACT.md (version-10 controller XML writer; inspection launch routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree with INI load/write disabled)"
           ]
         },
         {
@@ -66,8 +66,8 @@
           "evidence": [
             "docs:commandline-all (rompath default roms, hashpath default hash)",
             "db:firmware_rules mame entries (sources/firmware-rules.json: runtime_kind mame, target_strategy mame_rompath, e.g. neogeo/casloopy/coco romsets plus github:mame-hash-files XMLs with target_subdir @hash)",
-            "lunchbox:crates/lunchbox-app/src/firmware.rs (mame runtime root ~/.mame/roms; '@hash' installs to sibling hash/ of the rompath root)",
-            "lunchbox:crates/lunchbox-app/src/emulator.rs (native launch appends ~/.mame/roms to -rompath)"
+            "lunchpail:crates/lunchpail-app/src/firmware.rs (mame runtime root ~/.mame/roms; '@hash' installs to sibling hash/ of the rompath root)",
+            "lunchpail:crates/lunchpail-app/src/emulator.rs (native launch appends ~/.mame/roms to -rompath)"
           ]
         },
         {
@@ -78,7 +78,7 @@
           "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
-      "notes": "Lunchbox standalone-MAME launch uses explicit -cfg_directory/-ctrlrpath routing with private default.cfg, <shortname>.cfg and controller-profile copies; originals are never written and runtime cfg changes stay session-local (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md). The libretro-core contract (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_CONTROLLER_CONTRACT.md) instead routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree and disables INI loading/writing."
+      "notes": "Lunchpail standalone-MAME launch uses explicit -cfg_directory/-ctrlrpath routing with private default.cfg, <shortname>.cfg and controller-profile copies; originals are never written and runtime cfg changes stay session-local (https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md). The libretro-core contract (https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_CONTROLLER_CONTRACT.md) instead routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree and disables INI loading/writing."
     },
     "linux-flatpak": {
       "paths": [
@@ -126,14 +126,14 @@
         },
         {
           "purpose": "bios",
-          "path": "bundled rompath is /app/share/mame/roms (read-only /app); hashpath /app/share/mame/hash. Lunchbox installs MAME firmware into the per-app data root ~/.var/app/org.mamedev.MAME/data/mame/roms and appends that directory to -rompath at launch; the manifest also grants --filesystem=host:ro for external roms/samples",
+          "path": "bundled rompath is /app/share/mame/roms (read-only /app); hashpath /app/share/mame/hash. Lunchpail installs MAME firmware into the per-app data root ~/.var/app/org.mamedev.MAME/data/mame/roms and appends that directory to -rompath at launch; the manifest also grants --filesystem=host:ro for external roms/samples",
           "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "flathub:org.mamedev.MAME mame.ini (rompath /app/share/mame/roms, hashpath /app/share/mame/hash)",
             "flathub:org.mamedev.MAME README.md (--filesystem=host:ro for external data, roms, samples)",
             "db:firmware_rules mame entries (mame_rompath rules)",
-            "lunchbox:crates/lunchbox-app/src/firmware.rs (flatpak mame roms root ~/.var/app/org.mamedev.MAME/data/mame/roms)",
-            "lunchbox:crates/lunchbox-app/src/emulator.rs (mame_runtime_roms_directory appends the flatpak roms dir to -rompath)"
+            "lunchpail:crates/lunchpail-app/src/firmware.rs (flatpak mame roms root ~/.var/app/org.mamedev.MAME/data/mame/roms)",
+            "lunchpail:crates/lunchpail-app/src/emulator.rs (mame_runtime_roms_directory appends the flatpak roms dir to -rompath)"
           ]
         },
         {
@@ -144,7 +144,7 @@
           "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
-      "notes": "The Flatpak keeps every writable MAME folder inside the persisted $HOME/.mame sandbox tree; the lunchbox probes have launched this Flatpak with an exact collection/runtime -rompath list (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/FRONTEND_ARCHITECTURE.md arcade-launch-probe)."
+      "notes": "The Flatpak keeps every writable MAME folder inside the persisted $HOME/.mame sandbox tree; the lunchpail probes have launched this Flatpak with an exact collection/runtime -rompath list (https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/FRONTEND_ARCHITECTURE.md arcade-launch-probe)."
     },
     "windows": {
       "paths": [
@@ -157,7 +157,7 @@
             "docs:commandline-all (inipath \".;ini;ini/presets\", cfg_directory/ctrlrpath defaults)",
             "docs:multiconfig (ini layering order)",
             "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
-            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (private default.cfg and machine-basename cfg copies)"
+            "contract: https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (private default.cfg and machine-basename cfg copies)"
           ]
         },
         {
@@ -191,13 +191,13 @@
         },
         {
           "purpose": "bios",
-          "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchbox's Windows firmware adapter stages MAME romsets and hash XMLs under %LOCALAPPDATA%/mame (roms at mame/roms) and passes that root as the runtime -rompath",
+          "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchpail's Windows firmware adapter stages MAME romsets and hash XMLs under %LOCALAPPDATA%/mame (roms at mame/roms) and passes that root as the runtime -rompath",
           "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "docs:commandline-all (rompath default roms, hashpath default hash)",
             "db:firmware_rules mame entries (mame_rompath + @hash rules)",
-            "lunchbox:crates/lunchbox-app/src/firmware.rs (windows mame root data_local_dir()/mame/roms)",
-            "lunchbox:crates/lunchbox-app/src/emulator.rs (native windows roms dir appended to -rompath)"
+            "lunchpail:crates/lunchpail-app/src/firmware.rs (windows mame root data_local_dir()/mame/roms)",
+            "lunchpail:crates/lunchpail-app/src/emulator.rs (native windows roms dir appended to -rompath)"
           ]
         },
         {
@@ -221,7 +221,7 @@
             "docs:commandline-all (macOS inipath includes $HOME/Library/Application Support/mame and $HOME/.mame;.;ini; cfg/ctrlrpath defaults)",
             "docs:multiconfig (ini layering, saves to first inipath entry)",
             "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
-            "contract: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (private cfg copies and controller profile)"
+            "contract: https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MAME_STANDALONE_PROGRESS.md (private cfg copies and controller profile)"
           ]
         },
         {
@@ -255,12 +255,12 @@
         },
         {
           "purpose": "bios",
-          "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchbox's macOS mame firmware adapter stages romsets/hash XMLs under ~/.mame/roms (same root as Linux)",
+          "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchpail's macOS mame firmware adapter stages romsets/hash XMLs under ~/.mame/roms (same root as Linux)",
           "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "docs:commandline-all (rompath default roms, hashpath default hash)",
             "db:firmware_rules mame entries (mame_rompath + @hash rules)",
-            "lunchbox:crates/lunchbox-app/src/firmware.rs (non-flatpak non-windows mame root ~/.mame/roms)"
+            "lunchpail:crates/lunchpail-app/src/firmware.rs (non-flatpak non-windows mame root ~/.mame/roms)"
           ]
         },
         {

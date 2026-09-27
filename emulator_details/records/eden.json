@@ -4,8 +4,8 @@
   "emulator": "Eden",
   "sources": [
     { "kind": "source", "repo": "git.eden-emu.dev/eden-emu/eden", "commit": "c95ad020fb", "role": "path roots (path_util/fs_paths incl. legacy yuzu/citron dirs), qt-config and [Controls], input profiles, savedata layout, key files, NAND registered contents; no save-state module" },
-    { "kind": "manifest", "repo": "lunchbox", "path": "sources/emulator-install-sources.json", "role": "Eden linux AppImage / windows zip / macOS dmg install entries" },
-    { "kind": "manifest", "repo": "lunchbox", "path": "sources/firmware-rules.json", "role": "eden:Eden:Nintendo Switch:keys / :firmware rules bound to manual:nintendo-switch-keys and manual:nintendo-switch-firmware" }
+    { "kind": "manifest", "repo": "lunchpail", "path": "sources/emulator-install-sources.json", "role": "Eden linux AppImage / windows zip / macOS dmg install entries" },
+    { "kind": "manifest", "repo": "lunchpail", "path": "sources/firmware-rules.json", "role": "eden:Eden:Nintendo Switch:keys / :firmware rules bound to manual:nintendo-switch-keys and manual:nintendo-switch-firmware" }
   ],
   "platforms": {
     "linux": {
@@ -51,7 +51,7 @@
         },
         {
           "purpose": "bios",
-          "path": "Switch firmware is NCA content installed into the NAND system partition: ~/.local/share/eden/nand/system/Contents/registered/ (user-partition mirror at nand/user/Contents/registered); Lunchbox installs dumps from manual:nintendo-switch-firmware into Eden's active NAND profile",
+          "path": "Switch firmware is NCA content installed into the NAND system partition: ~/.local/share/eden/nand/system/Contents/registered/ (user-partition mirror at nand/user/Contents/registered); Lunchpail installs dumps from manual:nintendo-switch-firmware into Eden's active NAND profile",
           "naming": "Installed NCA content is selected by the NAND firmware layout rather than a single BIOS filename; the source does not publish a canonical checksum for the installed firmware set.",
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — GetOrCreateDirectoryRelative(nand_root, \"/system/Contents/registered\") and \"/user/Contents/registered\"",
@@ -59,7 +59,7 @@
           ]
         },
         {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:git.eden-emu.dev/eden-emu/eden@c95ad020fb (primary source cited by this record; input capture remains unresolved for linux)"]}],
-      "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit c95ad020fb (purpose 'states' therefore omitted). Eden defines legacy EmuPath roots for citron/sudachi/yuzu/suyu (XDG data dirs) and Ryujinx (config dir on UNIX) for cross-emulator migration, but Eden's own layout is plain ~/.local/share/eden, ~/.config/eden, ~/.cache/eden. The Lunchbox AppImage source (eden-linux clang pgo asset) runs Eden with HOME/XDG pointing at the Lunchbox data root."
+      "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit c95ad020fb (purpose 'states' therefore omitted). Eden defines legacy EmuPath roots for citron/sudachi/yuzu/suyu (XDG data dirs) and Ryujinx (config dir on UNIX) for cross-emulator migration, but Eden's own layout is plain ~/.local/share/eden, ~/.config/eden, ~/.cache/eden. The Lunchpail AppImage source (eden-linux clang pgo asset) runs Eden with HOME/XDG pointing at the Lunchpail data root."
     },
     "linux-flatpak": {
       "paths": [
@@ -144,7 +144,7 @@
           ]
         },
         {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:git.eden-emu.dev/eden-emu/eden@c95ad020fb (primary source cited by this record; input capture remains unresolved for macos)"]}],
-      "notes": "macOS builds ship as aarch64 dmg assets on git.eden-emu.dev releases (Lunchbox install source); paths are the plain XDG defaults because the code has no macOS-specific data root."
+      "notes": "macOS builds ship as aarch64 dmg assets on git.eden-emu.dev releases (Lunchpail install source); paths are the plain XDG defaults because the code has no macOS-specific data root."
     },
     "windows": {
       "paths": [

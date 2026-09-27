@@ -89,7 +89,7 @@
           ]
         }
       ],
-      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchbox has no verified native controller writer for this Windows-only target; it must not modify a user's pc8801ma.ini or keycode.cfg."
+      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchpail has no verified native controller writer for this Windows-only target; it must not modify a user's pc8801ma.ini or keycode.cfg."
     }
   },
   "platform_gaps": {

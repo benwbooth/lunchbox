@@ -98,7 +98,7 @@
       "evidence": [
         "buildbot:https://buildbot.libretro.com/nightly/linux/x86_64/latest/vbam_libretro.so.zip @2026-09-12",
         "runtime:Linux x86_64; VBA-M 2.1.3 115defb; sha256 156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c",
-        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
+        "crates/lunchpail-controller-probe/LIBRETRO_INPUT.md"
       ]
     },
     "linux-flatpak": {
@@ -115,7 +115,7 @@
       "evidence": [
         "buildbot:https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/vbam_libretro.dylib.zip @2026-09-12",
         "runtime:macOS 26.5.1 arm64; VBA-M version string suffix 115defb; sha256 880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f",
-        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
+        "crates/lunchpail-controller-probe/LIBRETRO_INPUT.md"
       ]
     },
     "windows": {
@@ -124,9 +124,9 @@
       "evidence": [
         "buildbot:https://buildbot.libretro.com/nightly/windows/x86_64/latest/vbam_libretro.dll.zip @2026-09-12",
         "runtime:Windows Server 2025 x86_64; VBA-M 2.1.3 115defb; sha256 a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f",
-        "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34742154324",
-        "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34744774150",
-        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
+        "github-actions:https://github.com/benwbooth/lunchpail/actions/runs/34742154324",
+        "github-actions:https://github.com/benwbooth/lunchpail/actions/runs/34744774150",
+        "crates/lunchpail-controller-probe/LIBRETRO_INPUT.md"
       ]
     }
   }

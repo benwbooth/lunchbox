@@ -82,7 +82,7 @@
           "naming": "Atari 8-bit needs no keys."
         }
       ],
-      "notes": "Lunchbox installs the canonical Windows Altirra build under Wine (sources/emulator-install-sources.json); keep the portable Altirra.ini (or /portable) inside the install dir for deterministic per-install config, and keep game images writable for in-image saves. AltirraQt (benwbooth/altirraqt AppImage) is a separate Lunchbox emulator target and is deliberately not captured by this record. Verified macos: canonical Altirra has no official macOS or Linux build \u2014 the official page distributes Windows binaries only; the unofficial AltirraSDL fork (ilmenit/AltirraSDL, ini at ~/.config/altirra/settings.ini) targets Linux/macOS but is a distinct emulator."
+      "notes": "Lunchpail installs the canonical Windows Altirra build under Wine (sources/emulator-install-sources.json); keep the portable Altirra.ini (or /portable) inside the install dir for deterministic per-install config, and keep game images writable for in-image saves. AltirraQt (benwbooth/altirraqt AppImage) is a separate Lunchpail emulator target and is deliberately not captured by this record. Verified macos: canonical Altirra has no official macOS or Linux build \u2014 the official page distributes Windows binaries only; the unofficial AltirraSDL fork (ilmenit/AltirraSDL, ini at ~/.config/altirra/settings.ini) targets Linux/macOS but is a distinct emulator."
     },
     "windows": {
       "paths": [

@@ -226,7 +226,7 @@
   "controller_boundary": {
     "native_writer": "writer_only",
     "profile_id": "picodrive:native-bind-v1",
-    "writer": "crates/lunchbox-app/src/controller_picodrive_native.rs",
+    "writer": "crates/lunchpail-app/src/controller_picodrive_native.rs",
     "refusal": "The writer renders only source-defined binddev/bind records. It has no launch session or same-runtime physical-device identity probe yet, so it must not be reported as executable controller integration or runtime-verified input."
   },
   "notes": "Linux writer is source-shaped and deterministic for binddev/bind lines; it must be given an explicit verified host key/device name and does not invent save/state filenames. Runtime and package activation remain unverified."

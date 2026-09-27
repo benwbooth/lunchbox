@@ -3,8 +3,8 @@
   "slug": "openmsx",
   "emulator": "openMSX",
   "sources": [
-    { "kind": "source", "repo": "openMSX/openMSX", "commit": "25179d6b8d5ec69ad68252f3854721c9a02594eb", "role": "pinned commit (matches https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md pin); every path and naming fact below was verified at this commit (all cited files are identical to master)" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract: settings.xml TCL <setting> persistence, msxjoystickN_config joystick dicts, -setting/-command launch, OPENMSX_HOME isolation" },
+    { "kind": "source", "repo": "openMSX/openMSX", "commit": "25179d6b8d5ec69ad68252f3854721c9a02594eb", "role": "pinned commit (matches https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md pin); every path and naming fact below was verified at this commit (all cited files are identical to master)" },
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract: settings.xml TCL <setting> persistence, msxjoystickN_config joystick dicts, -setting/-command launch, OPENMSX_HOME isolation" },
     { "kind": "docs", "url": "https://openmsx.org/", "role": "project download page (v21.0 2025-09-26 via GitHub releases only — no Flatpak is mentioned anywhere on the site)" },
     { "kind": "docs", "url": "https://openmsx.org/manual/user.html", "role": "user manual: savestate/quicksave commands, persistent per-extension SRAM/dsk layout, C-BIOS default machine (repo doc/manual/user.html and setup.html at the pinned commit)" },
     { "kind": "docs", "url": "https://github.com/flathub/org.openmsx.openMSX", "role": "unofficial Flathub listing org.openmsx.openMSX (21.0, packaged in the flathub org, not referenced by openmsx.org)" }
@@ -19,14 +19,14 @@
             "source:src/file/FileOperations.cc:415-432 getUserOpenMSXDir (OPENMSX_HOME, else ~/.openMSX), :439-448 getUserDataDir = <userdir>/share @25179d6b",
             "source:src/CommandLineParser.cc:180-196 default settings.xml loaded via systemFileContext (USER_DATA first) @25179d6b",
             "source:src/config/SettingsConfig.cc:109-112 settings.dtd systemID check, :172-182 saveSetting writes the DOCTYPE and <setting> elements @25179d6b",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md (settings.xml syntax, msxjoystick_config dicts, -setting/-command, OPENMSX_HOME)"
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md (settings.xml syntax, msxjoystick_config dicts, -setting/-command, OPENMSX_HOME)"
           ]
         },
         {
           "purpose": "input",
           "path": "~/.openMSX/share/settings.xml (or the OPENMSX_HOME/OPENMSX_USER_DATA/-setting-selected user data root)",
           "naming": "TCL settings msxjoystick1_config and msxjoystick2_config are lists with UP/DOWN/LEFT/RIGHT/A/B keys; values are event lists such as joyN buttonK, joyN hatK up|right|down|left, and joyN +axisK/-axisK",
-          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -56,7 +56,7 @@
             "source:src/file/FilePool.cc:20-33 initial file pool = systemFileContext paths (USER_DATA then SYSTEM_DATA) + /systemroms and /software @25179d6b",
             "docs:manual setup.html 3. System ROMs (user-dir systemroms, structure irrelevant) and 3.1 C-BIOS (C-BIOS_MSX1/MSX2/MSX2+ configurations, legal to distribute); user.html 2.1 'not change the default machine, the C-BIOS MSX2+ machine will be started' @25179d6b",
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json): optional MSX/MSX2/MSX2+ real-machine ROM pools (minerva:retroarch-system-files, runtime_dir, supports_hle_fallback=true — 'C-BIOS remains the default fallback') and a required Spectravideo SVI pool (supports_hle_fallback=false)",
-            "app:crates/lunchbox-app/src/firmware.rs:520 linux openmsx root ~/.openMSX/share/systemroms, :1897-1901 openmsx merge_tree skips ini/xml/txt from the blueMSX pack"
+            "app:crates/lunchpail-app/src/firmware.rs:520 linux openmsx root ~/.openMSX/share/systemroms, :1897-1901 openmsx merge_tree skips ini/xml/txt from the blueMSX pack"
           ]
         },
 
@@ -68,7 +68,7 @@
           "evidence": ["source:openMSX/openMSX@25179d6b8d5ec69ad68252f3854721c9a02594eb (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "Lunchbox's openmsx native launch isolates everything with OPENMSX_HOME plus a private -setting file and a -command TCL snippet (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md), which relocates settings, persistent saves and savestates together."
+      "notes": "Lunchpail's openmsx native launch isolates everything with OPENMSX_HOME plus a private -setting file and a -command TCL snippet (https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md), which relocates settings, persistent saves and savestates together."
     },
     "linux-flatpak": {
       "paths": [
@@ -85,7 +85,7 @@
           "purpose": "input",
           "path": "~/.var/app/org.openmsx.openMSX/.openMSX/share/settings.xml",
           "naming": "Same TCL settings grammar: msxjoystick1_config/msxjoystick2_config with UP/DOWN/LEFT/RIGHT/A/B event lists (joyN buttonK, hat directions, signed axes)",
-          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md", "flathub:org.openmsx.openMSX"]
+          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md", "flathub:org.openmsx.openMSX"]
         },
         {
           "purpose": "saves",
@@ -134,14 +134,14 @@
           "evidence": [
             "source:src/file/FileOperations.cc:386-395 getUserHomeDir _WIN32 = SHGetSpecialFolderPathW(CSIDL_PERSONAL), :421-422 getUserOpenMSXDir _WIN32 = expandTilde(\"~/openMSX\") @25179d6b",
             "source:src/config/SettingsConfig.cc:172-182 settings.dtd serialization @25179d6b",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"
           ]
         },
         {
           "purpose": "input",
           "path": "Documents\\openMSX\\share\\settings.xml (or the OPENMSX_HOME/OPENMSX_USER_DATA/-setting-selected root)",
           "naming": "Same TCL settings grammar: msxjoystick1_config/msxjoystick2_config with UP/DOWN/LEFT/RIGHT/A/B event lists (joyN buttonK, hat directions, signed axes)",
-          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -168,7 +168,7 @@
           "evidence": [
             "source:src/file/FilePool.cc:20-33 systemroms search paths @25179d6b",
             "docs:manual setup.html 3./3.1 systemroms + C-BIOS @25179d6b",
-            "app:crates/lunchbox-app/src/firmware.rs:521-524 windows openmsx root = Documents/openMSX/share/systemroms (matches upstream)",
+            "app:crates/lunchpail-app/src/firmware.rs:521-524 windows openmsx root = Documents/openMSX/share/systemroms (matches upstream)",
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json)"
           ]
         },
@@ -191,14 +191,14 @@
           "evidence": [
             "source:src/file/FileOperations.cc:415-432 user dir = OPENMSX_HOME or ~/.openMSX for every non-Windows, non-Android build @25179d6b",
             "source:src/CommandLineParser.cc:180-196 settings.xml load; src/config/SettingsConfig.cc:172-182 save format @25179d6b",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"
           ]
         },
         {
           "purpose": "input",
           "path": "~/.openMSX/share/settings.xml (or the OPENMSX_HOME/OPENMSX_USER_DATA/-setting-selected user data root)",
           "naming": "Same TCL settings grammar: msxjoystick1_config/msxjoystick2_config with UP/DOWN/LEFT/RIGHT/A/B event lists (joyN buttonK, hat directions, signed axes)",
-          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:src/input/MSXJoystick.cc and src/events/BooleanInput.cc @25179d6b", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -225,7 +225,7 @@
           "evidence": [
             "source:src/file/FileOperations.cc:415-432 + :439-448 macOS user data dir = ~/.openMSX/share @25179d6b",
             "docs:manual setup.html 3.1 C-BIOS machines bundled; user.html 2.1 default machine @25179d6b",
-            "app:crates/lunchbox-app/src/firmware.rs macOS root = ~/.openMSX/share/systemroms",
+            "app:crates/lunchpail-app/src/firmware.rs macOS root = ~/.openMSX/share/systemroms",
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json) — Spectravideo ROMs required, MSX/MSX2/MSX2+ optional with C-BIOS fallback"
           ]
         },

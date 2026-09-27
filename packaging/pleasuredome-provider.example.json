@@ -1,5 +1,5 @@
 {
-  "format": "lunchbox-local-torrent-provider",
+  "format": "lunchpail-local-torrent-provider",
   "schema_version": 1,
   "provider": {
     "id": "pleasuredome",

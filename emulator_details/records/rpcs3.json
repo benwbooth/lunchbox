@@ -6,7 +6,7 @@
     { "kind": "source", "repo": "RPCS3/rpcs3", "commit": "54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6", "role": "config roots, input_configs layout, savedata, savestates, firmware install, CLI" },
     { "kind": "docs", "url": "https://flathub.org/apps/net.rpcs3.RPCS3", "role": "flatpak application id" },
     { "kind": "manifest", "repo": "flathub/net.rpcs3.RPCS3", "path": "net.rpcs3.RPCS3.yaml", "role": "flatpak sandbox finish-args (home mounted read-only)" },
-    { "kind": "contract", "repo": "lunchbox", "path": "crates/lunchbox-app/src/controller_native_targets.rs", "role": "pinned rpcs3/Input controller contract" }
+    { "kind": "contract", "repo": "lunchpail", "path": "crates/lunchpail-app/src/controller_native_targets.rs", "role": "pinned rpcs3/Input controller contract" }
   ],
   "platforms": {
     "linux": {
@@ -15,13 +15,13 @@
           "purpose": "config",
           "path": "config.yml at the configuration root, default ~/.config/rpcs3/ (honors $XDG_CONFIG_HOME, falls back to $HOME/.config then ./config); an executable-adjacent portable/ directory takes precedence; input profiles live in input_configs/ with active_input_configurations.yml",
           "naming": "input_configs/global/<profile>.yml (default profile \"Default\"); per-game overrides in input_configs/<TITLE_ID>/<profile>.yml; legacy builds instead wrote per-handler files such as input_configs/global/dinput/pad0.yml",
-          "evidence": ["source:Utilities/File.cpp fs::get_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/system_utils.cpp get_input_config_root/get_input_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/System.cpp:502 config.yml path (pinned 54014a7d)", "source:rpcs3/Emu/Io/pad_config.h default_config \"Default\" (pinned 54014a7d)", "contract:crates/lunchbox-app/src/controller_rpcs3/paths.rs resolve()", "contract:crates/lunchbox-app/src/controller_native_targets.rs rpcs3/Input pin"]
+          "evidence": ["source:Utilities/File.cpp fs::get_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/system_utils.cpp get_input_config_root/get_input_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/System.cpp:502 config.yml path (pinned 54014a7d)", "source:rpcs3/Emu/Io/pad_config.h default_config \"Default\" (pinned 54014a7d)", "contract:crates/lunchpail-app/src/controller_rpcs3/paths.rs resolve()", "contract:crates/lunchpail-app/src/controller_native_targets.rs rpcs3/Input pin"]
         },
         {
           "purpose": "input",
           "path": "~/.config/rpcs3/input_configs/global/ (or the selected configuration root's input_configs/)",
           "naming": "YAML profiles are input_configs/global/<profile>.yml (default profile Default), with per-game overrides in input_configs/<TITLE_ID>/<profile>.yml; active_input_configurations.yml is alongside global/",
-          "evidence": ["source:rpcs3/Emu/system_utils.cpp get_input_config_root/get_input_config_dir and Emu/Io/pad_config.h default_config @54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6", "contract:crates/lunchbox-app/src/controller_native_targets.rs"]
+          "evidence": ["source:rpcs3/Emu/system_utils.cpp get_input_config_root/get_input_config_dir and Emu/Io/pad_config.h default_config @54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6", "contract:crates/lunchpail-app/src/controller_native_targets.rs"]
         },
         {
           "purpose": "saves",
@@ -50,7 +50,7 @@
           "evidence": ["source:RPCS3/rpcs3@54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "Lunchbox's pinned contract (crates/lunchbox-app/src/controller_rpcs3.rs at 54014a7d) resolves the same portable/XDG/.config precedence, writes profiles into input_configs/global, and launches with --no-gui --input-config."
+      "notes": "Lunchpail's pinned contract (crates/lunchpail-app/src/controller_rpcs3.rs at 54014a7d) resolves the same portable/XDG/.config precedence, writes profiles into input_configs/global, and launches with --no-gui --input-config."
     },
     "linux-flatpak": {
       "paths": [

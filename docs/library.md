@@ -51,7 +51,7 @@ Grid view emphasizes artwork. List view lets you choose columns, sort records,
 and filter exact values.
 
 **Homebrew / pirate releases** also covers ROM hacks, bootlegs, and unlicensed
-releases. Choose **Exclude** to hide them or **Only** to find them. Lunchbox
+releases. Choose **Exclude** to hide them or **Only** to find them. Lunchpail
 combines the recorded release type with ROM metadata, including homebrew tags
 and individually identified HBMAME releases. An official game stays visible
 when only one of its versions is a hack. Prototypes and demos are not treated
@@ -67,7 +67,7 @@ Two automatic collections are always available under **Collections** in the side
 
 - **Favorites** holds the games you star. Click the star on any grid cover to add
   or remove a game, or press **F** with a game selected. A filled star means it is
-  a favorite. Your choices are remembered when you reopen Lunchbox.
+  a favorite. Your choices are remembered when you reopen Lunchpail.
 - **Recently Played** shows games you have launched, with the most recently played
   first. It updates as you play, regardless of your sorting in the rest of the library.
 
@@ -97,12 +97,12 @@ An offline drive is different from a deleted game: reconnect it before cleaning
 up the library.
 
 Removing a library entry and uninstalling a downloaded game are different
-actions. Lunchbox does not delete imported or leave-in-place game files when
+actions. Lunchpail does not delete imported or leave-in-place game files when
 removing their library association.
 
 ## Where catalog information comes from
 
-Lunchbox combines game and platform metadata with checksum information from
+Lunchpail combines game and platform metadata with checksum information from
 Libretro and optional connected providers. Coverage varies by system and release.
 Artwork and descriptions can be missing or wrong even when a game launches correctly.
 

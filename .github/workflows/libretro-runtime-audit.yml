@@ -105,8 +105,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build bounded direct-core oracle
         run: >-
-          cargo build --locked --release --package lunchbox-controller-probe
-          --bin lunchbox-libretro-input --bin lunchbox-libretro-persistence
+          cargo build --locked --release --package lunchpail-controller-probe
+          --bin lunchpail-libretro-input --bin lunchpail-libretro-persistence
       - name: Download and execute official core
         shell: bash
         env:
@@ -124,7 +124,7 @@ jobs:
 
           runner_temp="$(cygpath -u "$RUNNER_TEMP")"
           workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
-          evidence="$runner_temp/lunchbox-libretro-${CORE}"
+          evidence="$runner_temp/lunchpail-libretro-${CORE}"
           mkdir -p "$evidence/unpacked"
           url="https://buildbot.libretro.com/nightly/windows/x86_64/latest/${CORE}_libretro.dll.zip"
           curl --fail --location --retry 3 "$url" -o "$evidence/core.zip"
@@ -133,7 +133,7 @@ jobs:
           test -n "$core_path"
           core_sha256="$(sha256sum "$core_path" | cut -d ' ' -f 1)"
           archive_sha256="$(sha256sum "$evidence/core.zip" | cut -d ' ' -f 1)"
-          oracle="$workspace/target/release/lunchbox-libretro-input.exe"
+          oracle="$workspace/target/release/lunchpail-libretro-input.exe"
 
           printf '{\n  "source_url": "%s",\n  "archive_sha256": "%s",\n  "core_sha256": "%s"\n}\n' \
             "$url" "$archive_sha256" "$core_sha256" > "$evidence/download.json"
@@ -193,7 +193,7 @@ jobs:
             run_input_suite "$SECONDARY_SYSTEM" "${SECONDARY_SYSTEM}-"
           fi
 
-          persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
+          persistence="$workspace/target/release/lunchpail-libretro-persistence.exe"
           run_persistence() {
             local label="$1"
             local persistence_system="$2"
@@ -238,7 +238,7 @@ jobs:
         if: always()
         with:
           name: libretro-windows-${{ matrix.core }}
-          path: ${{ runner.temp }}/lunchbox-libretro-${{ matrix.core }}
+          path: ${{ runner.temp }}/lunchpail-libretro-${{ matrix.core }}
           if-no-files-found: warn
           retention-days: 14
 
@@ -271,8 +271,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build bounded arcade oracle
         run: >-
-          cargo build --locked --release --package lunchbox-controller-probe
-          --bin lunchbox-libretro-input --bin lunchbox-libretro-arcade-oracle
+          cargo build --locked --release --package lunchpail-controller-probe
+          --bin lunchpail-libretro-input --bin lunchpail-libretro-arcade-oracle
       - name: Verify core and run arcade oracle when content is available
         shell: bash
         env:
@@ -290,9 +290,9 @@ jobs:
 
           runner_temp="$(cygpath -u "$RUNNER_TEMP")"
           workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
-          evidence="$runner_temp/lunchbox-libretro-arcade-${CORE}"
-          core_root="$runner_temp/lunchbox-libretro-arcade-core-${CORE}"
-          content_root="$runner_temp/lunchbox-libretro-arcade-content-${CORE}"
+          evidence="$runner_temp/lunchpail-libretro-arcade-${CORE}"
+          core_root="$runner_temp/lunchpail-libretro-arcade-core-${CORE}"
+          content_root="$runner_temp/lunchpail-libretro-arcade-content-${CORE}"
           mkdir -p "$evidence" "$core_root/unpacked" "$content_root"
 
           result_status=failed
@@ -344,7 +344,7 @@ jobs:
           fi
 
           result_reason='Pinned core identity-only inspection failed or returned an unexpected name/version.'
-          identity_oracle="$workspace/target/release/lunchbox-libretro-input.exe"
+          identity_oracle="$workspace/target/release/lunchpail-libretro-input.exe"
           "$identity_oracle" \
             --core "$core_path" \
             --sha256 "$EXPECTED_CORE_SHA256" \
@@ -397,7 +397,7 @@ jobs:
             exit 1
           fi
 
-          arcade_oracle="$workspace/target/release/lunchbox-libretro-arcade-oracle.exe"
+          arcade_oracle="$workspace/target/release/lunchpail-libretro-arcade-oracle.exe"
           run_oracle() {
             local mode="$1"
             shift
@@ -473,7 +473,7 @@ jobs:
         if: always()
         with:
           name: libretro-windows-${{ matrix.core }}-arcade
-          path: ${{ runner.temp }}/lunchbox-libretro-arcade-${{ matrix.core }}
+          path: ${{ runner.temp }}/lunchpail-libretro-arcade-${{ matrix.core }}
           if-no-files-found: warn
           retention-days: 14
 
@@ -497,8 +497,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build bounded PSX oracles
         run: >-
-          cargo build --locked --release --package lunchbox-controller-probe
-          --bin lunchbox-libretro-input --bin lunchbox-libretro-persistence
+          cargo build --locked --release --package lunchpail-controller-probe
+          --bin lunchpail-libretro-input --bin lunchpail-libretro-persistence
       - name: Pin core identity and verify the absent-firmware boundary
         shell: bash
         env:
@@ -511,7 +511,7 @@ jobs:
 
           runner_temp="$(cygpath -u "$RUNNER_TEMP")"
           workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
-          evidence="$runner_temp/lunchbox-libretro-${CORE}-firmware-boundary"
+          evidence="$runner_temp/lunchpail-libretro-${CORE}-firmware-boundary"
           mkdir -p "$evidence/unpacked" "$evidence/empty-bios"
           url="https://buildbot.libretro.com/nightly/windows/x86_64/latest/${CORE}_libretro.dll.zip"
           curl --fail --location --retry 3 "$url" -o "$evidence/core.zip"
@@ -520,8 +520,8 @@ jobs:
           test -n "$core_path"
           core_sha256="$(sha256sum "$core_path" | cut -d ' ' -f 1)"
           archive_sha256="$(sha256sum "$evidence/core.zip" | cut -d ' ' -f 1)"
-          input="$workspace/target/release/lunchbox-libretro-input.exe"
-          persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
+          input="$workspace/target/release/lunchpail-libretro-input.exe"
+          persistence="$workspace/target/release/lunchpail-libretro-persistence.exe"
 
           "$input" \
             --core "$core_path" \
@@ -583,7 +583,7 @@ jobs:
         if: always()
         with:
           name: libretro-windows-${{ matrix.core }}-firmware-boundary
-          path: ${{ runner.temp }}/lunchbox-libretro-${{ matrix.core }}-firmware-boundary
+          path: ${{ runner.temp }}/lunchpail-libretro-${{ matrix.core }}-firmware-boundary
           if-no-files-found: warn
           retention-days: 14
 
@@ -596,7 +596,7 @@ jobs:
         run: |
           set -euo pipefail
           runner_temp="$(cygpath -u "$RUNNER_TEMP")"
-          evidence="$runner_temp/lunchbox-libretro-mesen-s-unavailable"
+          evidence="$runner_temp/lunchpail-libretro-mesen-s-unavailable"
           mkdir -p "$evidence"
           url='https://buildbot.libretro.com/nightly/windows/x86_64/latest/mesen_s_libretro.dll.zip'
           status="$(curl --location --silent --show-error --output "$evidence/response" --write-out '%{http_code}' "$url")"
@@ -606,6 +606,6 @@ jobs:
         if: always()
         with:
           name: libretro-windows-mesen-s-unavailable
-          path: ${{ runner.temp }}/lunchbox-libretro-mesen-s-unavailable
+          path: ${{ runner.temp }}/lunchpail-libretro-mesen-s-unavailable
           if-no-files-found: warn
           retention-days: 14

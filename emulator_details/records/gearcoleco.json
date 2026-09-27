@@ -6,7 +6,7 @@
     { "kind": "source", "repo": "drhelius/Gearcoleco", "commit": "8ad5f92c45e7ca616535a057495557c2352a9115", "role": "config root/INI path resolution, logical SDL input config keys, live player assignment, save/state/bios file construction, libretro BIOS lookup" },
     { "kind": "docs", "url": "https://github.com/drhelius/Gearcoleco#readme", "role": "platform availability (Windows x64/ARM64, macOS Apple Silicon/Intel + Homebrew cask, Linux PPA/RPM/Ubuntu builds, SDL3)" },
     { "kind": "docs", "url": "https://abdess.github.io/retrobios/emulators/gearcoleco/", "role": "colecovision.rom/coleco.rom 8192-byte BIOS, size-only validation, region patch at 0x69, no extra SGM BIOS" },
-    { "kind": "source", "repo": "lunchbox crates/lunchbox-app/data/controllers/catalog.json", "role": "existing retroarch:gearcoleco core profile only; standalone desktop config contract is new coverage" }
+    { "kind": "source", "repo": "lunchpail crates/lunchpail-app/data/controllers/catalog.json", "role": "existing retroarch:gearcoleco core profile only; standalone desktop config contract is new coverage" }
   ],
   "platforms": {
     "linux": {
@@ -30,7 +30,7 @@
             "source:platforms/shared/desktop/events.cpp input_poll_controller button_map {scancode, GC_Keys, gamepad button} table + dpad/stick directional handling @ 8ad5f92",
             "source:src/definitions.h enum GC_Keys (Keypad_0..9, Asterisk, Hash, Key_Up/Right/Down/Left, Key_Left_Button/Key_Right_Button, Key_Blue/Key_Purple) @ 8ad5f92",
             "source:platforms/shared/desktop/gamepad.cpp loads gamecontrollerdb.txt from exe_path and assigns the first two live gamepads to player slots @ 8ad5f92",
-            "source:crates/lunchbox-app/src/controller_gearcoleco_standalone.rs preserving standalone logical-mapping writer"
+            "source:crates/lunchpail-app/src/controller_gearcoleco_standalone.rs preserving standalone logical-mapping writer"
           ]
         },
         {

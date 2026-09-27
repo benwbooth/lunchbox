@@ -4,29 +4,29 @@
   "providers": [
     {
       "slug": "lunchbox",
-      "name": "Lunchbox",
-      "homepage": "https://github.com/benwbooth/lunchbox",
-      "terms_url": "https://github.com/benwbooth/lunchbox/blob/main/LICENSE",
+      "name": "Lunchpail",
+      "homepage": "https://github.com/benwbooth/lunchpail",
+      "terms_url": "https://github.com/benwbooth/lunchpail/blob/main/LICENSE",
       "data_license": "MIT",
       "redistribution_policy": "internal",
       "role": "canonical_identity",
-      "decision": "Lunchbox owns canonical IDs, user edits, merges, redirects, and field selections."
+      "decision": "Lunchpail owns canonical IDs, user edits, merges, redirects, and field selections."
     },
     {
       "slug": "lunchbox-emulator-catalog",
-      "name": "Lunchbox Emulator Catalog",
-      "homepage": "https://github.com/benwbooth/lunchbox",
-      "terms_url": "https://github.com/benwbooth/lunchbox/blob/main/LICENSE",
+      "name": "Lunchpail Emulator Catalog",
+      "homepage": "https://github.com/benwbooth/lunchpail",
+      "terms_url": "https://github.com/benwbooth/lunchpail/blob/main/LICENSE",
       "data_license": "MIT",
       "redistribution_policy": "allowed",
       "role": "emulator_catalog",
-      "decision": "Ship as maintained Lunchbox reference data."
+      "decision": "Ship as maintained Lunchpail reference data."
     },
     {
       "slug": "lunchbox-local",
-      "name": "Lunchbox Local Collection",
-      "homepage": "https://github.com/benwbooth/lunchbox",
-      "terms_url": "https://github.com/benwbooth/lunchbox/blob/main/LICENSE",
+      "name": "Lunchpail Local Collection",
+      "homepage": "https://github.com/benwbooth/lunchpail",
+      "terms_url": "https://github.com/benwbooth/lunchpail/blob/main/LICENSE",
       "data_license": "User-owned local data",
       "redistribution_policy": "internal",
       "role": "local_collection",

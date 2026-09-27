@@ -54,8 +54,8 @@ See [Saves and backups](saves.md) before moving or deleting anything.
 
 ## A download is queued or has no progress
 
-Test Lunchbox's qBittorrent connection, then check the torrent in qBittorrent.
-Lunchbox force-starts its managed downloads, but unavailable peers and
+Test Lunchpail's qBittorrent connection, then check the torrent in qBittorrent.
+Lunchpail force-starts its managed downloads, but unavailable peers and
 incorrect folder mappings need separate fixes.
 
 A download badge describes a possible source, not guaranteed availability.
@@ -86,10 +86,10 @@ Check for a credential-store error before entering the same secret repeatedly.
 
 ## Report a problem
 
-Open an issue at [Lunchbox on GitHub](https://github.com/benwbooth/lunchbox/issues)
+Open an issue at [Lunchpail on GitHub](https://github.com/benwbooth/lunchpail/issues)
 and include:
 
-- Lunchbox version, operating system, and package type.
+- Lunchpail version, operating system, and package type.
 - Game title/release and the emulator/core.
 - The exact steps and error message.
 - A screenshot when the problem is visual.

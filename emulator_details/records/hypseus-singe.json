@@ -36,7 +36,7 @@
   "controller_boundary": {
     "native_writer": "implemented_partial_linux",
     "profile_id": "hypseus-singe:sdl-gamepad-ini-v1",
-    "writer": "crates/lunchbox-app/src/controller_hypseus_singe_native.rs",
+    "writer": "crates/lunchpail-app/src/controller_hypseus_singe_native.rs",
     "refusal": "The adapter requires an exact saved framefile/runtime declaration, hashes every executable input, resolves physical devices through the target SDL3 build, writes only source-defined uppercase Gamepad macros into a private home, preserves NVRAM through an explicit external ram directory, and rejects custom environments, conflicting launch overrides, changed topology, or any command token beyond the source parser's 80-byte limit. The pinned native executable has accepted the generated parser/input overlay through SDL gamepad enumeration; gameplay button behavior and NVRAM persistence remain unverified."
   },
   "platform_gaps": {

@@ -17,7 +17,7 @@
     },
     {
       "kind": "contract",
-      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WAYDROID_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WAYDROID_CONTROLLER_BOUNDARY.md",
       "role": "fail-closed Android-container input boundary"
     }
   ],

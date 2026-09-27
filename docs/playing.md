@@ -1,6 +1,6 @@
 # Emulators and launching games
 
-Lunchbox starts emulators; it is not an emulator itself. A game needs a
+Lunchpail starts emulators; it is not an emulator itself. A game needs a
 compatible installed emulator, the correct game files, and sometimes BIOS
 or firmware.
 
@@ -20,7 +20,7 @@ the system default again.
 Open Settings and use the emulator manager to see the options available for
 your operating system. You can also use an emulator you installed yourself.
 
-Use the update check to review available updates. Lunchbox does not need to
+Use the update check to review available updates. Lunchpail does not need to
 replace a working emulator every time you start a game. It only removes
 installations it manages, not an unrelated installation you maintain yourself.
 
@@ -33,12 +33,12 @@ Read the requirement shown for the selected emulator. Import your own file or
 use an offered source where appropriate. Some firmware must be supplied manually.
 
 A BIOS for one emulator is not necessarily in the right format or folder for
-another. For systems requiring user-owned keys, Lunchbox's import workflow
+another. For systems requiring user-owned keys, Lunchpail's import workflow
 does not obtain those keys for you.
 
 ## What “preparing” means
 
-Before starting, Lunchbox may need to extract an archive, apply a changed patch,
+Before starting, Lunchpail may need to extract an archive, apply a changed patch,
 prepare a multi-file game, restore a save backup, or check the selected setup.
 A first launch can take longer than later launches that reuse prepared files.
 
@@ -49,9 +49,9 @@ Live translation is separate and [opt-in per game](translation.md).
 
 ## Stop and resume
 
-Use **Stop** while a game is running, or quit from the emulator. Lunchbox
+Use **Stop** while a game is running, or quit from the emulator. Lunchpail
 supports one active game session at a time, including a session it recognizes
-after Lunchbox restarts.
+after Lunchpail restarts.
 
 Automatic state loading is available only where the emulator integration
 supports it. A save state is tied closely to its emulator, core, and game version;
@@ -64,7 +64,7 @@ automatic setting is supported. Standard gamepads, multitaps, mice, light guns,
 and wheels are different input modes.
 
 Review the target and any warning in controller setup. If automatic mapping
-is unavailable, configure input in the emulator itself. Navigating Lunchbox
+is unavailable, configure input in the emulator itself. Navigating Lunchpail
 successfully is not proof that the emulator has received a mapping.
 
 ## Advanced launch options

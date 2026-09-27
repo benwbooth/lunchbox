@@ -7,8 +7,8 @@
     { "kind": "docs", "url": "https://www.yabasanshiro.com/download", "role": "official builds at capture: Android (Google Play free/pro), iOS (App Store), Windows installer (.msi) + standalone zip, and the GPL source v1.20.37 tarballs - no Linux or macOS binaries offered" },
     { "kind": "docs", "url": "https://snapcraft.io/yabasanshiro", "role": "Linux distribution is the 'yabasanshiro' snap (store entry yabasanshiro.devmiyax, publisher devMiyax, v2.12.0 at capture, snap-id FJTfdLcfQjG4aVItRCoCUJXNCBUldZGm)" },
     { "kind": "docs", "url": "https://flathub.org/api/v2/search", "role": "org.yabause.yabasanshiro is NOT verifiable on Flathub: appstream endpoint and search return no yabause/yabasanshiro app (queried 2026-09-11), so no flatpak entry is captured" },
-    { "kind": "docs", "url": "repo:emulator_details/all_emulators.csv", "role": "lunchbox CSV save dir claim ~/.local/share/yabause - contradicted by source (~/.config/YabaSanshiro); divergence flagged in notes" },
-    { "kind": "docs", "url": "repo:crates/lunchbox-app/src/firmware.rs", "role": "lunchbox DB firmware_rules has no yabasanshiro entries (gap captured here, unchanged by this record)" }
+    { "kind": "docs", "url": "repo:emulator_details/all_emulators.csv", "role": "lunchpail CSV save dir claim ~/.local/share/yabause - contradicted by source (~/.config/YabaSanshiro); divergence flagged in notes" },
+    { "kind": "docs", "url": "repo:crates/lunchpail-app/src/firmware.rs", "role": "lunchpail DB firmware_rules has no yabasanshiro entries (gap captured here, unchanged by this record)" }
   ],
   "platforms": {
     "linux": {
@@ -57,13 +57,13 @@
         },
         {
           "purpose": "bios",
-          "path": "Saturn BIOS: file path from General/Bios, loaded into the 0x80000-byte BiosRom (no hardcoded filename - any dumped BIOS image works, saturn.bin is just the conventional dump name; the Android builds expect saturn.bin, which popularized the name). When General/Bios is empty (or General/EnableEmulatedBios is checked, the 'Enable BIOS emulation' settings checkbox) Yaba Sanshiro boots with its built-in BIOS emulation (yabsys.emulatebios = 1), but a real BIOS is the recommended configuration. Lunchbox DB firmware_rules has no yabasanshiro entries - gap captured, not changed by this record",
+          "path": "Saturn BIOS: file path from General/Bios, loaded into the 0x80000-byte BiosRom (no hardcoded filename - any dumped BIOS image works, saturn.bin is just the conventional dump name; the Android builds expect saturn.bin, which popularized the name). When General/Bios is empty (or General/EnableEmulatedBios is checked, the 'Enable BIOS emulation' settings checkbox) Yaba Sanshiro boots with its built-in BIOS emulation (yabsys.emulatebios = 1), but a real BIOS is the recommended configuration. Lunchpail DB firmware_rules has no yabasanshiro entries - gap captured, not changed by this record",
           "naming": "User-selected BIOS file (conventionally saturn.bin); no BIOS archive/folder convention in the desktop port; no canonical BIOS checksum is specified in the cited upstream source",
           "evidence": [
             "source:yabause/src/qt/YabauseThread.cpp biospath = strdup(\"\") when General/EnableEmulatedBios else General/Bios; YabauseThread_IsUseBios",
             "source:yabause/src/yabause.c YabauseInit (init->biospath non-empty -> LoadBios + yabsys.emulatebios = 0, else yabsys.emulatebios = 1)",
             "source:yabause/src/qt/ui/UISettings.cpp cbEnableBiosEmulation <-> General/EnableEmulatedBios",
-            "repo:crates/lunchbox-app/src/firmware.rs (no yabasanshiro firmware_rules entries)"
+            "repo:crates/lunchpail-app/src/firmware.rs (no yabasanshiro firmware_rules entries)"
           ]
         },
         { "purpose": "keys", "path": "not applicable", "naming": "Yaba Sanshiro does not consume an external cryptographic key file for Saturn media or BIOS loading.", "status": "not_required", "evidence": ["source:yabause/src/yabause.c and source:yabause/src/qt/YabauseThread.cpp @1.20.37"] }
@@ -110,12 +110,12 @@
         },
         {
           "purpose": "bios",
-          "path": "Same settings as Linux: General/Bios file path with the General/EnableEmulatedBios fallback (built-in BIOS emulation). No lunchbox firmware_rules resolution exists for yabasanshiro on any platform",
+          "path": "Same settings as Linux: General/Bios file path with the General/EnableEmulatedBios fallback (built-in BIOS emulation). No lunchpail firmware_rules resolution exists for yabasanshiro on any platform",
           "naming": "User-selected BIOS file (conventionally saturn.bin); no canonical BIOS checksum is specified in the cited upstream source",
           "evidence": [
             "source:yabause/src/qt/YabauseThread.cpp biospath wiring",
             "source:yabause/src/yabause.c YabauseInit emulatebios branch",
-            "repo:crates/lunchbox-app/src/firmware.rs (no yabasanshiro entries)"
+            "repo:crates/lunchpail-app/src/firmware.rs (no yabasanshiro entries)"
           ]
         },
         { "purpose": "keys", "path": "not applicable", "naming": "Yaba Sanshiro does not consume an external cryptographic key file for Saturn media or BIOS loading.", "status": "not_required", "evidence": ["source:yabause/src/yabause.c and source:yabause/src/qt/YabauseThread.cpp @1.20.37"] }

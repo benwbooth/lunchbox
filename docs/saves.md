@@ -1,6 +1,6 @@
 # Saves and backups
 
-Lunchbox can resume supported games and back up their saves. These are related,
+Lunchpail can resume supported games and back up their saves. These are related,
 but different, features.
 
 | File | What it contains |
@@ -17,9 +17,9 @@ incompatible after an emulator, core, ROM, or patch changes.
 Scroll to **Save locations** at the bottom of Game details. It shows the live
 save/state locations and the configured backup location for the selected emulator.
 
-The live files may be under Lunchbox's local application-data folder even if
+The live files may be under Lunchpail's local application-data folder even if
 you chose an Insync or other cloud-synced folder. That is expected: the emulator
-writes locally, then Lunchbox synchronizes a backup.
+writes locally, then Lunchpail synchronizes a backup.
 
 Changing the backup folder does not make RetroArch write directly into it.
 
@@ -31,9 +31,9 @@ Changing the backup folder does not make RetroArch write directly into it.
    or another sync application.
 4. Verify the connection and enable **Synchronize automatically around game sessions**.
 
-Lunchbox checks for changes before launch and backs up supported save locations
+Lunchpail checks for changes before launch and backs up supported save locations
 after the emulator exits. Your sync application then transfers those files to
-its cloud or other computers. A successful Lunchbox backup does not by itself
+its cloud or other computers. A successful Lunchpail backup does not by itself
 prove that external transfer has finished.
 
 ## What is inside the backup folder?
@@ -42,7 +42,7 @@ Readable save files are under:
 
 ~~~text
 your chosen folder/
-  lunchbox/saves/v1/
+  lunchpail/saves/v1/
     emulator/runtime/
       current/saves/...
       current/states/...
@@ -54,7 +54,7 @@ The actual files retain their names, such as `game.srm` and
 JSON files keep track of synchronization history. You do not need to decode
 JSON to copy a save out of `current/`.
 
-Lunchbox manages these folders. Copy a backup elsewhere before editing it;
+Lunchpail manages these folders. Copy a backup elsewhere before editing it;
 do not edit the managed backup in place.
 
 Older backups may still contain hash-named blobs. They are a legacy format,
@@ -74,14 +74,14 @@ patches just because the titles match.
 ## A conflict needs attention
 
 A conflict means both copies changed, or one was removed while the other was
-edited. Lunchbox asks which copy you want; it does not assume the newest
+edited. Lunchpail asks which copy you want; it does not assume the newest
 timestamp is the correct progress.
 
 Review **Local** and **Remote**, keep a copy of anything you may need, then
 choose deliberately. **Play without sync** skips synchronization for that
 session; it does not resolve the conflict.
 
-An unavailable save route is different from a conflict. It can mean Lunchbox
+An unavailable save route is different from a conflict. It can mean Lunchpail
 does not know the selected emulator's save folder, even for an unplayed game.
 
 ## Check the result

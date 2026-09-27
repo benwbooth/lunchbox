@@ -7,7 +7,7 @@
     { "kind": "docs", "url": "https://xemu.app/docs/faq/", "role": "saves/snapshots/BIOS/portable mode" },
     { "kind": "docs", "url": "https://xemu.app/docs/required-files/", "role": "MCPX/BIOS/HDD image requirements" },
     { "kind": "docs", "url": "https://xemu.app/docs/snapshots/", "role": "snapshot behaviour" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" }
   ],
   "platforms": {
     "linux": {
@@ -15,13 +15,13 @@
         {
           "purpose": "config",
           "path": "~/.local/share/xemu/xemu/xemu.toml (SDL_GetPrefPath(\"xemu\",\"xemu\")); portable mode uses xemu.toml next to the executable; -config_path <file> selects a private config and is auto-saved back at exit",
-          "evidence": ["source:ui/xemu-settings.cc filename=\"xemu.toml\" + SDL_GetPrefPath(\"xemu\", \"xemu\") + portable detection", "docs:faq portable-mode answer", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (-config_path)"]
+          "evidence": ["source:ui/xemu-settings.cc filename=\"xemu.toml\" + SDL_GetPrefPath(\"xemu\", \"xemu\") + portable detection", "docs:faq portable-mode answer", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (-config_path)"]
         },
         {
           "purpose": "input",
           "path": "Same xemu.toml (or the file passed with -config_path)",
           "naming": "input.bindings.port1..port4 store SDL GUID strings; input.auto_bind=false prevents an empty port stealing a device; input.gamepad_mappings[] keyed by gamepad_id has controller_mapping fields for SDL standard buttons a=0..dpad_right=14 and axes leftx=0..righttrigger=5, with invert_axis_* flags",
-          "evidence": ["source:ui/xemu-input.c input.bindings/auto_bind/gamepad_mappings @fd0ae0c0", "source:config_spec.yml standard SDL index defaults @fd0ae0c0", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:ui/xemu-input.c input.bindings/auto_bind/gamepad_mappings @fd0ae0c0", "source:config_spec.yml standard SDL index defaults @fd0ae0c0", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -39,11 +39,11 @@
           "purpose": "bios",
           "path": "User-dumped pair set via sys.files.bootrom_path (MCPX boot ROM, conventionally mcpx_1.0.bin, MD5 d49c52a4102f6df7bcf8d0617ac475ed) and sys.files.flashrom_path (BIOS flash from a 1.0 Xbox; debug or modded retail such as COMPLEX 4627 is required since unmodified retail BIOS cannot boot games); redistributable prebuilt xbox_hdd.qcow2 ships only a clean dashboard",
           "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
-          "evidence": ["docs:required-files MCPX/Flash/HDD sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path/eeprom_path/hdd_path", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (user-declared MCPX boot ROM and flash image)"]
+          "evidence": ["docs:required-files MCPX/Flash/HDD sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path/eeprom_path/hdd_path", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (user-declared MCPX boot ROM and flash image)"]
         },
         { "purpose": "keys", "path": "not applicable", "naming": "xemu does not consume an external cryptographic key file; required Xbox boot artifacts are captured under bios.", "status": "not_required", "evidence": ["source:config_spec.yml and xemu source tree @fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a"] }
       ],
-      "notes": "No xemu flatpak exists: a Flathub search for xemu returns no app (official channel is the AppImage). Lunchbox launches xemu with -config_path plus a private SDL pref path."
+      "notes": "No xemu flatpak exists: a Flathub search for xemu returns no app (official channel is the AppImage). Lunchpail launches xemu with -config_path plus a private SDL pref path."
     },
     "windows": {
       "paths": [
@@ -56,7 +56,7 @@
           "purpose": "input",
           "path": "Same %APPDATA%\\xemu\\xemu\\xemu.toml (or -config_path override)",
           "naming": "input.bindings.port1..4 SDL GUID strings, input.auto_bind, and input.gamepad_mappings[]/controller_mapping standard SDL button/axis indices as on Linux",
-          "evidence": ["source:ui/xemu-input.c and config_spec.yml input grammar @fd0ae0c0", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:ui/xemu-input.c and config_spec.yml input grammar @fd0ae0c0", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -90,7 +90,7 @@
           "purpose": "input",
           "path": "Same ~/Library/Application Support/xemu/xemu/xemu.toml (or -config_path override)",
           "naming": "input.bindings.port1..4 SDL GUID strings, input.auto_bind, and input.gamepad_mappings[]/controller_mapping standard SDL button/axis indices as on Linux and Windows",
-          "evidence": ["source:ui/xemu-input.c and config_spec.yml input grammar @fd0ae0c0", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
+          "evidence": ["source:ui/xemu-input.c and config_spec.yml input grammar @fd0ae0c0", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",

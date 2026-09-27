@@ -3,7 +3,7 @@
 Couch Mode is a fullscreen way to browse the same library with a controller,
 keyboard, or mouse. Open it from the main window's Couch Mode control.
 
-![Lunchbox in Couch Mode](images/couch-mode.png)
+![Lunchpail in Couch Mode](images/couch-mode.png)
 
 ## Choose a view
 
@@ -17,7 +17,7 @@ keyboard, or mouse. Open it from the main window's Couch Mode control.
 Use the view button, **Library & settings**, or the Couch Mode section in
 Settings. Press **V** to cycle views from the keyboard.
 
-Lunchbox remembers the view and keeps the selected game when you switch.
+Lunchpail remembers the view and keeps the selected game when you switch.
 
 ## Browse and play
 

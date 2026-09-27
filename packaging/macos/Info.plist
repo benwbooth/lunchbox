@@ -5,15 +5,15 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>Lunchbox</string>
+  <string>Lunchpail</string>
   <key>CFBundleExecutable</key>
-  <string>lunchbox</string>
+  <string>lunchpail</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.benwbooth.Lunchbox</string>
+  <string>io.github.benwbooth.Lunchpail</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Lunchbox</string>
+  <string>Lunchpail</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

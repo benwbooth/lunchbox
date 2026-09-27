@@ -1,4 +1,4 @@
-# Build Lunchbox from source
+# Build Lunchpail from source
 
 Most users should use a [release package](installing.md). Building from source
 is useful if you want to try a change before the next release or contribute a fix.
@@ -8,10 +8,10 @@ is useful if you want to try a change before the next release or contribute a fi
 Clone the repository and run:
 
 ~~~sh
-git clone https://github.com/benwbooth/lunchbox.git
-cd lunchbox
-nix build .#lunchbox
-./result/bin/lunchbox
+git clone https://github.com/benwbooth/lunchpail.git
+cd lunchpail
+nix build .#lunchpail
+./result/bin/lunchpail
 ~~~
 
 The build uses the versions pinned by the repository. The first build may
@@ -26,12 +26,12 @@ From the repository root, run:
 ~~~
 
 The script enters the development environment when needed, watches source
-changes, rebuilds, and relaunches Lunchbox. Leave one watcher running rather
+changes, rebuilds, and relaunches Lunchpail. Leave one watcher running rather
 than starting another after every edit.
 
 Do not use this workflow against an irreplaceable profile without a backup.
 For a separate writable profile, the app supports
-`--state-database /path/to/test-state.db`. That isolates Lunchbox's profile,
+`--state-database /path/to/test-state.db`. That isolates Lunchpail's profile,
 not every external emulator or service you might launch.
 
 ## Other build environments

@@ -15,7 +15,7 @@ class RepositoryPublicationTests(unittest.TestCase):
     def release(self):
         return {
             "tag_name": "v1.2.3", "draft": False, "prerelease": False,
-            "html_url": "https://github.com/benwbooth/lunchbox/releases/tag/v1.2.3",
+            "html_url": "https://github.com/benwbooth/lunchpail/releases/tag/v1.2.3",
             "assets": [{"name": name, "size": 10, "digest": "sha256:" + "a" * 64}
                        for name in publisher.REQUIRED],
         }
@@ -38,6 +38,23 @@ class RepositoryPublicationTests(unittest.TestCase):
             release["assets"][0][field] = value
             with self.assertRaises(ValueError):
                 publisher.release_identity(release)
+
+    def test_legacy_release_is_served_without_renaming_or_mixing_assets(self):
+        release = self.release()
+        for asset in release["assets"]:
+            asset["name"] = asset["name"].replace("Lunchpail", "Lunchbox").replace("lunchpail", "lunchbox")
+        identity = publisher.release_identity(release)
+        self.assertEqual(identity["app_id"], "io.github.benwbooth.Lunchbox")
+        self.assertEqual(identity["archive"], "Lunchbox-flatpak-repo.tar.gz")
+        with tempfile.TemporaryDirectory() as directory:
+            publisher.write_descriptors(Path(directory), "key", identity["app_id"])
+            self.assertIn("Name=io.github.benwbooth.Lunchbox",
+                          (Path(directory) / "lunchpail.flatpakref").read_text())
+        for asset in release["assets"]:
+            if asset["name"] == "Lunchbox-macos-arm64.dmg":
+                asset["name"] = "Lunchpail-macos-arm64.dmg"
+        with self.assertRaises(ValueError):
+            publisher.release_identity(release)
 
     def test_rejects_modified_download(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -75,14 +92,14 @@ class RepositoryPublicationTests(unittest.TestCase):
     def test_installer_includes_trust_and_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             publisher.write_descriptors(Path(directory), "public-key")
-            ref = (Path(directory) / "lunchbox.flatpakref").read_text()
-            repo = (Path(directory) / "lunchbox.flatpakrepo").read_text()
+            ref = (Path(directory) / "lunchpail.flatpakref").read_text()
+            repo = (Path(directory) / "lunchpail.flatpakrepo").read_text()
             self.assertIn("RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo", ref)
             self.assertIn("Branch=master", ref)
-            self.assertIn("SuggestRemoteName=lunchbox", ref)
+            self.assertIn("SuggestRemoteName=lunchpail", ref)
             for descriptor in (ref, repo):
                 self.assertIn("GPGKey=public-key", descriptor)
-                self.assertIn("Url=https://benwbooth.github.io/lunchbox/flatpak/", descriptor)
+                self.assertIn("Url=https://benwbooth.github.io/lunchpail/flatpak/", descriptor)
 
 
 if __name__ == "__main__":

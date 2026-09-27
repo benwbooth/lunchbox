@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/WallyZambotti/OVCC", "commit": "cc936b25be3da2c03b21a9bf1cc2ff4a494a5f09", "url": "https://github.com/WallyZambotti/OVCC/tree/cc936b25be3da2c03b21a9bf1cc2ff4a494a5f09", "role": "native SDL/AGAR input, INI, ROM and disk-image source" },
     { "kind": "docs", "url": "https://github.com/WallyZambotti/OVCC/blob/cc936b25be3da2c03b21a9bf1cc2ff4a494a5f09/README.md", "role": "official build, layout and persistence documentation" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/OPENBOR_OSX_KVM_OVCC_CONTROLLER_BOUNDARY.md", "role": "standalone controller contract" }
   ],
   "platforms": {
     "linux": { "paths": [
@@ -34,6 +34,6 @@
     ] }
   },
   "platform_gaps": { "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned OVCC project documents native Linux, Windows and macOS builds but publishes no authoritative Flatpak manifest or sandbox path contract.", "evidence": ["source:cc936b25 README/Makefiles", "official:https://github.com/WallyZambotti/OVCC"] } },
-  "controller_boundary": { "native_writer": "implemented", "profile_id": "ovcc:standalone-vcc-ini-input-v1", "writer": "crates/lunchbox-app/src/controller_ovcc_standalone.rs", "refusal": "The writer refuses unsupported keyboard-layout/flag values and never fabricates a host device identity; DiDevice must be measured from the same native SDL runtime." },
+  "controller_boundary": { "native_writer": "implemented", "profile_id": "ovcc:standalone-vcc-ini-input-v1", "writer": "crates/lunchpail-app/src/controller_ovcc_standalone.rs", "refusal": "The writer refuses unsupported keyboard-layout/flag values and never fabricates a host device identity; DiDevice must be measured from the same native SDL runtime." },
   "notes": "OVCC's source-defined Vcc.ini input fields are safe to patch in a copied baseline. Runtime activation, binary selection, SDL enumeration and effective gameplay input remain unverified."
 }

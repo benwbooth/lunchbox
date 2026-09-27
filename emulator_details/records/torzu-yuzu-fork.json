@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "litucks/torzu", "role": "yuzu-derived path roots, ParamPackage controller mappings, Switch keys/firmware, saves and save-state boundary" },
     { "kind": "docs", "url": "https://github.com/litucks/torzu", "role": "official fork source/release information" },
-    { "kind": "manifest", "repo": "lunchbox", "path": "sources/firmware-rules.json", "role": "Torzu keys and firmware import rules" }
+    { "kind": "manifest", "repo": "lunchpail", "path": "sources/firmware-rules.json", "role": "Torzu keys and firmware import rules" }
   ],
   "platforms": {
     "linux": { "paths": [

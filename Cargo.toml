@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/lunchbox-app", "crates/lunchbox-db", "crates/lunchbox-controller-probe", "crates/lunchbox-patching", "vendor/rapidocr-core"]
+members = ["crates/lunchpail-app", "crates/lunchpail-db", "crates/lunchpail-controller-probe", "crates/lunchpail-patching", "vendor/rapidocr-core"]
 
 [workspace.package]
 version = "0.1.2"
 edition = "2024"
 license = "MIT"
 authors = ["Ben Booth"]
-repository = "https://github.com/benwbooth/lunchbox"
+repository = "https://github.com/benwbooth/lunchpail"
 
 [workspace.dependencies]
 anyhow = "1.0"

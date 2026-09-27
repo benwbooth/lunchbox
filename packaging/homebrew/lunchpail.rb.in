@@ -1,0 +1,20 @@
+cask "lunchpail" do
+  version "@VERSION@"
+  sha256 "@ARM64_SHA256@"
+
+  url "https://github.com/benwbooth/lunchpail/releases/download/v#{version}/Lunchpail-macos-arm64.dmg"
+  name "Lunchpail"
+  desc "Retro game library and emulator frontend"
+  homepage "https://github.com/benwbooth/lunchpail"
+
+  depends_on arch: :arm64
+  depends_on macos: :ventura
+
+  app "Lunchpail.app"
+
+  zap trash: [
+    "~/Library/Application Support/Lunchpail",
+    "~/Library/Caches/Lunchpail",
+    "~/Library/Preferences/io.github.benwbooth.Lunchpail.plist",
+  ]
+end

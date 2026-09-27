@@ -3,10 +3,10 @@
   "slug": "mgba",
   "emulator": "mGBA",
   "sources": [
-    { "kind": "source", "repo": "mgba-emu/mgba", "commit": "26b7884bc25a5933960f3cdcd98bac1ae14d42e2", "role": "config discovery, save/state naming, SDL input sections (0.10.5; same pin as the Lunchbox controller contract)" },
+    { "kind": "source", "repo": "mgba-emu/mgba", "commit": "26b7884bc25a5933960f3cdcd98bac1ae14d42e2", "role": "config discovery, save/state naming, SDL input sections (0.10.5; same pin as the Lunchpail controller contract)" },
     { "kind": "docs", "url": "https://github.com/mgba-emu/mgba/blob/26b7884bc25a5933960f3cdcd98bac1ae14d42e2/README.md", "role": "built-in BIOS implementation statement" },
     { "kind": "docs", "url": "https://flathub.org/apps/io.mgba.mGBA", "role": "Flatpak app id io.mgba.mGBA runs mgba-qt" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MGBA_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned SDL contract: config.ini SDLB keys, GUID profiles, portable resolution" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MGBA_STANDALONE_PROGRESS.md", "role": "Lunchpail pinned SDL contract: config.ini SDLB keys, GUID profiles, portable resolution" }
   ],
   "platforms": {
     "linux": {
@@ -19,14 +19,14 @@
             "source:mgba CMakeLists.txt BINARY_NAME=mgba, project(mGBA) @26b7884",
             "source:mgba src/core/input.c _makeSectionName \"%s.input.%c%c%c%c\" + sdl-events.h SDL_BINDING_KEY=SDLK / SDL_BINDING_BUTTON=SDLB; src/gba/input.c platformName=\"gba\" @26b7884",
             "source:mgba src/platform/sdl/sdl-events.c mSDLPlayerLoadConfig (mInputMapLoad SDL_BINDING_BUTTON, mInputProfileLoad by GUID string) @26b7884",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MGBA_STANDALONE_PROGRESS.md (SDLB sections, signed-axis thresholds, GUID-profile sections, portable marker; Qt not inferred)"
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MGBA_STANDALONE_PROGRESS.md (SDLB sections, signed-axis thresholds, GUID-profile sections, portable marker; Qt not inferred)"
           ]
         },
         {
           "purpose": "input",
           "path": "~/.config/mgba/config.ini (or $XDG_CONFIG_HOME/mgba/); Qt controller settings additionally use qt.ini",
           "naming": "SDL keyboard section gba.input.SDLK uses key<Btn>; joystick section gba.input.SDLB uses key<Btn>, axis<Btn>Value/axis<Btn>Axis and hat<N>Up/Right/Down/Left; per-controller sections are gba.input-profile.<SDL joystick GUID>",
-          "evidence": ["source:mgba src/core/input.c and src/platform/sdl/sdl-events.c SDLK/SDLB/GUID grammar @26b7884", "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MGBA_STANDALONE_PROGRESS.md"]
+          "evidence": ["source:mgba src/core/input.c and src/platform/sdl/sdl-events.c SDLK/SDLB/GUID grammar @26b7884", "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MGBA_STANDALONE_PROGRESS.md"]
         },
         {
           "purpose": "saves",
@@ -64,7 +64,7 @@
           "evidence": ["source:mgba-emu/mgba@26b7884bc25a5933960f3cdcd98bac1ae14d42e2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "The CLI's -c selects a cheats file and -C sets scalar options; neither is a controller-config path (per the Lunchbox pinned contract)."
+      "notes": "The CLI's -c selects a cheats file and -C sets scalar options; neither is a controller-config path (per the Lunchpail pinned contract)."
     },
     "linux-flatpak": {
       "paths": [

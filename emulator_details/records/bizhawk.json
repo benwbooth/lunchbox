@@ -23,7 +23,7 @@
       "kind": "contract",
       "repo": "TASEmulators/BizHawk",
       "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628",
-      "role": "pinned controller config encoding: https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_NESHAWK_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_PCEHAWK_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_SMSHAWK_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_TURBONYMA_CONTROLLER_CONTRACT.md; Unix BIZHAWK_HOME/BIZHAWK_DATA_HOME in https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md"
+      "role": "pinned controller config encoding: https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_NESHAWK_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_PCEHAWK_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_SMSHAWK_CONTROLLER_CONTRACT.md, https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_TURBONYMA_CONTROLLER_CONTRACT.md; Unix BIZHAWK_HOME/BIZHAWK_DATA_HOME in https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md"
     }
   ],
   "platforms": {
@@ -36,9 +36,9 @@
             "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default",
             "source:src/BizHawk.Client.Common/config/ConfigService.cs JSON serializer",
             "source:src/BizHawk.Client.Common/config/Config.cs AllTrollers/CoreSyncSettings/PreferredCores",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md (ArgParser --config, step 387)"
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md",
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md",
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md (ArgParser --config, step 387)"
           ]
         },
         {
@@ -92,7 +92,7 @@
           "naming": "Firmware directory holds BIOS ROMs, not keys."
         }
       ],
-      "notes": "Primary platform: EmuHawk.exe from GitHub releases (README requires at least Win10 22H2 or Win11 21H2; a 1.13.2 backport exists for XP/7/8.1). Lunchbox launches with a private --config copy and leaves PathEntries-directed save/state locations untouched."
+      "notes": "Primary platform: EmuHawk.exe from GitHub releases (README requires at least Win10 22H2 or Win11 21H2; a 1.13.2 backport exists for XP/7/8.1). Lunchpail launches with a private --config copy and leaves PathEntries-directed save/state locations untouched."
     },
     "linux": {
       "paths": [
@@ -101,8 +101,8 @@
           "path": "config.ini in the effective EmuHawk installation directory (portable); Program.cs falls back to PathUtils.ExeDirectoryPath/config.ini, and at the pinned revision the Unix PathExtensions derives that directory from BIZHAWK_HOME (and the data directory from BIZHAWK_DATA_HOME) when set. Same JSON layout as Windows: AllTrollers deck maps use per-system deck names and P<n> <button> keys, with AllTrollersAnalog/AllTrollersFeedbacks/AllTrollersAutoFire alongside CoreSyncSettings, PreferredCores, and PathEntries.",
           "evidence": [
             "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md (steps 389, 445: BIZHAWK_HOME/BIZHAWK_DATA_HOME on Unix)",
-            "contract:https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md (PathUtils DllDirectoryPath from BIZHAWK_HOME or executable directory)",
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md (steps 389, 445: BIZHAWK_HOME/BIZHAWK_DATA_HOME on Unix)",
+            "contract:https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md (PathUtils DllDirectoryPath from BIZHAWK_HOME or executable directory)",
             "source:src/BizHawk.Client.Common/config/ConfigService.cs JSON serializer"
           ]
         },
@@ -156,7 +156,7 @@
           "naming": "Firmware directory holds BIOS ROMs, not keys."
         }
       ],
-      "notes": "Supported: bizhawk-monort release started with EmuHawkMono.sh (runtime deps glibc, Mono complete, OpenAL, Lua 5.4); README calls the port about at parity with Mupen64Plus (N64) the notable omission, in a Windows-centric project. Lunchbox's direct-Mono launch supplies BIZHAWK_HOME/BIZHAWK_DATA_HOME explicitly and passes a private --config copy (https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md)."
+      "notes": "Supported: bizhawk-monort release started with EmuHawkMono.sh (runtime deps glibc, Mono complete, OpenAL, Lua 5.4); README calls the port about at parity with Mupen64Plus (N64) the notable omission, in a Windows-centric project. Lunchpail's direct-Mono launch supplies BIZHAWK_HOME/BIZHAWK_DATA_HOME explicitly and passes a private --config copy (https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/BIZHAWK_DEFINITION_CAPTURE.md)."
     },
     "macos": {
       "paths": [

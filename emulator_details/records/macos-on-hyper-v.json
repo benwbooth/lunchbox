@@ -24,7 +24,7 @@
     },
     {
       "kind": "contract",
-      "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MACOS_ON_HYPER_V_CONTROLLER_BOUNDARY.md",
+      "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/MACOS_ON_HYPER_V_CONTROLLER_BOUNDARY.md",
       "role": "Hyper-V VM persistence and controller boundary"
     }
   ],
@@ -34,7 +34,7 @@
         {
           "purpose": "config",
           "path": "Mounted UEFI.VHDX\\EFI\\OC\\config.plist (the repository template is EFI - Testing/EFI/OC/Config.plist)",
-          "naming": "OpenCore plist; the installation guide says to mount UEFI.VHDX and edit config.plist with ProperTree. VM processor, memory, firmware boot order and integration-service settings are configured in Hyper-V's VM settings UI, not in a portable Lunchbox file.",
+          "naming": "OpenCore plist; the installation guide says to mount UEFI.VHDX and edit config.plist with ProperTree. VM processor, memory, firmware boot order and integration-service settings are configured in Hyper-V's VM settings UI, not in a portable Lunchpail file.",
           "status": "captured",
           "evidence": [
             "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa EFI - Testing/EFI/OC/Config.plist sha256=b12badfafb109c1438a6080913671d9c2f60e018868db24ad1b707b8669e33fd",

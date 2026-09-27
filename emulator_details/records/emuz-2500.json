@@ -53,7 +53,7 @@
         {
           "purpose": "saves",
           "path": "<directory containing mz2500.exe>\\MZ-1R12.BIN for the optional MZ-1R12 32 KiB SRAM; attached floppy/hard-disk/tape media remain at their user-selected paths. If no hard-disk path exists, the VM defaults to <directory containing mz2500.exe>\\SASI0.DAT and SASI1.DAT.",
-          "naming": "MZ-1R12.BIN is read at startup and written on VM release only when SRAM changed. Floppy images and SASI hard-disk images are guest filesystems, not Lunchbox sidecars; [RecentFiles] stores the selected paths.",
+          "naming": "MZ-1R12.BIN is read at startup and written on VM release only when SRAM changed. Floppy images and SASI hard-disk images are guest filesystems, not Lunchpail sidecars; [RecentFiles] stores the selected paths.",
           "evidence": [
             "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/mz2500/mz1r12.cpp read/write MZ-1R12.BIN)",
             "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/mz2500/mz2500.cpp SASI0.DAT/SASI1.DAT default paths and media APIs)"
@@ -88,7 +88,7 @@
           ]
         }
       ],
-      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchbox has no verified native controller writer for this Windows-only target; it must not modify a user's mz2500.ini or keycode.cfg."
+      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchpail has no verified native controller writer for this Windows-only target; it must not modify a user's mz2500.ini or keycode.cfg."
     }
   },
   "platform_gaps": {

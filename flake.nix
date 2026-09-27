@@ -1,5 +1,5 @@
 {
-  description = "Lunchbox canonical game database and native frontend";
+  description = "Lunchpail canonical game database and native frontend";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -52,36 +52,36 @@
           # theme and color scheme instead of Qt's generic Linux Fusion style.
           pkgs.kdePackages.qqc2-desktop-style
         ];
-        qtEnv = pkgs.qt6.env "lunchbox-qt-env" qtModules;
+        qtEnv = pkgs.qt6.env "lunchpail-qt-env" qtModules;
         workspaceVersion = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
         databaseTool = pkgs.rustPlatform.buildRustPackage {
-          pname = "lunchbox-db";
+          pname = "lunchpail-db";
           version = workspaceVersion;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          LUNCHBOX_7Z = "${pkgs.p7zip}/bin/7z";
+          LUNCHPAIL_7Z = "${pkgs.p7zip}/bin/7z";
           # Link the pinned MAME CHD archive instead of compiling MAME or
           # downloading an asset inside the sandbox.
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
-          cargoBuildFlags = [ "--package" "lunchbox-db" ];
-          cargoTestFlags = [ "--package" "lunchbox-db" ];
+          cargoBuildFlags = [ "--package" "lunchpail-db" ];
+          cargoTestFlags = [ "--package" "lunchpail-db" ];
         };
         controllerProbe = pkgs.rustPlatform.buildRustPackage {
-          pname = "lunchbox-controller-probe";
+          pname = "lunchpail-controller-probe";
           version = workspaceVersion;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = [ "--package" "lunchbox-controller-probe" ];
-          cargoTestFlags = [ "--package" "lunchbox-controller-probe" ];
+          cargoBuildFlags = [ "--package" "lunchpail-controller-probe" ];
+          cargoTestFlags = [ "--package" "lunchpail-controller-probe" ];
           meta = with pkgs.lib; {
-            description = "Target-runtime SDL3 controller inventory for Lunchbox adapters";
+            description = "Target-runtime SDL3 controller inventory for Lunchpail adapters";
             license = licenses.mit;
-            mainProgram = "lunchbox-controller-probe";
+            mainProgram = "lunchpail-controller-probe";
             platforms = platforms.linux ++ platforms.darwin;
           };
         };
         frontend = pkgs.rustPlatform.buildRustPackage {
-          pname = "lunchbox";
+          pname = "lunchpail";
           version = workspaceVersion;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
@@ -105,10 +105,10 @@
           ORT_DYLIB_PATH = "${onnxruntimeForHost}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libonnxruntime.dylib" else "libonnxruntime.so"}";
           ORT_PREFER_DYNAMIC_LINK = "1";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
-          LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
+          LUNCHPAIL_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           # Release builds embed the exact flake revision for the UI build
           # label; the build time is stamped in preBuild.
-          LUNCHBOX_BUILD_HASH = self.shortRev or self.dirtyShortRev or "";
+          LUNCHPAIL_BUILD_HASH = self.shortRev or self.dirtyShortRev or "";
           preBuild = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
             export QMAKE="${qtEnv}/bin/qmake"
@@ -117,9 +117,9 @@
             # Stamp the real build time into the binary for the window's build
             # label. Nix caches by derivation, so an unchanged input keeps the
             # existing build; a source change produces the new timestamp.
-            export LUNCHBOX_BUILT_UNIX="$(date +%s)"
+            export LUNCHPAIL_BUILT_UNIX="$(date +%s)"
           '';
-          cargoBuildFlags = [ "--package" "lunchbox-app" "--package" "lunchbox-controller-probe" "--bin" "lunchbox" "--bin" "lunchbox-controller-probe" ]
+          cargoBuildFlags = [ "--package" "lunchpail-app" "--package" "lunchpail-controller-probe" "--bin" "lunchpail" "--bin" "lunchpail-controller-probe" ]
             ++ pkgs.lib.optionals (system == "x86_64-linux") [ "--features" "rocm-ocr" ];
           doCheck = true;
           checkPhase = ''
@@ -127,41 +127,41 @@
             export QML2_IMPORT_PATH="${qtEnv}/lib/qt-6/qml"
             export QML_IMPORT_PATH="${qtEnv}/lib/qt-6/qml"
             export QT_PLUGIN_PATH="${qtEnv}/lib/qt-6/plugins"
-            export XDG_CACHE_HOME="$TMPDIR/lunchbox-test-cache"
+            export XDG_CACHE_HOME="$TMPDIR/lunchpail-test-cache"
             # Display-session tests write private RetroArch appendconfigs via
             # ProjectDirs. A Nix build has no writable user home.
-            export XDG_DATA_HOME="$TMPDIR/lunchbox-test-data"
+            export XDG_DATA_HOME="$TMPDIR/lunchpail-test-data"
             mkdir -p "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
             QT_QPA_PLATFORM=offscreen qmltestrunner \
-              -input crates/lunchbox-app/tests/qml
-            # Include Lunchbox's C++ text snapping, which ordinary QML tests
+              -input crates/lunchpail-app/tests/qml
+            # Include Lunchpail's C++ text snapping, which ordinary QML tests
             # do not install. Repeated release changes must not drift labels.
-            "$QT_LIBEXEC_PATH/moc" crates/lunchbox-app/tests/button_labels.cpp \
+            "$QT_LIBEXEC_PATH/moc" crates/lunchpail-app/tests/button_labels.cpp \
               -o "$TMPDIR/button_labels.moc"
-            $CXX -std=c++17 -fPIC crates/lunchbox-app/tests/button_labels.cpp \
-              -Icrates/lunchbox-app/include -I"$TMPDIR" \
+            $CXX -std=c++17 -fPIC crates/lunchpail-app/tests/button_labels.cpp \
+              -Icrates/lunchpail-app/include -I"$TMPDIR" \
               $(pkg-config --cflags --libs Qt6QuickTest Qt6Quick Qt6Qml Qt6Gui Qt6Core) \
               -o "$TMPDIR/button-label-tests"
             QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=1.3 "$TMPDIR/button-label-tests" \
-              -input crates/lunchbox-app/tests/qml/tst_button_labels.qml
-            cargo test --package lunchbox-app --lib --release \
+              -input crates/lunchpail-app/tests/qml/tst_button_labels.qml
+            cargo test --package lunchpail-app --lib --release \
               ${pkgs.lib.optionalString (system == "x86_64-linux") "--features rocm-ocr"} \
               --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget}
             runHook postCheck
           '';
           postInstall = ''
-            mkdir -p "$out/share/lunchbox"
-            7z x -y "artifacts/lunchbox.db.7z" "-o$out/share/lunchbox" >/dev/null
-            install -Dm644 assets/lunchbox.svg \
-              "$out/share/icons/hicolor/scalable/apps/io.github.benwbooth.Lunchbox.svg"
-            install -Dm644 packaging/io.github.benwbooth.Lunchbox.desktop \
-              "$out/share/applications/io.github.benwbooth.Lunchbox.desktop"
-            install -Dm644 packaging/io.github.benwbooth.Lunchbox.metainfo.xml \
-              "$out/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml"
+            mkdir -p "$out/share/lunchpail"
+            7z x -y "artifacts/lunchpail.db.7z" "-o$out/share/lunchpail" >/dev/null
+            install -Dm644 assets/lunchpail.svg \
+              "$out/share/icons/hicolor/scalable/apps/io.github.benwbooth.Lunchpail.svg"
+            install -Dm644 packaging/io.github.benwbooth.Lunchpail.desktop \
+              "$out/share/applications/io.github.benwbooth.Lunchpail.desktop"
+            install -Dm644 packaging/io.github.benwbooth.Lunchpail.metainfo.xml \
+              "$out/share/metainfo/io.github.benwbooth.Lunchpail.metainfo.xml"
           '';
           preFixup = ''
             qtWrapperArgs+=(--prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.xdelta ]}")
-            qtWrapperArgs+=(--set LUNCHBOX_DATABASE "$out/share/lunchbox/lunchbox.db")
+            qtWrapperArgs+=(--set LUNCHPAIL_DATABASE "$out/share/lunchpail/lunchpail.db")
             qtWrapperArgs+=(--set ORT_DYLIB_PATH "${onnxruntimeForHost}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libonnxruntime.dylib" else "libonnxruntime.so"}")
           '' + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             qtWrapperArgs+=(--prefix PATH : "${pkgs.lib.makeBinPath [ dwarfs ]}")
@@ -169,17 +169,17 @@
           meta = with pkgs.lib; {
             description = "Native Rust and Qt game library frontend";
             license = licenses.mit;
-            mainProgram = "lunchbox";
+            mainProgram = "lunchpail";
             platforms = platforms.linux ++ platforms.darwin;
           };
         };
         # Iteration builds: identical frontend without the release test
-        # suite. `nix run .#lunchbox-fast` launches in a fraction of the
+        # suite. `nix run .#lunchpail-fast` launches in a fraction of the
         # time; the default package keeps full gates for CI and commits.
         # The fast profile also drops release LTO/single-codegen (parallel
         # codegen, no thin-LTO link) via pure env overrides.
         frontendFast = frontend.overrideAttrs (previous: {
-          pname = "lunchbox-fast";
+          pname = "lunchpail-fast";
           doCheck = false;
           CARGO_PROFILE_RELEASE_LTO = "false";
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16";
@@ -189,10 +189,10 @@
         checks.controller-probe = controllerProbe;
         packages = {
           default = frontend;
-          lunchbox = frontend;
-          lunchbox-fast = frontendFast;
-          lunchbox-db = databaseTool;
-          lunchbox-controller-probe = controllerProbe;
+          lunchpail = frontend;
+          lunchpail-fast = frontendFast;
+          lunchpail-db = databaseTool;
+          lunchpail-controller-probe = controllerProbe;
         } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           simcoupe-controller = pkgs.callPackage ./packaging/simcoupe-controller.nix { };
           retroarch-relative-routing = pkgs.callPackage ./packaging/retroarch-relative-routing.nix { };
@@ -203,26 +203,26 @@
 
         apps.default = {
           type = "app";
-          program = "${frontend}/bin/lunchbox";
+          program = "${frontend}/bin/lunchpail";
         };
 
-        apps.lunchbox-db = {
+        apps.lunchpail-db = {
           type = "app";
-          program = "${databaseTool}/bin/lunchbox-db";
+          program = "${databaseTool}/bin/lunchpail-db";
         };
 
-        apps.lunchbox-controller-probe = {
+        apps.lunchpail-controller-probe = {
           type = "app";
-          program = "${controllerProbe}/bin/lunchbox-controller-probe";
+          program = "${controllerProbe}/bin/lunchpail-controller-probe";
         };
 
-        apps.lunchbox-fast = {
+        apps.lunchpail-fast = {
           type = "app";
-          program = "${frontendFast}/bin/lunchbox";
+          program = "${frontendFast}/bin/lunchpail";
         };
 
         devShells.default = pkgs.mkShell {
-          LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
+          LUNCHPAIL_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           packages = (with pkgs; [
             cargo
             cmake
@@ -251,7 +251,7 @@
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";
           # Local dev builds show the real build time; release builds set the
           # pinned flake time instead.
-          LUNCHBOX_BUILT_UNIX = "now";
+          LUNCHPAIL_BUILT_UNIX = "now";
 
           shellHook = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
@@ -267,16 +267,16 @@
             # restart it, instead of waiting on a release build or CI. The
             # first debug link takes a few minutes; later one-file Rust
             # rebuilds are around twenty seconds.
-            lunchbox-dev() {
+            lunchpail-dev() {
               watchexec --restart --shell=none \
                 --watch crates \
                 --watch vendor \
                 --watch Cargo.toml \
                 --watch Cargo.lock \
                 --exts rs,qml,json,toml,lock \
-                -- cargo run -p lunchbox-app --bin lunchbox
+                -- cargo run -p lunchpail-app --bin lunchpail
             }
-            export -f lunchbox-dev 2>/dev/null || true
+            export -f lunchpail-dev 2>/dev/null || true
           '';
         };
 

@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "https://github.com/libretro/virtualjaguar-libretro", "commit": "f9a3c89f58836cb2c45a42ad4edfac047050f30a", "url": "https://github.com/libretro/virtualjaguar-libretro/tree/f9a3c89f58836cb2c45a42ad4edfac047050f30a", "role": "maintained Virtual Jaguar implementation; libretro core" },
     { "kind": "metadata", "url": "https://github.com/libretro/virtualjaguar-libretro/blob/f9a3c89f58836cb2c45a42ad4edfac047050f30a/dist/info/virtualjaguar_libretro.info", "role": "core extensions, firmware and savestate declarations" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VIRTUAL_JAGUAR_CONTROLLER_BOUNDARY.md", "role": "standalone versus RetroArch-hosted boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VIRTUAL_JAGUAR_CONTROLLER_BOUNDARY.md", "role": "standalone versus RetroArch-hosted boundary" }
   ],
   "platforms": {},
   "platform_gaps": {
@@ -18,7 +18,7 @@
     "native_writer": "not_implemented",
     "refusal": "Do not synthesize a standalone Virtual Jaguar controller writer: the maintained implementation is a libretro core and RetroArch owns its controller mapping and configuration.",
     "shared_integration": "emulator_details/retroarch-cores/virtual_jaguar.json",
-    "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VIRTUAL_JAGUAR_CONTROLLER_BOUNDARY.md"
+    "contract": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/VIRTUAL_JAGUAR_CONTROLLER_BOUNDARY.md"
   },
   "notes": "This standalone identity intentionally does not duplicate the RetroArch-hosted Virtual Jaguar core's keypad/stick profile, optional CD BIOS, saves or states."
 }

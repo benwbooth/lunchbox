@@ -1,11 +1,11 @@
 # RetroArch core feature records
 
 Each JSON file in this directory owns one canonical RetroArch core identifier
-from the Lunchbox database. The host-specific frontend paths remain in
+from the Lunchpail database. The host-specific frontend paths remain in
 `../records/retroarch.json`; these files capture the distinctions that cannot
 be truthfully inherited from the frontend alone:
 
-- the exact Lunchbox controller contracts for the core;
+- the exact Lunchpail controller contracts for the core;
 - per-core availability on native Linux, the RetroArch Flatpak, macOS, and
   Windows (frontend availability alone is insufficient);
 - required and optional firmware paths, including a checksum or an explicit

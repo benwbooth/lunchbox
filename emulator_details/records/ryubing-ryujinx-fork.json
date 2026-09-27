@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "source", "repo": "Ryubing/Ryujinx", "role": "Ryujinx-derived data roots, Config.json/input profiles, Switch keys/firmware, saves and state feature boundary" },
     { "kind": "docs", "url": "https://docs.ryujinx.app/guides/setup-guide/", "role": "official Ryubing setup, portable mode, keys and firmware guidance" },
-    { "kind": "manifest", "repo": "lunchbox", "path": "sources/firmware-rules.json", "role": "Ryubing keys and firmware import filenames" }
+    { "kind": "manifest", "repo": "lunchpail", "path": "sources/firmware-rules.json", "role": "Ryubing keys and firmware import filenames" }
   ],
   "platforms": {
     "linux": { "paths": [

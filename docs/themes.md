@@ -6,17 +6,17 @@ They do not change your games, controller mappings, or library layout.
 ## Install a theme
 
 Open **Settings → Couch Mode → Appearance Themes** and choose a
-`.lunchbox-theme` package.
+`.lunchpail-theme` package.
 
 Select the installed theme to use it. Installing an updated package with the
 same theme ID replaces that theme. Built-in themes cannot be removed.
 
-If an installed theme is missing or damaged, Lunchbox returns to its built-in
+If an installed theme is missing or damaged, Lunchpail returns to its built-in
 default. You can reinstall the package without rebuilding your library.
 
 ## Make a simple theme
 
-A theme package is a ZIP file renamed to end in `.lunchbox-theme`.
+A theme package is a ZIP file renamed to end in `.lunchpail-theme`.
 Put `theme.json` at the archive's top level, not inside an extra folder.
 
 This example needs no image:

@@ -5,7 +5,7 @@
   "sources": [
     { "kind": "distribution", "url": "http://tailchao.com/Wataroo/", "role": "official Windows-only identity and distribution evidence" },
     { "kind": "artifact", "url": "http://tailchao.com/Wataroo/Wataroo_v0-8-0-0.zip", "sha256": "f00e32eaa5af0535190cef6f27c209f25c43dae47a5ab4d317df03ff4ab329e0", "role": "reviewed Wataroo 0.8.0.0 archive containing executable, help and joystick profile" },
-    { "kind": "contract", "url": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WATAROO_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+    { "kind": "contract", "url": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WATAROO_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
   ],
   "platforms": {
     "windows": { "paths": [
@@ -22,6 +22,6 @@
     "linux-flatpak": { "status": "unsupported", "reason": "Official Wataroo distribution is Windows-only; no Flatpak runtime exists.", "evidence": ["official:http://tailchao.com/Wataroo/"] },
     "macos": { "status": "unsupported", "reason": "Official Wataroo distribution is Windows-only.", "evidence": ["official:http://tailchao.com/Wataroo/"] }
   },
-  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize Wataroo.joy mappings: closed-runtime DirectInput/XInput device identity and device-specific profile semantics require runtime resolution.", "contract": "https://github.com/benwbooth/lunchbox/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WATAROO_CONTROLLER_BOUNDARY.md" },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize Wataroo.joy mappings: closed-runtime DirectInput/XInput device identity and device-specific profile semantics require runtime resolution.", "contract": "https://github.com/benwbooth/lunchpail/blob/b0031f0fe48b31528435802d5499332f1f5ae165/docs/WATAROO_CONTROLLER_BOUNDARY.md" },
   "notes": "Wataroo 0.8.0.0 is a closed Windows-only artifact. The adjacent INI, JOY and SAV contracts are captured for inventory; controller writing remains fail-closed."
 }
