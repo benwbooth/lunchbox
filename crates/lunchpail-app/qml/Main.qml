@@ -13617,6 +13617,31 @@ ApplicationWindow {
                         }
                     }
 
+                    Column {
+                        width: parent.width
+                        visible: !gameDetails.loading && gameDetails.game_id.length > 0
+                        spacing: 6
+
+                        CheckBox {
+                            width: parent.width
+                            text: "Launch with GameBuddy"
+                            checked: gameDetails.gamebuddy_enabled
+                            enabled: !gameDetails.launch_busy && !gameDetails.game_running
+                            onClicked: gameDetails.configure_gamebuddy(checked, gameDetails.gamebuddy_executable)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Start the game with GameBuddy assistance and an in-game overlay on supported systems."
+                        }
+                        TextField {
+                            width: parent.width
+                            visible: gameDetails.gamebuddy_enabled
+                            text: gameDetails.gamebuddy_executable
+                            placeholderText: "GameBuddy executable (or PATH)"
+                            enabled: !gameDetails.launch_busy && !gameDetails.game_running
+                            selectByMouse: true
+                            onEditingFinished: gameDetails.configure_gamebuddy(gameDetails.gamebuddy_enabled, text)
+                        }
+                    }
+
                     LbButton {
                         width: parent.width
                         height: 42
@@ -15407,24 +15432,6 @@ ApplicationWindow {
                                     else
                                         gameDetails.prepare_game()
                                 }
-                            }
-                            CheckBox {
-                                width: parent.width
-                                text: "Launch with GameBuddy"
-                                checked: gameDetails.gamebuddy_enabled
-                                enabled: !gameDetails.launch_busy && !gameDetails.game_running
-                                onClicked: gameDetails.configure_gamebuddy(checked, gameDetails.gamebuddy_executable)
-                                ToolTip.visible: hovered
-                                ToolTip.text: "Start the game with GameBuddy assistance and an in-game overlay on supported systems."
-                            }
-                            TextField {
-                                width: parent.width
-                                visible: gameDetails.gamebuddy_enabled
-                                text: gameDetails.gamebuddy_executable
-                                placeholderText: "GameBuddy executable (or PATH)"
-                                enabled: !gameDetails.launch_busy && !gameDetails.game_running
-                                selectByMouse: true
-                                onEditingFinished: gameDetails.configure_gamebuddy(gameDetails.gamebuddy_enabled, text)
                             }
                         }
                     }
