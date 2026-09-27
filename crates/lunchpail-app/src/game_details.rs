@@ -1248,12 +1248,15 @@ fn load_supplemental_media(details: &mut GameDetails) -> Result<()> {
 fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
     let store = crate::settings::SettingsStore::open_default()?;
     load_native_game_files(details, &store)?;
+    details.managed_installation =
+        crate::ingest::inspect_managed_installation(&store, &details.id)?;
+    if details.local || details.managed_installation.is_some() {
+        details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
+        details.local |= details.prepared_install.is_some();
+    }
     if !details.local {
         return Ok(());
     }
-    details.managed_installation =
-        crate::ingest::inspect_managed_installation(&store, &details.id)?;
-    details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
     if let Some(prepared) = &details.prepared_install
         && details.database_id > 0
     {
@@ -1372,7 +1375,7 @@ fn load_native_game_files(
     details.local_file_paths = paths;
     // Library cards can still carry the pre-download flag while an import
     // refresh is in flight. Existing files, not that UI hint, establish locality.
-    details.local |= !details.local_file_paths.is_empty();
+    details.local = !details.local_file_paths.is_empty();
     if details.local {
         details.downloadable = false;
     }
@@ -3427,6 +3430,24 @@ mod tests {
             details.local_file_paths,
             vec![details.local_file_path.clone()]
         );
+    }
+
+    #[test]
+    fn missing_rom_clears_stale_installed_hint() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::settings::SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let rom = directory.path().join("removed.nes");
+        let mut details = GameDetails {
+            id: "uninstalled-game".into(),
+            local: true,
+            local_file_path: rom.clone(),
+            local_file_paths: vec![rom],
+            ..GameDetails::default()
+        };
+        load_native_game_files(&mut details, &store).unwrap();
+        assert!(!details.local);
+        assert!(details.local_file_paths.is_empty());
+        assert!(details.local_file_path.as_os_str().is_empty());
     }
 
     #[test]

@@ -1577,6 +1577,7 @@ fn build_emulator_discovery(
         let availability =
             crate::emulator::inspect_launch_availability(prepared, catalog_database, preference)?;
         return Ok(EmulatorDiscoveryResult::Prepared {
+            source_path: prepared.launch_config_path.clone(),
             availability,
             game_preference,
             platform_preference,
@@ -1600,6 +1601,7 @@ fn build_emulator_discovery(
         &availability.options,
     )?;
     Ok(EmulatorDiscoveryResult::Rom {
+        source_path: rom_path.to_path_buf(),
         availability,
         firmware_statuses,
         game_preference,
@@ -1610,16 +1612,40 @@ fn build_emulator_discovery(
 #[derive(Clone)]
 enum EmulatorDiscoveryResult {
     Prepared {
+        source_path: PathBuf,
         availability: crate::emulator::LaunchAvailability,
         game_preference: Option<crate::settings::EmulatorPreference>,
         platform_preference: Option<crate::settings::EmulatorPreference>,
     },
     Rom {
+        source_path: PathBuf,
         availability: crate::emulator::RomLaunchAvailability,
         firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
         game_preference: Option<crate::settings::EmulatorPreference>,
         platform_preference: Option<crate::settings::EmulatorPreference>,
     },
+}
+
+impl EmulatorDiscoveryResult {
+    fn matches_source(
+        &self,
+        prepared: Option<&crate::exo_install::PreparedInstall>,
+        rom: Option<&Path>,
+    ) -> bool {
+        match self {
+            Self::Prepared { source_path, .. } => launch_source_matches(
+                source_path,
+                prepared.map(|install| install.launch_config_path.as_path()),
+            ),
+            Self::Rom { source_path, .. } => {
+                prepared.is_none() && launch_source_matches(source_path, rom)
+            }
+        }
+    }
+}
+
+fn launch_source_matches(cached: &Path, selected: Option<&Path>) -> bool {
+    selected.is_some_and(|path| path == cached && path.is_file())
 }
 
 fn emulator_preference_matches_option(
@@ -1867,6 +1893,13 @@ impl qobject::GameDetailsModel {
             .rust()
             .details_cache
             .get(&game_id_string)
+            .filter(|details| {
+                details.local_file_paths.iter().all(|path| path.is_file())
+                    && details
+                        .prepared_install
+                        .as_ref()
+                        .is_none_or(|install| install.launch_config_path.is_file())
+            })
             .cloned();
         let cached_pending = cached_details.as_ref().and_then(|details| {
             self.as_ref()
@@ -1897,10 +1930,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_arcade_blood(qstring(blood.key()));
         self.as_mut().set_arcade_blood_available(false);
         self.as_mut().set_arcade_blood_supported(false);
-        // Present the game's final emulator layout immediately on re-select;
-        // the async discovery below only runs when nothing is cached yet.
-        self.as_mut()
-            .apply_cached_emulator_discovery(&game_id_string);
+        // Restore discovery only after the matching local paths are loaded.
+        // An emulator cached for this title is not proof it is still installed.
         self.as_mut().set_title(title);
         self.as_mut().set_platform(platform);
         self.as_mut().set_local(local);
@@ -2959,6 +2990,9 @@ impl qobject::GameDetailsModel {
                     } else if !self.as_mut().apply_cached_emulator_discovery(&details.id) {
                         self.as_mut().refresh_emulators();
                     }
+                } else {
+                    self.as_mut().invalidate_launch_state();
+                    self.as_mut().clear_emulator_options();
                 }
             }
             Err(error) => {
@@ -4306,17 +4340,25 @@ impl qobject::GameDetailsModel {
     }
 
     pub fn refresh_emulators(mut self: Pin<&mut Self>) {
-        if *self.as_ref().launch_discovery_busy() || *self.as_ref().launch_busy() {
+        if *self.as_ref().launch_discovery_busy()
+            || *self.as_ref().launch_busy()
+            || *self.as_ref().install_management_busy()
+        {
             return;
         }
-        let prepared = self.as_ref().rust().prepared_install.clone();
+        let prepared = self
+            .as_ref()
+            .rust()
+            .prepared_install
+            .clone()
+            .filter(|install| install.launch_config_path.is_file());
         let selected_local_file = usize::try_from(*self.as_ref().selected_local_file())
             .ok()
-            .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned());
+            .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned())
+            .filter(|path| path.is_file());
         if prepared.is_none() && selected_local_file.is_none() {
-            self.as_mut().set_can_launch(false);
-            self.as_mut().set_emulator_name(QString::default());
-            self.as_mut().set_emulator_summary(QString::default());
+            self.as_mut().invalidate_launch_state();
+            self.as_mut().clear_emulator_options();
             self.as_mut().set_launch_status(qstring(
                 "No present local game file is available for emulator detection.",
             ));
@@ -4393,6 +4435,19 @@ impl qobject::GameDetailsModel {
             return;
         }
         if let Ok(result) = &availability {
+            let rom = usize::try_from(*self.as_ref().selected_local_file())
+                .ok()
+                .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned());
+            if !result.matches_source(
+                self.as_ref().rust().prepared_install.as_ref(),
+                rom.as_deref(),
+            ) {
+                self.as_mut().invalidate_launch_state();
+                self.as_mut().clear_emulator_options();
+                return;
+            }
+        }
+        if let Ok(result) = &availability {
             self.as_mut()
                 .rust_mut()
                 .discovery_cache
@@ -4404,6 +4459,7 @@ impl qobject::GameDetailsModel {
                 availability,
                 game_preference,
                 platform_preference,
+                ..
             }) => {
                 self.as_mut().rust_mut().game_emulator_preference = game_preference;
                 self.as_mut().rust_mut().platform_emulator_preference = platform_preference;
@@ -4429,6 +4485,7 @@ impl qobject::GameDetailsModel {
                 firmware_statuses,
                 game_preference,
                 platform_preference,
+                ..
             }) => {
                 let selected_index = availability.selected_index;
                 let selected =
@@ -4487,7 +4544,21 @@ impl qobject::GameDetailsModel {
     fn apply_cached_emulator_discovery(mut self: Pin<&mut Self>, game_id: &str) -> bool {
         let generation = self.as_ref().rust().launch_generation.wrapping_add(1);
         self.as_mut().rust_mut().launch_generation = generation;
-        let cached = self.as_ref().rust().discovery_cache.get(game_id).cloned();
+        let rom = usize::try_from(*self.as_ref().selected_local_file())
+            .ok()
+            .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned());
+        let cached = self
+            .as_ref()
+            .rust()
+            .discovery_cache
+            .get(game_id)
+            .filter(|result| {
+                result.matches_source(
+                    self.as_ref().rust().prepared_install.as_ref(),
+                    rom.as_deref(),
+                )
+            })
+            .cloned();
         match cached {
             Some(result) => {
                 self.finish_emulator_discovery(generation, game_id.to_owned(), Ok(result));
@@ -4608,6 +4679,8 @@ impl qobject::GameDetailsModel {
 
     pub fn uninstall_managed_installation(mut self: Pin<&mut Self>, delete_owned_files: bool) {
         if *self.as_ref().install_management_busy()
+            || *self.as_ref().launch_busy()
+            || *self.as_ref().game_running()
             || !*self.as_ref().managed_install_present()
             || self.as_ref().game_id().is_empty()
         {
@@ -4654,17 +4727,29 @@ impl qobject::GameDetailsModel {
         generation: u64,
         result: Result<crate::ingest::ManagedInstallationResult, String>,
     ) {
+        if result.is_ok() {
+            // Aliases/releases can share an installation. Invalidate both
+            // caches even if the user navigated away while removal ran.
+            self.as_mut().rust_mut().details_cache.clear();
+            self.as_mut().rust_mut().discovery_cache.clear();
+            let revision = self.as_ref().installation_revision().wrapping_add(1);
+            self.as_mut().set_installation_revision(revision);
+        }
         if generation != self.as_ref().rust().details_generation {
             return;
         }
         self.as_mut().set_install_management_busy(false);
         match result {
             Ok(result) => {
-                if result.prepared_cache_removed {
-                    self.as_mut().rust_mut().prepared_install = None;
-                    self.as_mut().set_prepared(false);
-                    self.as_mut().set_prepared_summary(QString::default());
-                }
+                // Reject any details/discovery worker that read the old files.
+                self.as_mut().rust_mut().details_generation = generation.wrapping_add(1);
+                self.as_mut().set_loading(false);
+                self.as_mut().invalidate_launch_state();
+                self.as_mut().clear_emulator_options();
+                self.as_mut().rust_mut().prepared_install = None;
+                self.as_mut().set_prepared(false);
+                self.as_mut().set_preparable(false);
+                self.as_mut().set_prepared_summary(QString::default());
                 let remaining = result.remaining_local_paths;
                 let remaining_count = remaining.len();
                 let preferred = self.as_ref().rust().preferred_local_file_path.clone();
@@ -4758,8 +4843,6 @@ impl qobject::GameDetailsModel {
                     .set_install_management_message(qstring(message));
                 self.as_mut()
                     .set_message(qstring("Library installation removed."));
-                let revision = self.as_ref().installation_revision().wrapping_add(1);
-                self.as_mut().set_installation_revision(revision);
                 self.as_mut().bump_revision();
                 if remaining_count > 0 {
                     self.as_mut().refresh_emulators();
@@ -4775,7 +4858,11 @@ impl qobject::GameDetailsModel {
     }
 
     pub fn select_emulator_option(mut self: Pin<&mut Self>, index: i32) {
-        if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
+        if *self.as_ref().launch_busy()
+            || *self.as_ref().game_running()
+            || *self.as_ref().install_management_busy()
+            || !self.has_launch_content()
+        {
             return;
         }
         let Some(index) = usize::try_from(index).ok() else {
@@ -6199,7 +6286,18 @@ impl qobject::GameDetailsModel {
 
     pub fn launch_game(mut self: Pin<&mut Self>) {
         self.as_mut().refresh_emulator_session();
-        if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
+        if *self.as_ref().launch_busy()
+            || *self.as_ref().game_running()
+            || *self.as_ref().install_management_busy()
+        {
+            return;
+        }
+        if !self.has_launch_content() {
+            self.as_mut().invalidate_launch_state();
+            self.as_mut().clear_emulator_options();
+            self.as_mut().set_launch_status(qstring(
+                "The selected ROM is no longer installed. Choose another ROM or download it again.",
+            ));
             return;
         }
         self.as_mut().set_save_file_notice(QString::default());
@@ -7426,6 +7524,29 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_prepare_busy(false);
     }
 
+    fn has_launch_content(&self) -> bool {
+        self.rust()
+            .prepared_install
+            .as_ref()
+            .is_some_and(|install| install.launch_config_path.is_file())
+            || usize::try_from(*self.selected_local_file())
+                .ok()
+                .and_then(|index| self.rust().local_file_paths.get(index))
+                .is_some_and(|path| path.is_file())
+    }
+
+    fn clear_emulator_options(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().rom_emulator_options.clear();
+        self.as_mut().rust_mut().rom_firmware_statuses.clear();
+        self.as_mut().rust_mut().prepared_emulator = None;
+        self.as_mut().set_emulator_option_count(0);
+        self.as_mut().set_selected_emulator_option(-1);
+        self.as_mut().set_emulator_name(QString::default());
+        self.as_mut().set_emulator_summary(QString::default());
+        self.as_mut().set_launch_status(QString::default());
+        self.as_mut().clear_firmware_status();
+    }
+
     fn invalidate_launch_state(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().launch_generation =
             self.as_ref().rust().launch_generation.wrapping_add(1);
@@ -8312,6 +8433,20 @@ mod tests {
     };
     use crate::emulator::effective_launch_preview_values;
     use crate::game_details::{BundleMatchKind, MinervaBundle, TorrentFileCandidate};
+
+    #[test]
+    fn discovery_cache_requires_the_same_present_rom() {
+        let directory = tempfile::tempdir().unwrap();
+        let old_rom = directory.path().join("old.nes");
+        let replacement = directory.path().join("replacement.nes");
+        std::fs::write(&old_rom, b"original").unwrap();
+        std::fs::write(&replacement, b"replacement").unwrap();
+        assert!(super::launch_source_matches(&old_rom, Some(&old_rom)));
+        assert!(!super::launch_source_matches(&old_rom, None));
+        assert!(!super::launch_source_matches(&old_rom, Some(&replacement)));
+        std::fs::remove_file(&old_rom).unwrap();
+        assert!(!super::launch_source_matches(&old_rom, Some(&old_rom)));
+    }
 
     fn candidate_group(loaded: bool, has_candidate: bool) -> BundleCandidateGroup {
         BundleCandidateGroup {

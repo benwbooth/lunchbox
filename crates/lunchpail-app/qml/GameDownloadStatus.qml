@@ -33,12 +33,11 @@ Rectangle {
     readonly property string badge: jobIndex >= 0
                                             ? queue.job_badge_at(jobIndex) : ""
 
-    // An installed game's final state is the hero's Play button; the download
-    // card only exists while something is actually in flight or failed. It
-    // stays hidden while the details load so no intermediate state flashes.
+    // A completed import is history, not evidence the ROM is still installed.
+    // Only the details model can offer Play, after resolving present files.
     readonly property bool cardVisible: jobIndex >= 0
              && !gameLoading
-             && !(gameLocal && jobState === "IMPORTED")
+             && jobState !== "IMPORTED"
     visible: cardVisible
     height: visible ? contents.implicitHeight + 24 : 0
     radius: 11
@@ -111,15 +110,6 @@ Rectangle {
         Row {
             width: parent.width
             spacing: 8
-            HeaderButton {
-                objectName: "downloadPlayAction"
-                visible: card.jobState === "IMPORTED"
-                text: "Play"
-                active: card.jobState === "IMPORTED"
-                positive: true
-                implicitHeight: 34
-                onClicked: card.playRequested()
-            }
             HeaderButton {
                 text: "View download"
                 implicitHeight: 34

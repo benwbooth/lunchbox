@@ -146,11 +146,6 @@ ApplicationWindow {
     }
     property int selectedDatabaseId: 0
     property string detailsRefreshedJobId: ""
-    readonly property bool selectedDownloadImported: {
-        downloadQueue.revision
-        return selectedDownloadJobIndex >= 0
-                && downloadQueue.job_state_at(selectedDownloadJobIndex) === "IMPORTED"
-    }
     property double selectedMediaId: 0
     property url selectedArtworkUrl: ""
     property url selectedFanartUrl: ""
@@ -4971,6 +4966,11 @@ ApplicationWindow {
             if (!gameDetails.loading
                     && root.pendingCardLaunchGameId.length > 0)
                 Qt.callLater(root.resolvePendingCardLaunch)
+            if (root.installManagementUiProbe
+                    && root.installManagementProbeStage === 4
+                    && !gameDetails.loading) {
+                installManagementCompletionTimer.restart()
+            }
             if (root.relatedGamesUiProbe
                     && root.relatedGamesProbeStage === 2
                     && !gameDetails.loading) {
@@ -8822,6 +8822,12 @@ ApplicationWindow {
         interval: 100
         repeat: false
         onTriggered: {
+            if (!chooseAnotherRomButton.visible) {
+                console.error("LUNCHPAIL_INSTALL_MANAGEMENT_UI_FAILED missing ROM choices")
+                Qt.exit(2)
+                return
+            }
+            chooseAnotherRomButton.clicked()
             detailScroll.contentItem.contentY = Math.max(
                         0, installationFilesCard.mapToItem(
                             detailScroll.contentItem, 0, 0).y - 12)
@@ -8873,13 +8879,24 @@ ApplicationWindow {
         onTriggered: {
             if (gameDetails.install_management_busy
                     || gameDetails.managed_install_present
-                    || gameDetails.local_file_count !== 0) {
+                    || gameDetails.local_file_count !== 0
+                    || gameDetails.local || gameDetails.can_launch
+                    || gameDetails.emulator_option_count !== 0
+                    || detailsHero.visible) {
                 console.error("LUNCHPAIL_INSTALL_MANAGEMENT_UI_FAILED completion managed="
                               + gameDetails.managed_install_present
                               + " files=" + gameDetails.local_file_count
                               + " busy=" + gameDetails.install_management_busy
                               + " message=" + gameDetails.install_management_message)
                 Qt.exit(2)
+                return
+            }
+            if (root.installManagementProbeStage === 3) {
+                // Reopening used to restore the removed ROM's cached Play state.
+                root.installManagementProbeStage = 4
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.", "Nintendo Entertainment System",
+                              true, false) // deliberately stale library hint
                 return
             }
             console.log("LUNCHPAIL_INSTALL_MANAGEMENT_UI_READY message="
@@ -13376,9 +13393,10 @@ ApplicationWindow {
                         id: detailsHero
                         width: parent.width
                         gameId: gameDetails.game_id
-                        local: gameDetails.local || root.selectedDownloadImported
+                        local: gameDetails.local
                         loading: gameDetails.loading
                         canLaunch: gameDetails.can_launch && !patchCatalog.applying
+                                   && !gameDetails.install_management_busy
                         discoveryBusy: gameDetails.launch_discovery_busy
                         launchBusy: gameDetails.launch_busy
                         gameRunning: gameDetails.game_running
@@ -13534,23 +13552,42 @@ ApplicationWindow {
                     }
 
                     LbButton {
+                        id: chooseAnotherRomButton
+                        objectName: "chooseAnotherRomButton"
                         width: parent.width
                         visible: !gameDetails.loading
-                                 && (gameDetails.local || root.selectedDownloadImported)
-                                 && gameDetails.bundle_count > 0
-                        text: root.downloadAlternativesExpanded ? "Hide download options" : "Other download options"
+                                 && gameDetails.local
+                        text: root.downloadAlternativesExpanded ? "Hide ROM choices" : "Choose another ROM"
                         onClicked: root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
+                    }
+
+                    GameFilesCard {
+                        id: installationFilesCard
+                        visible: !gameDetails.loading
+                                 && gameDetails.local_file_count > 0
+                                 && root.downloadAlternativesExpanded
+                        height: visible ? implicitHeight : 0
+                        width: parent.width
+                        detailsModel: gameDetails
+                        ink: root.ink
+                        muted: root.muted
+                        line: root.line
+                        accent: root.accent
+                        accentCool: root.accentCool
+                        onManageIdentityRequested: gameFileIdentityDialog.begin(
+                                                       gameDetails.game_id,
+                                                       gameDetails.title,
+                                                       gameDetails.platform)
+                        onRemoveInstallationRequested: installRemovalDialog.open()
                     }
 
                     GameTorrentSources {
                         width: parent.width
                         detailsModel: gameDetails
-                        installed: gameDetails.local || root.selectedDownloadImported
+                        installed: gameDetails.local
                         alternativesExpanded: root.downloadAlternativesExpanded
                         showAddSource: !gameDetails.loading
-                                       && !gameDetails.local
                                        && gameDetails.game_id.length > 0
-                                       && !root.selectedDownloadImported
                         ink: root.ink
                         muted: root.muted
                         line: root.line
@@ -15070,23 +15107,6 @@ ApplicationWindow {
                         wrapMode: Text.WrapAnywhere
                     }
 
-
-                    GameFilesCard {
-                        visible: !gameDetails.loading
-                                 && gameDetails.local_file_count > 0
-                        width: parent.width
-                        detailsModel: gameDetails
-                        ink: root.ink
-                        muted: root.muted
-                        line: root.line
-                        accent: root.accent
-                        accentCool: root.accentCool
-                        onManageIdentityRequested: gameFileIdentityDialog.begin(
-                                                       gameDetails.game_id,
-                                                       gameDetails.title,
-                                                       gameDetails.platform)
-                        onRemoveInstallationRequested: installRemovalDialog.open()
-                    }
 
                     Rectangle {
                         visible: !gameDetails.loading

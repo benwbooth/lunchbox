@@ -6,6 +6,9 @@ TestCase {
     id: testCase
     name: "GameTorrentSources"
     when: windowShown
+    visible: true
+    width: 720
+    height: 700
 
     Component {
         id: hostComponent
@@ -140,6 +143,22 @@ TestCase {
         host.details.game_id = "game-two"
         compare(host.sources.sourcesExpanded, false)
         compare(host.sources.visibleSourceCount, 3)
+    }
+
+    function test_installed_game_can_add_a_replacement_without_indexed_candidates() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        host.sources.installed = true
+        host.details.sourceCount = 0
+        host.details.registered_torrent_source_count = 0
+        host.details.detail_revision += 1
+        host.sources.alternativesExpanded = true
+        verify(host.sources.shouldShowSources)
+        verify(findChild(host.sources, "addTorrentSourceButton").visible)
+
+        host.sources.installed = false
+        host.sources.alternativesExpanded = false
+        verify(host.sources.shouldShowSources)
+        verify(findChild(host.sources, "addTorrentSourceButton").visible)
     }
 
     function test_new_source_search_recovers_the_collapsed_state() {

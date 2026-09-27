@@ -68,13 +68,8 @@ TestCase {
         compare(host.status.badge, "READY")
         compare(host.status.jobState, "IMPORTED")
         compare(host.status.alternativesExpanded, false)
-        const pill = findChild(host.status, "statePill")
-        const play = findChild(host.status, "downloadPlayAction")
-        verify(pill)
-        verify(play)
-        compare(pill.border.color, "#5ee391")
-        verify(play.positive)
-        compare(play.background.color, "#237a4d")
+        verify(!host.status.cardVisible)
+        compare(findChild(host.status, "downloadPlayAction"), null)
     }
 
     function test_unmanaged_game_has_no_download_status_card() {
@@ -85,17 +80,27 @@ TestCase {
         compare(host.status.badge, "")
     }
 
-    function test_installed_game_hides_the_imported_download_card() {
+    function test_uninstall_does_not_resurrect_play_from_download_history() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
         host.queueState.state = "IMPORTED"
         ++host.queueState.revision
-        verify(host.status.cardVisible)
+        verify(!host.status.cardVisible)
 
         // Once the game itself is installed, the hero's Play state is the
         // interface; the download card must not linger behind it.
         host.installed = true
         compare(host.status.gameLocal, true)
         verify(!host.status.cardVisible)
+
+        host.installed = false
+        ++host.queueState.revision
+        verify(!host.status.cardVisible)
+        compare(findChild(host.status, "downloadPlayAction"), null)
+
+        // Choosing a different download still exposes its real progress.
+        host.queueState.state = "DOWNLOADING"
+        ++host.queueState.revision
+        verify(host.status.cardVisible)
     }
 }
