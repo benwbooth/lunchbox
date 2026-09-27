@@ -8,7 +8,7 @@ pushes to `main`, version tags, and manual dispatches.
 ## Produced artifacts
 
 - Windows x86-64: a self-contained portable ZIP and a per-machine MSI.
-- macOS 13+: Apple Silicon and Intel DMGs. Tagged releases also contain a
+- macOS 13+: Apple Silicon (arm64) DMG. Tagged releases also contain a
   checksum-pinned Homebrew cask named `lunchbox.rb`.
 - Linux x86-64: an AppImage, a Flatpak single-file bundle, and an OSTree
   Flatpak repository archive. The Nix job validates `.#lunchbox` directly.
