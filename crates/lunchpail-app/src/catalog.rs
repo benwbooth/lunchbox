@@ -1805,7 +1805,7 @@ fn load_torrent_catalog_coverage(
     let mut arcade_fallback = false;
     for row in rows {
         let (mapped_name, provider_name, collection) = row?;
-        if is_merged_mame_source(&collection, &provider_name) {
+        if is_hidden_mame_rom_source(&collection, &provider_name) {
             continue;
         }
         if let Some(name) = mapped_name.filter(|name| !name.trim().is_empty()) {
@@ -1816,8 +1816,8 @@ fn load_torrent_catalog_coverage(
         let provider_key = normalize_platform_key(&provider_name);
         coverage.platform_names.insert(provider_key.clone());
         atari_800_fallback |= provider_key == "atari" && collection == "TOSEC";
-        arcade_fallback |= collection == "MAME"
-            && matches!(provider_key.as_str(), "roms-split" | "roms-non-merged");
+        arcade_fallback |=
+            collection.trim().eq_ignore_ascii_case("MAME") && provider_key == "roms-non-merged";
     }
 
     // Preserve the two explicit fallbacks used by the legacy frontend. These
@@ -1832,14 +1832,15 @@ fn load_torrent_catalog_coverage(
     Ok(coverage)
 }
 
-/// Merged archives combine parent and clone ROMs instead of providing one
-/// independently downloadable game. Hide this provider category, not games
-/// whose titles happen to contain "merged" or existing local installations.
-pub(crate) fn is_merged_mame_source(collection: &str, provider_platform: &str) -> bool {
+/// Only non-merged MAME ROM sets are offered for download: merged archives
+/// combine games, and split archives need ROMs from a separate parent set.
+/// Hide those provider categories, not CHDs, similarly named games, or local
+/// installations the user already owns.
+pub(crate) fn is_hidden_mame_rom_source(collection: &str, provider_platform: &str) -> bool {
     collection.trim().eq_ignore_ascii_case("MAME")
         && matches!(
             normalize_platform_key(provider_platform).as_str(),
-            "roms-merged" | "software-list-roms-merged"
+            "roms-merged" | "roms-split" | "software-list-roms-merged" | "software-list-roms-split"
         )
 }
 
@@ -3034,7 +3035,7 @@ mod tests {
     }
 
     #[test]
-    fn merged_mame_sources_do_not_advertise_download_coverage() {
+    fn hidden_mame_rom_sources_do_not_advertise_download_coverage() {
         let database = tempfile::NamedTempFile::new().unwrap();
         let connection = Connection::open(database.path()).unwrap();
         connection
@@ -3042,10 +3043,14 @@ mod tests {
                 "CREATE TABLE minerva_torrents (id INTEGER PRIMARY KEY, collection TEXT);
              CREATE TABLE minerva_torrent_platforms (
                  torrent_id INTEGER, lunchbox_platform_name TEXT, minerva_platform TEXT);
-             INSERT INTO minerva_torrents VALUES (1, 'MAME'), (2, 'mame');
+             INSERT INTO minerva_torrents VALUES (1, 'MAME'), (2, 'mame'),
+                 (4, 'MAME'), (5, 'mame'), (6, 'MAME');
              INSERT INTO minerva_torrent_platforms VALUES
                  (1, 'Arcade', 'ROMs (merged)'),
-                 (2, NULL, 'ROMs - merged');",
+                 (2, NULL, 'ROMs - merged'),
+                 (4, 'Arcade', 'ROMs (split)'),
+                 (5, NULL, 'ROMs - split'),
+                 (6, 'Arcade', 'Software List ROMs (split)');",
             )
             .unwrap();
         let coverage = load_minerva_coverage(Some(database.path())).unwrap();
@@ -3061,18 +3066,40 @@ mod tests {
         assert!(coverage.platform_names.contains("arcade"));
         assert!(coverage.platform_names.contains("roms-non-merged"));
         assert!(!coverage.platform_names.contains("roms-merged"));
+        assert!(!coverage.platform_names.contains("roms-split"));
     }
 
     #[test]
-    fn merged_mame_source_rule_is_exact_and_keeps_other_categories() {
-        assert!(is_merged_mame_source(" MAME ", "ROMs (merged)"));
-        assert!(is_merged_mame_source("mame", "ROMS-MERGED"));
-        assert!(is_merged_mame_source("MAME", "Software List ROMs (merged)"));
-        for platform in ["ROMs (non-merged)", "ROMs (split)", "CHDs (merged)", "MAME"] {
-            assert!(!is_merged_mame_source("MAME", platform), "{platform}");
+    fn hidden_mame_rom_source_rule_is_exact_and_keeps_other_categories() {
+        for platform in [
+            "ROMs (merged)",
+            "ROMS-MERGED",
+            "ROMs (split)",
+            "ROMS-SPLIT",
+            "Software List ROMs (merged)",
+            "Software List ROMs (split)",
+        ] {
+            for collection in [" MAME ", "mame"] {
+                assert!(
+                    is_hidden_mame_rom_source(collection, platform),
+                    "{collection}: {platform}"
+                );
+            }
         }
-        assert!(!is_merged_mame_source("No-Intro", "ROMs (merged)"));
-        assert!(!is_merged_mame_source("HBMAME", "ROMs (merged)"));
+        for platform in [
+            "ROMs (non-merged)",
+            "Software List ROMs (non-merged)",
+            "CHDs (merged)",
+            "CHDs (split)",
+            "MAME",
+        ] {
+            assert!(!is_hidden_mame_rom_source("MAME", platform), "{platform}");
+        }
+        for collection in ["No-Intro", "HBMAME"] {
+            for platform in ["ROMs (merged)", "ROMs (split)"] {
+                assert!(!is_hidden_mame_rom_source(collection, platform));
+            }
+        }
     }
 
     #[test]

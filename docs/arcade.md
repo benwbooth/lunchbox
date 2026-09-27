@@ -9,10 +9,10 @@ For MAME or FinalBurn Neo, use a set compatible with the selected emulator.
 Keep the archive's standard set name and contents intact.
 
 A self-contained set is convenient because it includes the required game ROMs.
-Lunchpail prefers non-merged MAME sets and hides merged sets from its download
-choices. This does not remove any arcade games you have already installed.
-Split sets may need a parent archive nearby. Disc-based arcade games may also
-need CHDs and the expected folder layout.
+Lunchpail shows only non-merged MAME ROM sets in its download choices; merged
+and split sets are hidden. This does not remove any arcade games you have
+already installed. Disc-based arcade games may still need CHDs and the
+expected folder layout.
 
 Lunchpail's download review tries to include the files needed for the chosen
 game. Check the review rather than downloading a single matching filename
