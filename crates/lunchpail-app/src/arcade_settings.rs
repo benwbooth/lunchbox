@@ -123,6 +123,10 @@ fn stage(
             mode == BloodMode::Red
         ),
     )?;
+    let machine = content
+        .file_stem()
+        .and_then(|v| v.to_str())
+        .context("Missing machine name")?;
     let remainder = match content.extension().and_then(|s| s.to_str()) {
         Some("cmd") => {
             use std::io::Read;
@@ -131,10 +135,7 @@ fn stage(
                 .take(4096)
                 .read_to_string(&mut text)?;
             ensure!(text.len() <= 4095, "MAME command exceeds its size limit");
-            let remainder = text
-                .trim()
-                .strip_prefix("mame ")
-                .context("Unsupported MAME command")?;
+            let remainder = crate::mame_command::options(&text, machine)?;
             ensure!(
                 !remainder.contains(['\n', '\r'])
                     && !remainder.split_whitespace().any(|arg| matches!(
@@ -146,23 +147,18 @@ fn stage(
             remainder.to_owned()
         }
         Some("zip" | "7z") => format!(
-            "-rompath {} {}",
+            "-rompath {}",
             quote(content.parent().context("Missing ROM directory")?)?,
-            content
-                .file_stem()
-                .and_then(|v| v.to_str())
-                .context("Missing machine name")?
         ),
         _ => anyhow::bail!("Native arcade preferences require a MAME ROM archive"),
     };
-    let command = format!(
-        "mame -autoboot_delay 0 -autoboot_script {} {remainder}\n",
-        quote(&script)?
-    );
-    ensure!(
-        command.len() <= 4095,
-        "MAME command exceeds the core's command limit"
-    );
+    let command = crate::mame_command::build(
+        machine,
+        &format!(
+            "-autoboot_delay 0 -autoboot_script {} {remainder}",
+            quote(&script)?
+        ),
+    )?;
     let command_path = directory
         .join(content.file_stem().context("Missing machine name")?)
         .with_extension("cmd");
@@ -258,7 +254,12 @@ mod tests {
         let command_path = &staged.retroarch_content.unwrap().content;
         assert_eq!(command_path.file_name().unwrap(), "mslug.cmd");
         let command = std::fs::read_to_string(command_path).unwrap();
-        assert!(command.ends_with(original.strip_prefix("mame ").unwrap()));
+        assert!(command.starts_with("mslug -autoboot_delay "));
+        assert!(
+            command
+                .trim()
+                .ends_with(crate::mame_command::options(original, "mslug").unwrap())
+        );
         assert!(command.contains("-autoboot_delay 0 -autoboot_script"));
         assert_eq!(files.len(), 3);
         assert!(
@@ -300,7 +301,8 @@ mod tests {
         };
         let (staged, files) = stage(&input, &exe, BloodMode::Censored, out.path()).unwrap();
         let command = std::fs::read_to_string(&files[1]).unwrap();
-        assert!(command.contains(&format!("-rompath {} mslug2", quote(root.path()).unwrap())));
+        assert!(command.starts_with("mslug2 -autoboot_delay "));
+        assert!(command.contains(&format!("-rompath {}", quote(root.path()).unwrap())));
         assert!(
             std::fs::read_to_string(&files[0])
                 .unwrap()

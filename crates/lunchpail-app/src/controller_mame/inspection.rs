@@ -483,9 +483,9 @@ fn native_command(
         );
         Ok(format!("\"{value}\""))
     };
-    // The wrapper recognizes the leading core name and treats the final token
-    // as the machine. Absolute option paths avoid its relative-path rewriting.
-    let mut args = vec!["mame".to_owned()];
+    // The wrapper needs the machine FIRST to discover its native rotation.
+    // Absolute option paths avoid its relative-path rewriting.
+    let mut args = Vec::new();
     for (option, directory) in [
         ("-cfg_directory", "cfg"),
         ("-ctrlrpath", "ctrlr"),
@@ -529,15 +529,9 @@ fn native_command(
     if inspect_mouse {
         args.push("-mouse".to_owned());
     }
-    args.push(machine.to_owned());
     // Leave capacity for the wrapper's own standard/path arguments (128 total).
     ensure!(args.len() <= 40, "MAME inspection argument budget exceeded");
-    let command = args.join(" ");
-    ensure!(
-        command.len() <= 4095,
-        "MAME inspection command exceeds its native first-line capacity"
-    );
-    Ok(format!("{command}\n"))
+    crate::mame_command::build(machine, &args.join(" "))
 }
 
 /// Emit a read-only active-field snapshot through the core's native Lua API.

@@ -133,13 +133,14 @@ fn quote(path: &Path) -> Result<String> {
 }
 
 fn command_for(content: &Path, state: &Path) -> Result<String> {
+    let stem = content
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .context("Invalid MAME machine")?;
     let remainder = match content.extension().and_then(|s| s.to_str()) {
         Some("cmd") => {
             let text = String::from_utf8(read_bounded(std::fs::File::open(content)?, 4095)?)?;
-            let text = text.trim();
-            let remainder = text
-                .strip_prefix("mame ")
-                .context("Unsupported MAME command file for automatic resume")?;
+            let remainder = crate::mame_command::options(&text, stem)?;
             ensure!(
                 !remainder.contains(['\n', '\r'])
                     && !remainder
@@ -159,18 +160,16 @@ fn command_for(content: &Path, state: &Path) -> Result<String> {
                 "Invalid MAME machine name"
             );
             format!(
-                "-rompath {} {stem}",
+                "-rompath {}",
                 quote(content.parent().context("Missing MAME ROM directory")?)?
             )
         }
         _ => bail!("Automatic MAME resume requires a ROM archive or a Lunchpail MAME command"),
     };
-    let command = format!("mame -state {} -noautosave {remainder}\n", quote(state)?);
-    ensure!(
-        command.len() <= 4095,
-        "MAME resume command exceeds the core's command limit"
-    );
-    Ok(command)
+    crate::mame_command::build(
+        stem,
+        &format!("-state {} -noautosave {remainder}", quote(state)?),
+    )
 }
 
 fn read_bounded(reader: impl Read, limit: usize) -> Result<Vec<u8>> {
@@ -428,7 +427,7 @@ mod tests {
             assert!(!config.contains("savestate_auto_save"));
             let command = std::fs::read_to_string(root.path().join("mslug.cmd")).unwrap();
             assert!(command.contains("-state "));
-            assert!(command.ends_with("mslug\n"));
+            assert!(command.starts_with("mslug -state "));
             if flatpak {
                 assert!(
                     staged
@@ -447,7 +446,22 @@ mod tests {
         let original = "mame -cfg_directory \"/private/cfg\" -ctrlr lunchpail-original -nvram_directory \"/saves/nvram\" -noautosave mslug\n";
         std::fs::write(&command, original).unwrap();
         let resumed = command_for(&command, &root.path().join("resume.sta")).unwrap();
-        assert!(resumed.ends_with(original.strip_prefix("mame ").unwrap()));
+        assert!(
+            resumed
+                .trim()
+                .ends_with(crate::mame_command::options(original, "mslug").unwrap())
+        );
+        let normalized = crate::mame_command::build(
+            "mslug",
+            crate::mame_command::options(original, "mslug").unwrap(),
+        )
+        .unwrap();
+        std::fs::write(&command, normalized).unwrap();
+        assert_eq!(
+            command_for(&command, &root.path().join("resume.sta")).unwrap(),
+            resumed
+        );
+        std::fs::write(&command, original).unwrap();
         assert_eq!(std::fs::read_to_string(&command).unwrap(), original);
         std::fs::write(&command, "mame -state old mslug").unwrap();
         assert!(command_for(&command, &root.path().join("resume.sta")).is_err());

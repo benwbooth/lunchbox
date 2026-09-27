@@ -3,6 +3,7 @@ mod arcade;
 mod arcade_content;
 mod arcade_download;
 mod arcade_settings;
+mod mame_command;
 mod bezel_orionsangel;
 mod bezel_project;
 mod build_info;

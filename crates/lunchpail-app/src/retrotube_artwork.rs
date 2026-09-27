@@ -189,7 +189,7 @@ pub(crate) fn install(base: &Path, preset: &Path, image: &Path, ultrawide: bool)
          DO_BEZEL = \"0.0\"\n\
          DO_BG_IMAGE = \"1.0\"\n\
          BG_IMAGE_OVER = \"1.0\"\n\
-         BG_IMAGE_ROTATION = \"1.0\"\n\
+         BG_IMAGE_ROTATION = \"0.0\"\n\
          BG_IMAGE_ZOOM = \"1.0\"\n\
          BG_IMAGE_WRAP_MODE = \"1.0\"\n\
          BG_IMAGE_NIGHTIFY = \"0.0\"\n\
@@ -379,6 +379,9 @@ mod tests {
         assert_eq!(settings.matches("DO_BEZEL =").count(), 1);
         assert!(settings.contains("GLOBAL_ZOOM = \"1.0\""));
         assert!(settings.contains("BG_IMAGE_WRAP_MODE = \"1.0\""));
+        // Koko's auto mode counter-rotates the artwork, not the game. Identity
+        // rotates the entire cabinet with vertical arcade content.
+        assert!(settings.contains("BG_IMAGE_ROTATION = \"0.0\""));
         assert!(settings.contains("BG_IMAGE_NIGHTIFY = \"0.0\""));
         assert!(settings.contains("shaders = \"18\""));
         assert!(settings.contains("alias16 = \"lunchpail_picture_bounds\""));
