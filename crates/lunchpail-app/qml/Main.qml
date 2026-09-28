@@ -203,7 +203,13 @@ ApplicationWindow {
     property var hoverPreviewTile: null
     property string hoverPreviewPendingGameId: ""
     property bool hoverPreviewPlaying: false
-    property bool hoverPreviewAudioMuted: true
+    // One user choice for every grid preview and the details/fullscreen video.
+    // Changing games or closing a player must not reset it.
+    property bool videoAudioMuted: true
+    onVideoAudioMutedChanged: {
+        if (!videoAudioMuted)
+            gameVideoPlayer.enableAudio()
+    }
     property string hoverPreviewPlaybackError: ""
     property int hoverPreviewProbeStage: 0
     property int hoverPreviewPlaybackCycles: 0
@@ -1652,7 +1658,6 @@ ApplicationWindow {
         root.hoverPreviewTile = tile
         root.hoverPreviewPendingGameId = tile.gameId
         root.hoverPreviewPlaying = false
-        root.hoverPreviewAudioMuted = true
         root.hoverPreviewPlaybackError = ""
         // Artwork for the card under the pointer is foreground work immediately.
         // Only video keeps the half-second intent gate below.
@@ -1667,7 +1672,6 @@ ApplicationWindow {
         if (tile && root.hoverPreviewTile !== tile)
             return
         hoverPreviewDelay.stop()
-        root.hoverPreviewAudioMuted = true
         root.hoverPreviewPlaying = false
         // Hide the video surface before stop() clears its last frame. Some
         // Qt multimedia backends otherwise expose the surface's black clear
@@ -2466,7 +2470,7 @@ ApplicationWindow {
 
     AudioOutput {
         id: gameVideoAudio
-        muted: true
+        muted: root.videoAudioMuted
         volume: 0.45
     }
 
@@ -2474,6 +2478,7 @@ ApplicationWindow {
         id: gameVideoPlayer
         property bool resumeApplied: false
         property real unmuteResumePosition: -1
+        property bool unmuteResumePlaying: false
         source: !root.couchModeActive && !root.downloadPlanUiProbe
                 && gameDetails.video_available
                 ? gameDetails.video_url : ""
@@ -2485,15 +2490,15 @@ ApplicationWindow {
         audioOutput: gameVideoAudio.muted ? null : gameVideoAudio
         videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
         loops: MediaPlayer.Infinite
-        function toggleMuted() {
-            const unmuting = gameVideoAudio.muted
-            gameVideoAudio.muted = !gameVideoAudio.muted
-            if (unmuting && source.toString().length > 0) {
+        function enableAudio() {
+            if (source.toString().length > 0
+                    && playbackState !== MediaPlayer.StoppedState) {
                 // The pipeline was built with the audio track detached, and a
                 // late-attached output is not wired into a running decoder.
                 // Tearing the source down and restoring it rebuilds the whole
                 // pipeline with sound, resuming at the same position.
                 unmuteResumePosition = position
+                unmuteResumePlaying = playbackState === MediaPlayer.PlayingState
                 reloadPipeline()
             }
         }
@@ -2502,7 +2507,6 @@ ApplicationWindow {
             unmuteResumePosition = -1
             root.mediaPlaybackMessage = ""
             if (source.toString().length === 0) {
-                gameVideoAudio.muted = true
                 stop()
             }
         }
@@ -2511,6 +2515,12 @@ ApplicationWindow {
                 if (unmuteResumePosition >= 0) {
                     position = unmuteResumePosition
                     unmuteResumePosition = -1
+                    resumeApplied = true
+                    // Unmuting a grid card must not start a paused details
+                    // video (including one paused while an emulator runs).
+                    if (unmuteResumePlaying) play()
+                    else pause()
+                    return
                 } else if (!resumeApplied && seekable
                         && gameDetails.video_resume_position > 0)
                     position = Math.min(gameDetails.video_resume_position, duration)
@@ -2776,10 +2786,9 @@ ApplicationWindow {
         videoSource: hoverPreviewPlayer.source
         videoPosition: hoverPreviewPlayer.position
         previewPlaying: root.hoverPreviewPlaying
-        unmuted: !root.hoverPreviewAudioMuted
+        unmuted: !root.videoAudioMuted
         onPlaybackError: function(message) {
             console.warn("LUNCHPAIL_HOVER_PREVIEW_AUDIO_FAILED " + message)
-            root.hoverPreviewAudioMuted = true
         }
     }
 
@@ -9334,7 +9343,7 @@ ApplicationWindow {
                 rightPadding: 0
                 topPadding: 0
                 bottomPadding: 0
-                Accessible.name: gameVideoAudio.muted ? "Unmute video" : "Mute video"
+                Accessible.name: root.videoAudioMuted ? "Unmute all game videos" : "Mute all game videos"
                 ToolTip.visible: hovered
                 ToolTip.text: Accessible.name
                 contentItem: Item {
@@ -9348,7 +9357,7 @@ ApplicationWindow {
                         color: fullscreenMuteButton.enabled ? "#f4f7fb" : root.muted
                     }
                 }
-                onClicked: gameVideoPlayer.toggleMuted()
+                onClicked: root.videoAudioMuted = !root.videoAudioMuted
             }
             LbButton {
                 Layout.preferredWidth: 72
@@ -11176,10 +11185,10 @@ ApplicationWindow {
                         height: 32 * card.expansion
                         visible: tile.previewActive
                         flat: true
-                        highlighted: !root.hoverPreviewAudioMuted
-                        Accessible.name: root.hoverPreviewAudioMuted
-                                         ? "Unmute preview for " + tile.gameTitle
-                                         : "Mute preview for " + tile.gameTitle
+                        highlighted: !root.videoAudioMuted
+                        Accessible.name: root.videoAudioMuted
+                                         ? "Unmute all game videos"
+                                         : "Mute all game videos"
                         ToolTip.visible: hovered
                         ToolTip.text: Accessible.name
                         // A pointer click must not turn on GridView's controller
@@ -11192,11 +11201,11 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 width: 20 * card.expansion
                                 height: 20 * card.expansion
-                                name: root.hoverPreviewAudioMuted ? "mute" : "volume"
+                                name: root.videoAudioMuted ? "mute" : "volume"
                                 color: cardPreviewMuteButton.highlighted ? "#ffcb84" : "#f4f7fb"
                             }
                         }
-                        onClicked: root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
+                        onClicked: root.videoAudioMuted = !root.videoAudioMuted
                     }
                 }
 
@@ -14150,7 +14159,7 @@ ApplicationWindow {
                                         topPadding: 0
                                         bottomPadding: 0
                                         highlighted: !gameVideoAudio.muted
-                                        Accessible.name: gameVideoAudio.muted ? "Unmute video" : "Mute video"
+                                        Accessible.name: root.videoAudioMuted ? "Unmute all game videos" : "Mute all game videos"
                                         contentItem: Item {
                                             implicitWidth: 18
                                             implicitHeight: 18
@@ -14163,7 +14172,7 @@ ApplicationWindow {
                                                        : detailVideoMuteButton.highlighted ? "#ffcb84" : "#f4f7fb"
                                             }
                                         }
-                                        onClicked: gameVideoPlayer.toggleMuted()
+                                        onClicked: root.videoAudioMuted = !root.videoAudioMuted
                                         ToolTip.visible: hovered
                                         ToolTip.text: Accessible.name
                                     }

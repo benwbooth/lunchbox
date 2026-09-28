@@ -26,7 +26,20 @@ TestCase {
         previewPlaying: video.playing
     }
 
+    QtObject {
+        id: sharedAudio
+        property bool muted: true
+    }
+
+    Lunchpail.PreviewAudioCompanion {
+        id: detailsSound
+        unmuted: !sharedAudio.muted
+        previewPlaying: true
+    }
+
     function init() {
+        sharedAudio.muted = true
+        detailsSound.videoSource = ""
         sound.unmuted = false
         video.playing = false
         video.source = ""
@@ -64,5 +77,41 @@ TestCase {
         compare(sound.audioSource.toString(), "")
         compare(video.source.toString(),
                 "file:///tmp/lunchpail-preview-audio-test.mp4")
+    }
+
+    function test_shared_unmute_survives_changing_games_and_reopening_media() {
+        sound.unmuted = Qt.binding(function() { return !sharedAudio.muted })
+        video.source = "file:///tmp/lunchpail-first-preview.mp4"
+        detailsSound.videoSource = "file:///tmp/lunchpail-details-preview.mp4"
+        video.playing = true
+
+        sharedAudio.muted = false
+        verify(!sound.audioMuted)
+        verify(!detailsSound.audioMuted)
+        compare(sound.audioSource.toString(), video.source.toString())
+        compare(detailsSound.audioSource.toString(), detailsSound.videoSource.toString())
+
+        // Leaving one grid card stops its sound, not the shared user choice.
+        video.playing = false
+        video.source = ""
+        detailsSound.videoSource = ""
+        compare(sound.audioSource.toString(), "")
+        verify(!sharedAudio.muted)
+
+        video.source = "file:///tmp/lunchpail-next-preview.mp4"
+        video.playing = true
+        detailsSound.videoSource = "file:///tmp/lunchpail-other-details-preview.mp4"
+        compare(sound.audioSource.toString(), video.source.toString())
+        compare(detailsSound.audioSource.toString(), detailsSound.videoSource.toString())
+        verify(!sound.audioMuted)
+        verify(!detailsSound.audioMuted)
+
+        // A mute from either surface silences both without touching selection.
+        sharedAudio.muted = true
+        verify(sound.audioMuted)
+        verify(detailsSound.audioMuted)
+        compare(sound.audioSource.toString(), "")
+        compare(detailsSound.audioSource.toString(), "")
+        compare(video.source.toString(), "file:///tmp/lunchpail-next-preview.mp4")
     }
 }
