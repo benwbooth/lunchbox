@@ -40,11 +40,9 @@ Flatpak packages. See [translation requirements](docs/translation.md).
 
 ## Install
 
-Lunchpail was previously named Lunchbox. The source, Nix package, and Homebrew
-tap use the new name. The latest packaged release, **v0.1.2**, still has its
-original filenames and app ID; the commands below match those published files.
-The next release will use Lunchpail throughout. Existing settings and saves
-are preserved when upgrading to the renamed app.
+Lunchpail was previously named Lunchbox. Starting with **v0.1.3**, the downloads,
+installed app, and executables use the Lunchpail name. Existing settings and
+saves are preserved when upgrading. Older releases keep their original names.
 
 | Your computer | Installation options |
 | --- | --- |
@@ -57,10 +55,10 @@ Intel Mac packages are not available. Normal packages do not require Nix or Dock
 
 ### Windows
 
-- **Installer:** [Download the MSI](https://github.com/benwbooth/lunchpail/releases/download/v0.1.2/Lunchbox-windows-x86_64.msi)
+- **Installer:** [Download the MSI](https://github.com/benwbooth/lunchpail/releases/download/v0.1.3/Lunchpail-windows-x86_64.msi)
   and run it. Open the installed app from the Start menu.
-- **Portable:** [Download the ZIP](https://github.com/benwbooth/lunchpail/releases/download/v0.1.2/Lunchbox-windows-x86_64.zip),
-  extract the whole folder, and open `lunchbox.exe`. Keep its accompanying files
+- **Portable:** [Download the ZIP](https://github.com/benwbooth/lunchpail/releases/download/v0.1.3/Lunchpail-windows-x86_64.zip),
+  extract the whole folder, and open `Lunchpail/bin/lunchpail.exe`. Keep its accompanying files
   together. The ZIP is portable; your settings and saves still use your user folders.
 
 To update, close Lunchpail and install the newer MSI, or extract the newer ZIP into
@@ -77,7 +75,7 @@ brew install --cask benwbooth/lunchpail/lunchpail
 Update with `brew update` followed by `brew upgrade --cask lunchpail`.
 The [Lunchpail tap](https://github.com/benwbooth/homebrew-lunchpail) tracks stable releases.
 
-Prefer a regular download? [Open the DMG](https://github.com/benwbooth/lunchpail/releases/download/v0.1.2/Lunchbox-macos-arm64.dmg)
+Prefer a regular download? [Open the DMG](https://github.com/benwbooth/lunchpail/releases/download/v0.1.3/Lunchpail-macos-arm64.dmg)
 and drag the app into **Applications**. To update, quit it and replace
 the application with the newer copy. Both options require Apple Silicon and macOS 13+.
 
@@ -89,7 +87,7 @@ in Discover / your software manager, or run:
 
 ```sh
 flatpak install --user https://benwbooth.github.io/lunchpail/lunchpail.flatpakref
-flatpak run io.github.benwbooth.Lunchbox
+flatpak run io.github.benwbooth.Lunchpail
 ```
 
 This adds the signed Lunchpail repository and offers to add Flathub for the KDE
@@ -105,24 +103,24 @@ flatpak remote-add --user --if-not-exists lunchpail https://benwbooth.github.io/
 ```
 
 **AppImage — a single downloadable app.**
-[Download the AppImage](https://github.com/benwbooth/lunchpail/releases/download/v0.1.2/Lunchbox-linux-x86_64.AppImage),
+[Download the AppImage](https://github.com/benwbooth/lunchpail/releases/download/v0.1.3/Lunchpail-linux-x86_64.AppImage),
 then run these commands from your download folder:
 
 ```sh
-chmod +x Lunchbox-linux-x86_64.AppImage
-./Lunchbox-linux-x86_64.AppImage
+chmod +x Lunchpail-linux-x86_64.AppImage
+./Lunchpail-linux-x86_64.AppImage
 ```
 
 To update, replace the AppImage with the latest download. If your distribution
 reports a missing FUSE library, use Flatpak or try
-`./Lunchbox-linux-x86_64.AppImage --appimage-extract-and-run`.
+`./Lunchpail-linux-x86_64.AppImage --appimage-extract-and-run`.
 
 **Standalone Flatpak bundle.** For a manual install, download the
-[`.flatpak` file](https://github.com/benwbooth/lunchpail/releases/download/v0.1.2/Lunchbox-linux-x86_64.flatpak):
+[`.flatpak` file](https://github.com/benwbooth/lunchpail/releases/download/v0.1.3/Lunchpail-linux-x86_64.flatpak):
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user ./Lunchbox-linux-x86_64.flatpak
+flatpak install --user ./Lunchpail-linux-x86_64.flatpak
 ```
 
 Prefer the installer above for repository updates. The repository archive

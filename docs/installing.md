@@ -1,8 +1,8 @@
 # Install Lunchpail
 
-The project was previously named Lunchbox. Published v0.1.2 downloads retain
-their old filenames; follow the README's commands for that release. The renamed
-app preserves existing settings, credentials, profiles, and saves. Older profile
+The project was previously named Lunchbox. Version 0.1.3 and later use Lunchpail
+for downloads and the installed app. The renamed app preserves existing
+settings, credentials, profiles, and saves. Older profile
 and theme files remain importable. Existing filesystem paths may remain as
 compatibility links so emulator configurations keep working.
 
@@ -51,22 +51,23 @@ in your software manager, or use:
 
 ~~~sh
 flatpak install --user https://benwbooth.github.io/lunchpail/lunchpail.flatpakref
-flatpak run io.github.benwbooth.Lunchbox
+flatpak run io.github.benwbooth.Lunchpail
 ~~~
 
-That launch command matches the published v0.1.2 package, which predates the
-rename. The [download page](https://benwbooth.github.io/lunchpail/) always shows
-the command for the current stable package.
+The [download page](https://benwbooth.github.io/lunchpail/) always shows the
+command for the current stable package.
 
-If you previously added the `lunchbox` Flatpak remote, point it to the renamed
-repository so updates keep working:
+If you previously installed Lunchbox, point its remote to the renamed
+repository and install the new app ID:
 
 ~~~sh
 flatpak remote-modify --user --url=https://benwbooth.github.io/lunchpail/flatpak/ lunchbox
+flatpak install --user lunchbox io.github.benwbooth.Lunchpail
 ~~~
 
-This changes the update URL without removing the app or its data. For a
-system-wide remote, use `--system` instead of `--user`.
+Launch Lunchpail once to migrate your settings, then you can remove the old
+Lunchbox app without deleting its data. Do not use `--delete-data` when
+uninstalling it. For a system-wide remote, use `--system` instead of `--user`.
 
 This adds Lunchpail's signed update repository and offers the Flathub runtime
 source. Update through your software manager or `flatpak update --user`.
